@@ -1,0 +1,34 @@
+name: coverage
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**/*.md'
+
+jobs:
+    coverage:
+        runs-on: ubuntu-latest
+        steps:
+        - uses: actions/checkout@v5
+        - uses: actions-rust-lang/setup-rust-toolchain@v1
+        - name: Install cargo-llvm-cov
+          uses: taiki-e/install-action@cargo-llvm-cov
+        - name: Generate code coverage
+          id: coverage
+          run: |
+            echo "COVERAGE=$(cargo llvm-cov -q --summary-only | awk '/^TOTAL/ { print $4 }' | sed 's/%//')" >> "$GITHUB_OUTPUT"
+        - name: Update gist
+          uses: gorgbus/gist-actions@main
+          env:
+            GITHUB_TOKEN: ${{ secrets.GIST_TOKEN }}
+          with:
+            action: "update"
+            gist_id: "02a7627bd5ba7bdaaf0063e02cadcfde"
+            file_name: "gdm_coverage.json"
+            content: |
+                { "coverage": ${{ steps.coverage.outputs.COVERAGE }} }
+
+        
+          
+

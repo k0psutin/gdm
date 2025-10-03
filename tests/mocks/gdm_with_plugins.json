@@ -1,0 +1,14 @@
+{
+  "plugins": {
+    "gut": {
+      "asset_id": "1709",
+      "title": "GUT - Godot Unit Testing (Godot 4)",
+      "version": "9.1.0"
+    },
+    "interactive-grid": {
+      "asset_id": "4372",
+      "title": "Interactive Grid GDExtension",
+      "version": "1.2.0"
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+    "files.readonlyInclude": {
+        "**/.cargo/registry/src/**/*.rs": true,
+        "**/.cargo/git/checkouts/**/*.rs": true,
+        "**/lib/rustlib/src/rust/library/**/*.rs": true,
+    },
+    "rust-analyzer.check.command": "clippy",
+    "editor.defaultFormatter": "rust-lang.rust-analyzer",
+    "editor.formatOnSave": true,
+    "coverage-gutters.coverageFileNames": [
+        "lcov.info",
+        "cov.xml",
+        "coverage.xml",
+        "cobertura.xml",
+        "jacoco.xml",
+        "coverage.cobertura.xml"
+    ]
+}

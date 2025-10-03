@@ -1,0 +1,14 @@
+{
+    "plugins": {
+        "plugin_1": {
+            "asset_id": "54321",
+            "title": "Awesome Plugin",
+            "version": "1.0.0"
+        },
+        "plugin_2": {
+            "asset_id": "12345",
+            "title": "Super Plugin",
+            "version": "2.1.3"
+        }
+    }
+}
