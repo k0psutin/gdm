@@ -1,0 +1,9 @@
+{
+    "plugins": {
+        "gut": {
+            "asset_id": "1709",
+            "title": "GUT - Godot Unit Testing (Godot 4)",
+            "version": "9.5.0"
+        }
+    }
+}
