@@ -8,17 +8,21 @@ impl AssetListResponse {
         self.result.len()
     }
 
+    pub fn get_results(&self) -> &Vec<AssetListItem> {
+        &self.result
+    }
+
     pub fn get_asset_list_item_by_index(&self, index: usize) -> Option<&AssetListItem> {
         self.result.get(index)
     }
 
     pub fn print_info(&self) {
-        if self.result.is_empty() {
+        if self.get_results().is_empty() {
             return;
         }
 
         println!();
-        for asset in &self.result {
+        for asset in self.get_results() {
             asset.print_info();
         }
     }

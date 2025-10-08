@@ -6,22 +6,17 @@
 ;   [section] ; section goes between []
 ;   param=value ; assign values to parameters
 
-config_version=5
+config_version=4
 
 [application]
 
 config/name="GDFlow"
 run/main_scene="uid://djaaqeulw5efm"
-config/features=PackedStringArray("4.5", "GL Compatibility")
 config/icon="res://icon.svg"
 
 [autoload]
 
 LoggerConfig="*res://addons/simple_logger/simple_logger_config.gd"
-
-[editor_plugins]
-
-enabled=PackedStringArray("res://addons/gut/plugin.cfg")
 
 [rendering]
 

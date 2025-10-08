@@ -1,19 +1,20 @@
 mod api;
 mod commands;
 mod plugin_config;
-mod settings;
-mod parser;
+mod app_config;
+mod godot_config;
 mod extract;
 mod http_client;
+mod plugin_service;
+mod utils;
 
-
-use settings::Settings;
 use clap::Command;
+use crate::app_config::AppConfig;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-        let settings = Settings::get_settings()?;    
-        let mut command = Command::new(settings.application_name)
+        let application_name = AppConfig::new().get_application_name();
+        let mut command = Command::new(application_name)
             .version("0.1.0")
             .about("A CLI tool to manage Godot dependencies");
         command = commands::configure(command);

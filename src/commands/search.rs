@@ -1,5 +1,5 @@
 use crate::api::AssetStoreAPI;
-use crate::settings::Settings;
+use crate::godot_config::GodotConfig;
 use clap::{ArgMatches, Command};
 use std::collections::HashMap;
 
@@ -23,9 +23,12 @@ pub fn configure() -> Command {
 }
 
 pub async fn handle(_matches: &ArgMatches) -> anyhow::Result<()> {
+    
     let name = _matches.get_one::<String>("name").unwrap();
     let mut godot_version = _matches.get_one::<String>("godot-version").map(|s| s.as_str()).unwrap_or("");
-    let parsed_version = Settings::get_settings()?.godot_version;
+
+    let godot_config = GodotConfig::new();
+    let parsed_version = godot_config.get_godot_version()?;
 
     if godot_version.is_empty() && parsed_version.is_empty() {
         println!("Couldn't determine Godot version from project.godot. Please provide a version using --godot-version.");
@@ -37,7 +40,7 @@ pub async fn handle(_matches: &ArgMatches) -> anyhow::Result<()> {
     }
 
     let params = HashMap::from([("filter", name.as_str()), ("godot_version", godot_version)]);
-    let asset_results = AssetStoreAPI.search_assets(params).await?;
+    let asset_results = AssetStoreAPI::new().search_assets(params).await?;
     match asset_results.get_result_len() {
             0 => println!("No assets found matching \"{}\"", name),
             1 => println!("Found 1 asset matching \"{}\":", name),

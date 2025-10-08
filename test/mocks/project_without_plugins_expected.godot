@@ -21,7 +21,7 @@ LoggerConfig="*res://addons/simple_logger/simple_logger_config.gd"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/gut/plugin.cfg")
+enabled=PackedStringArray("res://addons/test_plugin/plugin.cfg")
 
 [rendering]
 
