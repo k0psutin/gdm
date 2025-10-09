@@ -67,13 +67,6 @@ pub fn extract_zip_file(file_path: &str, destination: &str) -> anyhow::Result<St
         .unwrap()
         .progress_chars("#>-"),
     );
-    let file_name_progress_bar = ProgressBar::new(archive.len() as u64);
-    file_name_progress_bar
-        .set_style(ProgressStyle::with_template("{spinner:.green} {wide_msg}").unwrap());
-
-    let mp = MultiProgress::new();
-    let extract_progress_bar: ProgressBar = mp.add(extract_progress_bar);
-    let file_progress_bar: ProgressBar = mp.add(file_name_progress_bar);
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).unwrap();
@@ -85,7 +78,6 @@ pub fn extract_zip_file(file_path: &str, destination: &str) -> anyhow::Result<St
         if file.is_dir() {
             fs::create_dir_all(&outpath).unwrap();
         } else {
-            file_progress_bar.set_message(format!("File: {}", outpath.display()));
             if let Some(p) = outpath.parent() {
                 if !p.exists() {
                     fs::create_dir_all(p).unwrap();
@@ -94,7 +86,6 @@ pub fn extract_zip_file(file_path: &str, destination: &str) -> anyhow::Result<St
             let mut outfile = fs::File::create(&outpath).unwrap();
             io::copy(&mut file, &mut outfile).unwrap();
         }
-        file_progress_bar.inc(1);
         extract_progress_bar.inc(1);
         // Get and Set permissions
         #[cfg(unix)]
@@ -106,8 +97,7 @@ pub fn extract_zip_file(file_path: &str, destination: &str) -> anyhow::Result<St
             }
         }
     }
-    extract_progress_bar.finish_with_message("done");
-    file_progress_bar.finish_and_clear();
+    extract_progress_bar.finish_and_clear();
     Ok(plugin_root_dir.display().to_string())
 }
 

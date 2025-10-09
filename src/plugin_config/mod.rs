@@ -1,5 +1,6 @@
 use crate::app_config::AppConfig;
-use anyhow::{Result, anyhow};
+use anyhow::Context;
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections;
@@ -13,9 +14,31 @@ pub struct PluginConfig {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Plugin {
-    pub asset_id: String,
-    pub title: String,
-    pub version: String,
+    asset_id: String,
+    title: String,
+    version: String,
+}
+
+impl Plugin {
+    pub fn new(asset_id: String, title: String, version: String) -> Plugin {
+        Plugin {
+            asset_id,
+            title,
+            version,
+        }
+    }
+
+    pub fn get_asset_id(&self) -> &String {
+        &self.asset_id
+    }
+
+    pub fn get_title(&self) -> &String {
+        &self.title
+    }
+
+    pub fn get_version(&self) -> &String {
+        &self.version
+    }
 }
 
 impl PluginConfig {
@@ -28,6 +51,10 @@ impl PluginConfig {
         PluginConfig { plugins }
     }
 
+    pub fn get_plugins(&self) -> &collections::HashMap<String, Plugin> {
+        &self.plugins
+    }
+
     pub fn get_plugin_by_asset_id(&self, asset_id: String) -> Option<&Plugin> {
         let result = self.plugins.values().find(|p| p.asset_id == asset_id);
         match result {
@@ -36,8 +63,12 @@ impl PluginConfig {
         }
     }
 
-    pub fn get_plugin_by_name(&self, name: &str) -> Option<&Plugin> {
-        self.plugins.get(name)
+    pub fn get_plugin_by_name(&self, name: &str) -> Option<String> {
+        let plugin_name = self.plugins.get_key_value(name);
+        match plugin_name {
+            Some((key, _)) => Some(key.to_string()),
+            None => None,
+        }
     }
 
     // TODO create a method that checks if a plugin is already installed by asset id
@@ -45,7 +76,13 @@ impl PluginConfig {
     pub fn check_if_plugin_already_installed_by_asset_id(&self, asset_id: &str) -> Option<&Plugin> {
         let plugin = self.get_plugin_by_asset_id(asset_id.to_string());
         match plugin {
-            Some(p) => Some(p),
+            Some(p) => {
+                println!(
+                    "Plugin with asset ID {} is already installed: {} (version {})",
+                    asset_id, p.title, p.version
+                );
+                Some(p)
+            }
             None => None,
         }
     }
@@ -77,16 +114,18 @@ impl PluginConfig {
         }
     }
 
-    pub fn add_plugins(&self, new_plugins: collections::HashMap<String, Plugin>) {
+    pub fn add_plugins(&self, new_plugins: collections::HashMap<String, Plugin>) -> Result<()> {
         let new_plugin_config = self.update_plugins(new_plugins);
-        self.write_config(&new_plugin_config);
+        self.write_config(&new_plugin_config)?;
+        Ok(())
     }
 
-    pub fn remove_installed_plugin(&self, plugin_key: &str) {
-        self.remove_plugins(vec![plugin_key.to_string()]);
+    pub fn remove_installed_plugin(&self, plugin_key: &str) -> Result<()> {
+        self.remove_plugins(vec![plugin_key.to_string()])?;
+        Ok(())
     }
 
-    fn remove_plugins(&self, plugins_to_remove: Vec<String>) {
+    fn remove_plugins(&self, plugins_to_remove: Vec<String>) -> Result<()> {
         let mut plugins_copy = self.plugins.clone();
 
         for plugin_key in plugins_to_remove {
@@ -94,7 +133,8 @@ impl PluginConfig {
         }
 
         let new_plugin_config = PluginConfig::copy(plugins_copy);
-        self.write_config(&new_plugin_config);
+        self.write_config(&new_plugin_config)?;
+        Ok(())
     }
 
     fn update_plugins(&self, new_plugins: collections::HashMap<String, Plugin>) -> PluginConfig {
@@ -107,20 +147,23 @@ impl PluginConfig {
         PluginConfig::copy(plugins_copy)
     }
 
-    fn write_config(&self, plugin_config: &PluginConfig) {
+    fn write_config(&self, plugin_config: &PluginConfig) -> Result<()> {
         let config_file_name = AppConfig::new().get_config_file_name();
-        let file = fs::File::create(config_file_name);
+        let file = fs::File::create(config_file_name).with_context(|| {
+            format!(
+                "Failed to create or open the configuration file: {}",
+                config_file_name
+            )
+        })?;
 
-        if file.is_err() {
-            eprintln!("Failed to create configuration file");
-            return;
-        }
+        serde_json::to_writer_pretty(file, plugin_config).with_context(|| {
+            format!(
+                "Failed to write configuration to file: {}",
+                config_file_name
+            )
+        })?;
 
-        let result = serde_json::to_writer_pretty(file.unwrap(), plugin_config);
-
-        if result.is_err() {
-            eprintln!("Failed to write configuration to file");
-        }
+        Ok(())
     }
 }
 
