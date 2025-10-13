@@ -9,6 +9,6 @@ pub fn configure() -> Command {
 
 pub async fn handle(_matches: &ArgMatches) -> anyhow::Result<()> {
     let plugin_service = PluginService::new();
-    plugin_service.install_plugins().await?;    
+    plugin_service.install_all_plugins().await?;    
     Ok(())
 }

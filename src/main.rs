@@ -6,6 +6,7 @@ mod godot_config;
 mod extract;
 mod http_client;
 mod plugin_service;
+mod file_service;
 mod utils;
 
 use clap::Command;
@@ -20,7 +21,13 @@ async fn main() -> anyhow::Result<()> {
         command = commands::configure(command);
 
         let matches = command.get_matches();
-        commands::handle(&matches).await?;
+        let result = commands::handle(&matches).await;
 
-        Ok(())
+        return match result {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                eprintln!("{}", e);
+                Ok(())
+            }
+        };
 }

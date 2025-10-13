@@ -1,5 +1,3 @@
-use std::sync::OnceLock;
-
 pub struct AppConfig {
     api_base_url: &'static str,
     application_name: &'static str,
@@ -34,19 +32,32 @@ impl AppConfig {
         self.addon_folder_path
     }
 
-    pub fn default(app_config: AppConfig) -> AppConfig {
-        app_config
+    pub fn default(
+        api_base_url: Option<&'static str>,
+        application_name: Option<&'static str>,
+        config_file_name: Option<&'static str>,
+        cache_folder_path: Option<&'static str>,
+        godot_project_file_path: Option<&'static str>,
+        addon_folder_path: Option<&'static str>,
+    ) -> AppConfig {
+        AppConfig {
+            api_base_url: api_base_url.unwrap_or("https://godotengine.org/asset-library/api"),
+            application_name: application_name.unwrap_or("Godot Dependency Manager"),
+            config_file_name: config_file_name.unwrap_or("gdm.json"),
+            cache_folder_path: cache_folder_path.unwrap_or(".gdm"),
+            godot_project_file_path: godot_project_file_path.unwrap_or("project.godot"),
+            addon_folder_path: addon_folder_path.unwrap_or("addons"),
+        }
     }
 
-    pub fn new<'a>() -> &'a AppConfig {
-        static INSTANCE: OnceLock<AppConfig> = OnceLock::new();
-        INSTANCE.get_or_init(|| AppConfig {
+    pub fn new() -> AppConfig {
+        AppConfig {
             api_base_url: "https://godotengine.org/asset-library/api",
             application_name: "Godot Dependency Manager",
             config_file_name: "gdm.json",
             cache_folder_path: ".gdm",
             godot_project_file_path: "project.godot",
             addon_folder_path: "addons",
-        })
+        }
     }
 }

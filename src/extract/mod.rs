@@ -1,10 +1,12 @@
 use anyhow::{Result, anyhow};
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use indicatif::{ProgressBar, ProgressStyle};
 use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
 use zip;
+
+use crate::file_service::FileService;
 
 fn create_extract_path(root: PathBuf, path: PathBuf) -> PathBuf {
     let index = path.iter().skip(1).position(|p| p == "addons");
@@ -53,40 +55,41 @@ fn get_root_directory_name_from_archive(
     }
 }
 
-pub fn extract_zip_file(file_path: &str, destination: &str) -> anyhow::Result<String> {
-    let file = fs::File::open(file_path).unwrap();
-
-    let mut archive = zip::ZipArchive::new(file).unwrap();
+pub fn get_root_dir_from_archive(file_path: &str) -> anyhow::Result<String> {
+    let file = fs::File::open(file_path)?;
+    let mut archive = zip::ZipArchive::new(file)?;
     let plugin_root_dir: PathBuf = get_root_directory_name_from_archive(&mut archive)?;
+    Ok(plugin_root_dir.display().to_string())
+}
 
-    let extract_progress_bar: ProgressBar = ProgressBar::new(archive.len() as u64);
-    extract_progress_bar.set_style(
-        ProgressStyle::with_template(
-            "{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos:>7}/{len:7} {msg}",
-        )
-        .unwrap()
-        .progress_chars("#>-"),
-    );
+pub fn extract_zip_file(file_path: String, destination: String, pb_task: ProgressBar) -> anyhow::Result<String> {
+    let file = fs::File::open(file_path)?;
+    let _destination = PathBuf::from(&destination);
+
+    let mut archive = zip::ZipArchive::new(file)?;
+    let plugin_root_dir: PathBuf = get_root_directory_name_from_archive(&mut archive)?;
+    let file_count = archive.file_names().count();
+    pb_task.set_length(file_count as u64);
 
     for i in 0..archive.len() {
-        let mut file = archive.by_index(i).unwrap();
+        let mut file = archive.by_index(i)?;
+        pb_task.inc(1);
         let outpath = match file.enclosed_name() {
-            Some(path) => create_extract_path(PathBuf::from(destination), path),
+            Some(path) => create_extract_path(_destination.clone(), path),
             None => continue,
         };
 
         if file.is_dir() {
-            fs::create_dir_all(&outpath).unwrap();
+            FileService::create_directory(&outpath).unwrap();
         } else {
             if let Some(p) = outpath.parent() {
                 if !p.exists() {
-                    fs::create_dir_all(p).unwrap();
+                    FileService::create_directory(&PathBuf::from(p)).unwrap();
                 }
             }
-            let mut outfile = fs::File::create(&outpath).unwrap();
+            let mut outfile = FileService::create_file(&outpath).unwrap();
             io::copy(&mut file, &mut outfile).unwrap();
         }
-        extract_progress_bar.inc(1);
         // Get and Set permissions
         #[cfg(unix)]
         {
@@ -97,7 +100,7 @@ pub fn extract_zip_file(file_path: &str, destination: &str) -> anyhow::Result<St
             }
         }
     }
-    extract_progress_bar.finish_and_clear();
+    pb_task.finish_and_clear();
     Ok(plugin_root_dir.display().to_string())
 }
 
@@ -131,7 +134,8 @@ mod tests {
 
     #[test]
     fn test_extract_zip_file() {
-        let result = extract_zip_file("test/mocks/zip_files/test_with_addons_folder.zip", "test/addons");
+        let pb_task = ProgressBar::new(5000000);
+        let result = extract_zip_file(String::from("test/mocks/zip_files/test_with_addons_folder.zip"), String::from("test/addons"), pb_task);
         assert!(result.is_ok());
         fs::remove_dir_all("test/addons").unwrap();
     }

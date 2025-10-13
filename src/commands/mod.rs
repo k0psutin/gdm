@@ -3,6 +3,7 @@ mod remove;
 mod install;
 mod search;
 mod outdated;
+mod update;
 
 use clap::{ArgMatches, Command};
 use anyhow::{Result};
@@ -13,6 +14,7 @@ pub fn configure(command: Command) -> Command {
     .subcommand(install::configure())
     .subcommand(search::configure())
     .subcommand(outdated::configure())
+    .subcommand(update::configure())
     .arg_required_else_help(true)
 }
 
@@ -24,6 +26,7 @@ pub async fn handle(matches: &ArgMatches) -> Result<()> {
             install::COMMAND_NAME => { install::handle(_matches).await?; },
             search::COMMAND_NAME => { search::handle(_matches).await?; },
             outdated::COMMAND_NAME => { outdated::handle(_matches).await?; },
+            update::COMMAND_NAME => { update::handle(_matches).await?; },
             &_ => {}
         }
     }

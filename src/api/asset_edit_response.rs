@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::asset_response::AssetResponse;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AssetEditResponse {
     edit_id: String,
     asset_id: String,
@@ -12,28 +12,40 @@ pub struct AssetEditResponse {
     status: String,
     reason: String,
     author: String,
-    original: OriginalAsset,
     download_url: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct OriginalAsset {
-    asset_id: String,
-    title: String,
-    version: String,
-    version_string: String,
-    category_id: String,
-    godot_version: String,
-    rating: String,
-    cost: String,
-    description: String,
-    download_provider: String,
-    download_commit: String,
-    modify_date: String,
-    download_url: String,
+    original: AssetResponse,
 }
 
 impl AssetEditResponse {
+    pub fn new(
+        edit_id: String,
+        asset_id: String,
+        godot_version: Option<String>,
+        version_string: String,
+        download_commit: Option<String>,
+        status: String,
+        reason: String,
+        author: String,
+        download_url: String,
+        original: AssetResponse,
+    ) -> AssetEditResponse {
+        AssetEditResponse {
+            edit_id,
+            asset_id,
+            godot_version,
+            version_string,
+            download_commit,
+            status,
+            reason,
+            author,
+            original,
+            download_url,
+        }
+    }
+    pub fn get_original(&self) -> &AssetResponse {
+        &self.original
+    }
+
     pub fn get_asset_id(&self) -> &str {
         &self.asset_id
     }

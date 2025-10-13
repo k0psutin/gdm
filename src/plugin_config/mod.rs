@@ -1,15 +1,15 @@
 use crate::app_config::AppConfig;
+use crate::file_service::FileService;
 use anyhow::Context;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json;
-use std::collections;
-use std::fs;
-use std::sync::OnceLock;
+use std::collections::HashMap;
+use std::path::PathBuf;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PluginConfig {
-    plugins: collections::HashMap<String, Plugin>,
+    plugins: HashMap<String, Plugin>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -42,16 +42,15 @@ impl Plugin {
 }
 
 impl PluginConfig {
-    pub fn new<'a>() -> &'a PluginConfig {
-        static INSTANCE: OnceLock<PluginConfig> = OnceLock::new();
-        INSTANCE.get_or_init(|| Self::init(AppConfig::new().get_config_file_name()))
+    pub fn new() -> PluginConfig {
+       Self::init(AppConfig::new().get_config_file_name())
     }
 
-    pub fn copy(plugins: collections::HashMap<String, Plugin>) -> PluginConfig {
+    pub fn copy(plugins: HashMap<String, Plugin>) -> PluginConfig {
         PluginConfig { plugins }
     }
 
-    pub fn get_plugins(&self) -> &collections::HashMap<String, Plugin> {
+    pub fn get_plugins(&self) -> &HashMap<String, Plugin> {
         &self.plugins
     }
 
@@ -63,7 +62,7 @@ impl PluginConfig {
         }
     }
 
-    pub fn get_plugin_by_name(&self, name: &str) -> Option<String> {
+    pub fn get_plugin_key_by_name(&self, name: &str) -> Option<String> {
         let plugin_name = self.plugins.get_key_value(name);
         match plugin_name {
             Some((key, _)) => Some(key.to_string()),
@@ -92,15 +91,15 @@ impl PluginConfig {
     }
 
     fn init(config_file_name: &str) -> PluginConfig {
-        let config_file = fs::File::open(config_file_name);
+        let config_file = FileService::read_file_cached(&PathBuf::from(config_file_name));
 
         match config_file {
             Ok(file) => {
-                let config: PluginConfig = serde_json::from_reader(file).unwrap();
+                let config: PluginConfig = serde_json::from_str(&file).unwrap();
 
                 if config.plugins.is_empty() {
                     return PluginConfig {
-                        plugins: collections::HashMap::new(),
+                        plugins: HashMap::new(),
                     };
                 }
 
@@ -108,13 +107,13 @@ impl PluginConfig {
             }
             Err(_) => {
                 return PluginConfig {
-                    plugins: collections::HashMap::new(),
+                    plugins: HashMap::new(),
                 };
             }
         }
     }
 
-    pub fn add_plugins(&self, new_plugins: collections::HashMap<String, Plugin>) -> Result<()> {
+    pub fn add_plugins(&self, new_plugins: HashMap<String, Plugin>) -> Result<()> {
         let new_plugin_config = self.update_plugins(new_plugins);
         self.write_config(&new_plugin_config)?;
         Ok(())
@@ -137,24 +136,23 @@ impl PluginConfig {
         Ok(())
     }
 
-    fn update_plugins(&self, new_plugins: collections::HashMap<String, Plugin>) -> PluginConfig {
+    fn update_plugins(&self, new_plugins: HashMap<String, Plugin>) -> PluginConfig {
         let mut plugins_copy = self.plugins.clone();
 
         for (key, plugin) in new_plugins {
             plugins_copy.insert(key, plugin);
         }
 
-        PluginConfig::copy(plugins_copy)
+        let mut plugins = plugins_copy.into_iter().collect::<Vec<_>>();
+
+        plugins.sort_by(|a, b| a.0.cmp(&b.0));
+
+        PluginConfig::copy(HashMap::from_iter(plugins))
     }
 
     fn write_config(&self, plugin_config: &PluginConfig) -> Result<()> {
         let config_file_name = AppConfig::new().get_config_file_name();
-        let file = fs::File::create(config_file_name).with_context(|| {
-            format!(
-                "Failed to create or open the configuration file: {}",
-                config_file_name
-            )
-        })?;
+        let file = FileService::create_file(&PathBuf::from(config_file_name))?;
 
         serde_json::to_writer_pretty(file, plugin_config).with_context(|| {
             format!(
@@ -178,17 +176,39 @@ mod tests {
     }
 
     #[test]
-    fn test_should_return_correct_plugins_keys_from_plugin_config_file() {
-        let plugin_config = PluginConfig::default("test/mocks/gdm.json");
-        assert_eq!(plugin_config.plugins.len(), 2);
-        assert!(plugin_config.plugins.contains_key("plugin_1"));
-        assert!(plugin_config.plugins.contains_key("plugin_2"));
+    fn test_should_return_empty_plugins_from_non_existent_plugin_config_file() {
+        let plugin_config = PluginConfig::default("test/mocks/non_existent.json");
+        assert!(plugin_config.plugins.is_empty());
     }
+
+
+    #[test]
+    fn test_should_return_correct_plugins_from_plugin_config_file() {
+        let plugin_config = PluginConfig::default("test/mocks/gdm.json");
+        let expected = serde_json::json!({
+            "plugins": {
+                "plugin_1": {
+                    "asset_id": "54321",
+                    "title": "Awesome Plugin",
+                    "version": "1.0.0"
+                },
+                "plugin_2": {
+                    "asset_id": "12345",
+                    "title": "Super Plugin",
+                    "version": "2.1.3"
+                }
+            }
+        });
+        let actual = serde_json::to_value(&plugin_config).unwrap();
+        assert_eq!(actual, expected);
+    }
+
+    // update_plugins
 
     #[test]
     fn test_should_add_new_plugins() {
         let plugin_config = PluginConfig::default("test/mocks/gdm.json");
-        let mut new_plugins = collections::HashMap::new();
+        let mut new_plugins = HashMap::new();
         new_plugins.insert(
             "plugin_3".to_string(),
             Plugin {
@@ -198,31 +218,93 @@ mod tests {
             },
         );
         let updated_plugin_config = plugin_config.update_plugins(new_plugins);
-        assert!(updated_plugin_config.plugins.contains_key("plugin_1"));
-        assert!(updated_plugin_config.plugins.contains_key("plugin_2"));
-        assert!(updated_plugin_config.plugins.contains_key("plugin_3"));
+        let expected = serde_json::json!({
+            "plugins": {
+                "plugin_1": {
+                    "asset_id": "54321",
+                    "title": "Awesome Plugin",
+                    "version": "1.0.0"
+                },
+                "plugin_2": {
+                    "asset_id": "12345",
+                    "title": "Super Plugin",
+                    "version": "2.1.3"
+                },
+                "plugin_3": {
+                    "asset_id": "67890",
+                    "title": "New Plugin",
+                    "version": "1.0.0"
+                }
+            }
+        });
+        let actual = serde_json::to_value(&updated_plugin_config).unwrap();
+        assert_eq!(actual, expected);
     }
 
     #[test]
-    fn test_should_return_correct_plugins_from_plugin_config_file() {
+    fn test_should_add_new_plugins_in_correct_order() {
         let plugin_config = PluginConfig::default("test/mocks/gdm.json");
-        let plugin_1 = plugin_config.plugins.get("plugin_1").unwrap();
-        let plugin_2 = plugin_config.plugins.get("plugin_2").unwrap();
-        let expected_plugin_1 = Plugin {
-            asset_id: "54321".to_string(),
-            title: "Awesome Plugin".to_string(),
-            version: "1.0.0".to_string(),
-        };
-        let expected_plugin_2 = Plugin {
-            asset_id: "12345".to_string(),
-            title: "Super Plugin".to_string(),
-            version: "2.1.3".to_string(),
-        };
-        assert_eq!(plugin_1.asset_id, expected_plugin_1.asset_id);
-        assert_eq!(plugin_1.title, expected_plugin_1.title);
-        assert_eq!(plugin_1.version, expected_plugin_1.version);
-        assert_eq!(plugin_2.title, expected_plugin_2.title);
-        assert_eq!(plugin_2.version, expected_plugin_2.version);
-        assert_eq!(plugin_2.asset_id, expected_plugin_2.asset_id);
+        let mut new_plugins = HashMap::new();
+        new_plugins.insert(
+            "a_plugin".to_string(),
+            Plugin {
+                asset_id: "67890".to_string(),
+                title: "New Plugin".to_string(),
+                version: "1.0.0".to_string(),
+            },
+        );
+        let updated_plugin_config = plugin_config.update_plugins(new_plugins);
+        let expected = serde_json::json!({
+            "plugins": {
+                "a_plugin": {
+                    "asset_id": "67890",
+                    "title": "New Plugin",
+                    "version": "1.0.0"
+                },
+                "plugin_1": {
+                    "asset_id": "54321",
+                    "title": "Awesome Plugin",
+                    "version": "1.0.0"
+                },
+                "plugin_2": {
+                    "asset_id": "12345",
+                    "title": "Super Plugin",
+                    "version": "2.1.3"
+                },
+            }
+        });
+        let actual = serde_json::to_value(&updated_plugin_config).unwrap();
+        assert_eq!(actual, expected);
     }
+
+    // get_plugins
+
+    #[test]
+    fn test_get_plugins_should_return_empty_vec_if_no_plugins_installed() {
+        let plugin_config = PluginConfig::default("test/mocks/empty_gdm.json");
+        let plugins = plugin_config.get_plugins();
+        assert!(plugins.is_empty());
+    }
+
+    #[test]
+    fn test_get_plugins_should_return_correct_plugins() {
+       let plugin_config = PluginConfig::default("test/mocks/gdm.json");
+        let plugins = plugin_config.get_plugins();
+        assert!(!plugins.is_empty());
+         assert_eq!(plugins.len(), 2);
+        let plugin_1 = plugins.get("plugin_1").unwrap();
+        assert_eq!(plugin_1.asset_id, "54321");
+        assert_eq!(plugin_1.title, "Awesome Plugin");
+        assert_eq!(plugin_1.version, "1.0.0");
+        let plugin_2 = plugins.get("plugin_2").unwrap();
+        assert_eq!(plugin_2.asset_id, "12345");
+        assert_eq!(plugin_2.title, "Super Plugin");
+        assert_eq!(plugin_2.version, "2.1.3");
+    }
+
+    // get_plugin_key_by_name
+    // add_plugins
+    // remove_installed_plugin
+    // remove_plugins
+    // write_config
 }

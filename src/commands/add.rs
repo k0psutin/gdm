@@ -19,13 +19,20 @@ pub fn configure() -> Command {
                 .long("asset-id")
                 .value_parser(value_parser!(String)),
         )
+        .arg(
+            clap::Arg::new("version")
+                .help("The version of the plugin to add, e.g. 1.0.0")
+                .required(false)
+                .value_parser(value_parser!(String)),
+        )
 }
 
 pub async fn handle(matches: &ArgMatches) -> anyhow::Result<()> {
     let name = matches.get_one::<String>("name");
     let asset_id = matches.get_one::<String>("asset-id");
+    let version = matches.get_one::<String>("version");
 
     let plugin_service = PluginService::new();
-    plugin_service.add_plugin_by_id_or_name(asset_id, name).await?;
+    plugin_service.add_plugin_by_id_or_name_and_version(asset_id, name, version).await?;
     Ok(())
 }

@@ -1,4 +1,4 @@
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 pub struct AssetListResponse {
     result: Vec<AssetListItem>,
 }

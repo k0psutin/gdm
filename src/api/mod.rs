@@ -41,14 +41,15 @@ impl AssetStoreAPI {
         }
     }
 
-    pub async fn search_asset_by_id_and_version(&self, asset_id: &str, version: &str) -> anyhow::Result<AssetEditResponse> {
+    pub async fn search_asset_by_id_and_version(&self, asset_id: &str, version: &str) -> anyhow::Result<AssetResponse> {
         let mut page = 0 as u8;
         loop {
             let edits_response = self.fetch_asset_edits_by_asset_id(asset_id, page).await?;
             for edit in edits_response.get_results().iter() {
                 if edit.get_version_string() == version {
                     let edit_result = self.fetch_asset_edit_by_edit_id(edit.get_edit_id()).await?;
-                    return Ok(edit_result);
+                    let asset_response = AssetResponse::from_asset_edit_response(&edit_result);
+                    return Ok(asset_response);
                 }
             }
             if page == edits_response.get_pages() - 1 {
@@ -167,5 +168,24 @@ mod tests {
         println!("{:?}", edit);
         assert_eq!(edit.get_asset_id(), "1709");
         assert_eq!(edit.get_version_string(), version);
+    }
+
+    #[tokio::test]
+    async fn test_search_asset_by_id_and_version_should_return_err_if_no_version_found() {
+        let api = setup_test_api();
+        let edit_id = "1709";
+        let version = "0.0.1";
+        let result = api.search_asset_by_id_and_version(edit_id, version).await;
+        assert!(result.is_err());   
+    }
+
+    #[tokio::test]
+    async fn test_download_asset_should_return_response() {
+        let api = setup_test_api();
+        let download_url = "https://github.com/DaviD4Chirino/Awesome-Scene-Manager/archive/b1a3f22bf4e1f086006b2d529b64ea6e8fec4bf2.zip";
+        let result = api.download_asset(download_url).await;
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
     }
 }
