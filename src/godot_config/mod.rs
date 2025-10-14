@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use parser::Parser;
 
 
+#[faux::create]
 pub struct GodotConfig {
     config_version: i32,
     plugins: Vec<String>,
@@ -16,8 +17,9 @@ pub struct GodotConfig {
     parser: Parser,
 }
 
+#[faux::methods]
 impl GodotConfig {
-    pub fn default(godot_project_file_path: &str) -> GodotConfig {
+    pub fn new(godot_project_file_path: &str) -> GodotConfig {
         let parser = Parser::new(godot_project_file_path);
         let config_map = parser.get_parsed_project();
         let config_version = config_map
@@ -39,9 +41,9 @@ impl GodotConfig {
         }
     }
 
-    pub fn new() -> GodotConfig {
-        let godot_project_file_path = AppConfig::new().get_godot_project_file_path();
-        GodotConfig::default(&godot_project_file_path)
+    pub fn default() -> GodotConfig {
+        let godot_project_file_path = AppConfig::default().get_godot_project_file_path();
+        GodotConfig::new(&godot_project_file_path)
     }
 
     pub fn get_godot_version(&self) -> Result<String> {
@@ -62,16 +64,16 @@ impl GodotConfig {
         }
     }
 
-    pub fn plugin_path_to_resource_path(&self, plugin_path: &str) -> String {
-        let addon_folder_path = AppConfig::new().get_addon_folder_path();
-        Utils::plugin_folder_to_resource_path(format!("{}/{}", addon_folder_path, plugin_path).as_str())
+    pub fn plugin_path_to_resource_path(&self, plugin_path: String) -> String {
+        let addon_folder_path = AppConfig::default().get_addon_folder_path();
+        Utils::plugin_folder_to_resource_path(format!("{}/{}", addon_folder_path, plugin_path))
     }
 
     pub fn get_installed_plugins(&self) -> Vec<String> {
         self.plugins.clone()
     }
 
-    pub fn is_plugin_installed(&self, plugin_root_folder: &str) -> bool {
+    pub fn is_plugin_installed(&self, plugin_root_folder: String) -> bool {
         let plugin_resource_path = self.plugin_path_to_resource_path(plugin_root_folder);
         self.plugins.contains(&plugin_resource_path)
     }
@@ -79,9 +81,9 @@ impl GodotConfig {
     fn add_plugins(&self, plugins_to_add: Vec<String>) -> Vec<String> {
         let mut plugins = self.get_installed_plugins();
         for plugin in plugins_to_add {
-            let resource_path = self.plugin_path_to_resource_path(plugin.as_str());
+            let resource_path = self.plugin_path_to_resource_path(plugin.clone());
 
-            if !self.is_plugin_installed(plugin.as_str()) {
+            if !self.is_plugin_installed(plugin) {
                 plugins.push(resource_path);
             }
         }
@@ -99,9 +101,9 @@ impl GodotConfig {
     fn remove_plugins(&self, plugins_to_remove: Vec<String>) -> Vec<String> {
         let mut plugins = self.get_installed_plugins();
         for plugin in plugins_to_remove {
-            let resource_path = self.plugin_path_to_resource_path(plugin.as_str());
+            let resource_path = self.plugin_path_to_resource_path(plugin.clone());
 
-            if self.is_plugin_installed(plugin.as_str()) {
+            if self.is_plugin_installed(plugin) {
                 plugins.retain(|p| p != &resource_path);
             }
         }
@@ -116,8 +118,8 @@ impl GodotConfig {
     }
 
     pub fn update_godot_project_file(&self, plugins: Vec<String>) -> Result<()> {
-        let godot_project_file_path = AppConfig::new().get_godot_project_file_path();
-        self.parser.update_plugins(godot_project_file_path, plugins)?;
+        let godot_project_file_path = AppConfig::default().get_godot_project_file_path();
+        self.parser.update_plugins(&godot_project_file_path, plugins)?;
         Ok(())
     }
 }
@@ -128,8 +130,8 @@ mod tests {
 
     #[test]
     fn test_plugin_path_to_resource_path_should_return_correct_path() {
-        let godot_config = GodotConfig::default("test/mocks/project_with_plugins_and_version.godot");
-        let resource_path = godot_config.plugin_path_to_resource_path("gut");
+        let godot_config = GodotConfig::new("test/mocks/project_with_plugins_and_version.godot");
+        let resource_path = godot_config.plugin_path_to_resource_path(String::from("gut"));
         assert_eq!(resource_path, "res://addons/gut/plugin.cfg");
     }
 
@@ -137,7 +139,7 @@ mod tests {
 
     #[test]
     fn test_get_godot_version_should_return_4_5_if_it_exists_with_config_version_5() {
-        let godot_config = GodotConfig::default("test/mocks/project_with_plugins_and_version.godot");
+        let godot_config = GodotConfig::new("test/mocks/project_with_plugins_and_version.godot");
         let version = godot_config.get_godot_version();
         assert!(version.is_ok());
         let version = version.unwrap();
@@ -146,7 +148,7 @@ mod tests {
 
     #[test]
     fn test_get_godot_version_should_return_3_6_when_config_version_is_4() {
-        let godot_config = GodotConfig::default("test/mocks/project_with_old_config.godot");
+        let godot_config = GodotConfig::new("test/mocks/project_with_old_config.godot");
         let version = godot_config.get_godot_version();
         assert!(version.is_ok());
         let version = version.unwrap();
@@ -155,7 +157,7 @@ mod tests {
 
     #[test]
     fn test_get_godot_version_should_return_error_if_config_version_is_unsupported() {
-        let godot_config = GodotConfig::default("test/mocks/project_with_unsupported_config.godot");
+        let godot_config = GodotConfig::new("test/mocks/project_with_unsupported_config.godot");
         let version = godot_config.get_godot_version();
         assert!(version.is_err());
     }
@@ -164,7 +166,7 @@ mod tests {
 
     #[test]
     fn test_get_godot_version_should_return_correct_plugins() {
-        let godot_config = GodotConfig::default("test/mocks/project_with_plugins_and_version.godot");
+        let godot_config = GodotConfig::new("test/mocks/project_with_plugins_and_version.godot");
         let plugins = godot_config.get_installed_plugins();
         assert_eq!(
             plugins,
@@ -179,15 +181,15 @@ mod tests {
 
     #[test]
     fn test_is_plugin_installed_should_return_false_if_plugin_does_not_exist() {
-        let godot_config = GodotConfig::default("test/mocks/project_with_plugins_and_version.godot");
-        let is_installed = godot_config.is_plugin_installed("non_existent_plugin");
+        let godot_config = GodotConfig::new("test/mocks/project_with_plugins_and_version.godot");
+        let is_installed = godot_config.is_plugin_installed(String::from("non_existent_plugin"));
         assert!(!is_installed);
     }
 
     #[test]
     fn test_is_plugin_installed_should_return_true_if_plugin_exists() {
-        let godot_config = GodotConfig::default("test/mocks/project_with_plugins_and_version.godot");
-        let is_installed = godot_config.is_plugin_installed("test_plugin");
+        let godot_config = GodotConfig::new("test/mocks/project_with_plugins_and_version.godot");
+        let is_installed = godot_config.is_plugin_installed(String::from("test_plugin"));
         assert!(is_installed);
     }
 }

@@ -32,7 +32,7 @@ pub async fn handle(matches: &ArgMatches) -> anyhow::Result<()> {
     let asset_id = matches.get_one::<String>("asset-id");
     let version = matches.get_one::<String>("version");
 
-    let plugin_service = PluginService::new();
+    let plugin_service = PluginService::default();
     plugin_service.add_plugin_by_id_or_name_and_version(asset_id, name, version).await?;
     Ok(())
 }

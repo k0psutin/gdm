@@ -25,7 +25,7 @@ pub async fn handle(_matches: &ArgMatches) -> anyhow::Result<()> {
     let name = _matches.get_one::<String>("name").unwrap();
     let godot_version = _matches.get_one::<String>("godot-version").map(|s| s.as_str()).unwrap_or("");
 
-    let plugin_service = PluginService::new();
+    let plugin_service = PluginService::default();
     plugin_service.search_assets_by_name_or_version(name, godot_version).await?;
     
     Ok(())

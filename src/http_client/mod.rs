@@ -5,6 +5,8 @@ use serde::{de::DeserializeOwned};
 use url::Url;
 use anyhow::{Result, anyhow};
 
+pub struct HttpClient;
+
 #[cfg(not(tarpaulin_include))]
 pub async fn get<T>(url: String, params: HashMap<&str, &str>) -> Result<T> 
 where

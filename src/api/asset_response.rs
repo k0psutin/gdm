@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use crate::plugin_config::Plugin;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct AssetResponse {
     asset_id: String,
     title: String,

@@ -32,7 +32,7 @@ impl AppConfig {
         self.addon_folder_path
     }
 
-    pub fn default(
+    pub fn new(
         api_base_url: Option<&'static str>,
         application_name: Option<&'static str>,
         config_file_name: Option<&'static str>,
@@ -50,7 +50,7 @@ impl AppConfig {
         }
     }
 
-    pub fn new() -> AppConfig {
+    pub fn default() -> AppConfig {
         AppConfig {
             api_base_url: "https://godotengine.org/asset-library/api",
             application_name: "Godot Dependency Manager",

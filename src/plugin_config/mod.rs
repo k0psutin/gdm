@@ -7,12 +7,13 @@ use serde_json;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PluginConfig {
     plugins: HashMap<String, Plugin>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Plugin {
     asset_id: String,
     title: String,
@@ -42,8 +43,8 @@ impl Plugin {
 }
 
 impl PluginConfig {
-    pub fn new() -> PluginConfig {
-       Self::init(AppConfig::new().get_config_file_name())
+    pub fn new(config_file_name: &str) -> PluginConfig {
+       Self::init(config_file_name)
     }
 
     pub fn copy(plugins: HashMap<String, Plugin>) -> PluginConfig {
@@ -86,8 +87,8 @@ impl PluginConfig {
         }
     }
 
-    pub fn default(config_file_name: &str) -> PluginConfig {
-        Self::init(config_file_name)
+    pub fn default() -> PluginConfig {
+        Self::init(&AppConfig::default().get_config_file_name())
     }
 
     fn init(config_file_name: &str) -> PluginConfig {
@@ -119,8 +120,8 @@ impl PluginConfig {
         Ok(())
     }
 
-    pub fn remove_installed_plugin(&self, plugin_key: &str) -> Result<()> {
-        self.remove_plugins(vec![plugin_key.to_string()])?;
+    pub fn remove_installed_plugin(&self, plugin_key: String) -> Result<()> {
+        self.remove_plugins(vec![plugin_key])?;
         Ok(())
     }
 
@@ -151,7 +152,7 @@ impl PluginConfig {
     }
 
     fn write_config(&self, plugin_config: &PluginConfig) -> Result<()> {
-        let config_file_name = AppConfig::new().get_config_file_name();
+        let config_file_name = AppConfig::default().get_config_file_name();
         let file = FileService::create_file(&PathBuf::from(config_file_name))?;
 
         serde_json::to_writer_pretty(file, plugin_config).with_context(|| {
@@ -171,20 +172,20 @@ mod tests {
 
     #[test]
     fn test_should_return_non_empty_plugins_from_plugin_config_file() {
-        let plugin_config = PluginConfig::default("test/mocks/gdm.json");
+        let plugin_config = PluginConfig::new("test/mocks/gdm.json");
         assert!(!plugin_config.plugins.is_empty());
     }
 
     #[test]
     fn test_should_return_empty_plugins_from_non_existent_plugin_config_file() {
-        let plugin_config = PluginConfig::default("test/mocks/non_existent.json");
+        let plugin_config = PluginConfig::new("test/mocks/non_existent.json");
         assert!(plugin_config.plugins.is_empty());
     }
 
 
     #[test]
     fn test_should_return_correct_plugins_from_plugin_config_file() {
-        let plugin_config = PluginConfig::default("test/mocks/gdm.json");
+        let plugin_config = PluginConfig::new("test/mocks/gdm.json");
         let expected = serde_json::json!({
             "plugins": {
                 "plugin_1": {
@@ -207,7 +208,7 @@ mod tests {
 
     #[test]
     fn test_should_add_new_plugins() {
-        let plugin_config = PluginConfig::default("test/mocks/gdm.json");
+        let plugin_config = PluginConfig::new("test/mocks/gdm.json");
         let mut new_plugins = HashMap::new();
         new_plugins.insert(
             "plugin_3".to_string(),
@@ -243,7 +244,7 @@ mod tests {
 
     #[test]
     fn test_should_add_new_plugins_in_correct_order() {
-        let plugin_config = PluginConfig::default("test/mocks/gdm.json");
+        let plugin_config = PluginConfig::new("test/mocks/gdm.json");
         let mut new_plugins = HashMap::new();
         new_plugins.insert(
             "a_plugin".to_string(),
@@ -281,14 +282,14 @@ mod tests {
 
     #[test]
     fn test_get_plugins_should_return_empty_vec_if_no_plugins_installed() {
-        let plugin_config = PluginConfig::default("test/mocks/empty_gdm.json");
+        let plugin_config = PluginConfig::new("test/mocks/empty_gdm.json");
         let plugins = plugin_config.get_plugins();
         assert!(plugins.is_empty());
     }
 
     #[test]
     fn test_get_plugins_should_return_correct_plugins() {
-       let plugin_config = PluginConfig::default("test/mocks/gdm.json");
+       let plugin_config = PluginConfig::new("test/mocks/gdm.json");
         let plugins = plugin_config.get_plugins();
         assert!(!plugins.is_empty());
          assert_eq!(plugins.len(), 2);

@@ -14,7 +14,7 @@ use crate::app_config::AppConfig;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-        let application_name = AppConfig::new().get_application_name();
+        let application_name = AppConfig::default().get_application_name();
         let mut command = Command::new(application_name)
             .version("0.1.0")
             .about("A CLI tool to manage Godot dependencies");

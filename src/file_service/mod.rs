@@ -4,8 +4,10 @@ use anyhow::{Context, Result};
 use cache::Cache;
 use std::{fs::File, path::PathBuf};
 
+#[faux::create]
 pub struct FileService;
 
+#[faux::methods]
 impl FileService {
     pub fn read_file_cached(file_path: &PathBuf) -> Result<String> {
         let cache = Cache::new();
@@ -37,10 +39,18 @@ impl FileService {
         Ok(())
     }
 
-    pub fn remove_file(file_path: &PathBuf) -> Result<()> {
-        #[cfg(test)] {
-            return Ok(());
+    pub fn remove_dir_all(dir_path: &PathBuf) -> Result<()> {
+        if Self::file_exists(dir_path) {
+            std::fs::remove_dir_all(dir_path).with_context(|| format!("Failed to remove directory: {}", dir_path.display()))?;
         }
+        Ok(())
+    }
+
+    pub fn directory_exists(dir_path: &PathBuf) -> bool {
+        dir_path.is_dir()
+    }
+
+    pub fn remove_file(file_path: &PathBuf) -> Result<()> {
         if Self::file_exists(file_path) {
             std::fs::remove_file(file_path).with_context(|| format!("Failed to remove file: {}", file_path.display()))?;
         }

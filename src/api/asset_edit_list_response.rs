@@ -3,16 +3,16 @@ use serde::{Deserialize};
 #[derive(Debug, Deserialize)]
 pub struct AssetEditListResponse {
     result: Vec<AssetEditListItem>,
-    page: u8,
-    pages: u8,
+    page: usize,
+    pages: usize,
 }
 
 impl AssetEditListResponse {
-    pub fn get_page(&self) -> u8 {
+    pub fn get_page(&self) -> usize {
         self.page
     }
-    
-    pub fn get_pages(&self) -> u8 {
+
+    pub fn get_pages(&self) -> usize {
         self.pages
     }
 

@@ -14,7 +14,7 @@ pub fn configure() -> Command {
 
 pub async fn handle(matches: &ArgMatches) -> anyhow::Result<()> {
     let name = matches.get_one::<String>("name").unwrap();
-    let plugin_service = PluginService::new();
+    let plugin_service = PluginService::default();
     plugin_service.remove_plugin_by_name(name).await?;
     Ok(())
 }

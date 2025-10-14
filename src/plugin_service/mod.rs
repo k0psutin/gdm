@@ -1,9 +1,8 @@
-use crate::api::AssetStoreAPI;
+use crate::api::{AssetStoreAPI, DownloadedPlugin};
 use crate::api::asset_list_response::AssetListResponse;
-use crate::api::asset_response::AssetResponse;
+use crate::api::asset_response::{AssetResponse};
 use crate::app_config::AppConfig;
-use crate::extract;
-use crate::file_service::FileService;
+use crate::extract::Extract;
 use crate::godot_config::GodotConfig;
 use crate::plugin_config::{Plugin, PluginConfig};
 use crate::utils::Utils;
@@ -11,122 +10,46 @@ use crate::utils::Utils;
 use anyhow::{Context, Result, anyhow};
 use futures::future::try_join_all;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use reqwest::header::CONTENT_LENGTH;
-use std::cmp::min;
+use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::time::Duration;
 use tokio::fs;
-use tokio::io;
 use tokio::task::JoinSet;
-use url::Url;
 
+#[faux::create]
 pub struct PluginService {
-    app_config: AppConfig,
     godot_config: GodotConfig,
     asset_store_api: AssetStoreAPI,
     plugin_config: PluginConfig,
+    app_config: AppConfig,
+    extract: Extract,
 }
 
-#[derive(Debug, Clone)]
-pub struct DownloadedPlugin {
-    root_folder: String,
-    file_path: String,
-    plugin: AssetResponse,
-}
-
-async fn extract_plugin(file_path: String, pb_task: ProgressBar) -> Result<String> {
-    let app_config = AppConfig::new();
-    let addon_folder_path = app_config.get_addon_folder_path().to_string();
-
-    let extracted_folder =
-        crate::extract::extract_zip_file(file_path.clone(), addon_folder_path, pb_task)?;
-    FileService::remove_file(&PathBuf::from(file_path))?;
-    Ok(extracted_folder)
-}
-
-async fn download_plugin(
-    asset: AssetResponse,
-    pb_task: ProgressBar,
-) -> Result<DownloadedPlugin> {
-    let download_url = asset.get_download_url();
-
-    let url = Url::parse(&download_url)?;
-
-    let cache_folder = AppConfig::new().get_cache_folder_path();
-
-    let filename = url
-        .path_segments()
-        .and_then(|segments| segments.last())
-        .unwrap_or("temp_file.zip");
-    let filepath = format!("{}/{}", cache_folder, filename);
-
-    if !fs::try_exists(cache_folder).await? {
-        fs::create_dir(cache_folder).await?;
-    }
-
-    if fs::try_exists(&filepath).await? {
-        fs::remove_file(&filepath).await?;
-    }
-
-    let api = AssetStoreAPI::new();
-    let mut res = api.download_asset(download_url).await?;
-  
-    let mut downloaded = 0;
-    let total_size = res.headers().get(CONTENT_LENGTH).and_then(|value| value.to_str().ok()?.parse().ok()).unwrap_or(0);
-    pb_task.set_length(total_size);
-
-    let mut file = fs::File::create(&filepath).await?;
-
-    while let Some(chunk) = res.chunk().await? {
-
-        let new = min(downloaded + (chunk.len() as u64), total_size);
-        downloaded = new;
-        pb_task.set_position(new);
-        let result = io::AsyncWriteExt::write_all(&mut file, &chunk).await;
-        result?;
-    }
-
-    // TODO: Verify download integrity if possible
-    // asset.get_download_commit();
-
-    pb_task.finish_and_clear();
-
-    match res.error_for_status() {
-        Ok(_) => {
-            let root_folder = extract::get_root_dir_from_archive(&filepath)?;
-            Ok(DownloadedPlugin {
-                root_folder,
-                file_path: filepath,
-                plugin: asset.clone(),
-            })
-        }
-        Err(e) => Err(anyhow::anyhow!("Failed to fetch file: {}", e)),
-    }
-}
-
+#[faux::methods]
 impl PluginService {
-    pub fn new() -> Self {
+    pub fn default() -> Self {
         Self {
-            godot_config: GodotConfig::new(),
-            asset_store_api: AssetStoreAPI::new(),
-            plugin_config: PluginConfig::new(),
-            app_config: AppConfig::new(),
+            godot_config: GodotConfig::default(),
+            asset_store_api: AssetStoreAPI::default(),
+            plugin_config: PluginConfig::default(),
+            app_config: AppConfig::default(),
+            extract: Extract::default(),
         }
     }
 
-    #[cfg(not(tarpaulin_include))]
-    fn default(
+    pub fn new(
         godot_config: Option<GodotConfig>,
         asset_store_api: Option<AssetStoreAPI>,
         plugin_config: Option<PluginConfig>,
         app_config: Option<AppConfig>,
+        extract: Option<Extract>,
     ) -> Self {
         Self {
-            godot_config: godot_config.unwrap_or(GodotConfig::new()),
-            asset_store_api: asset_store_api.unwrap_or(AssetStoreAPI::new()),
-            plugin_config: plugin_config.unwrap_or(PluginConfig::new()),
-            app_config: app_config.unwrap_or(AppConfig::new()),
+            godot_config: godot_config.unwrap_or(GodotConfig::default()),
+            asset_store_api: asset_store_api.unwrap_or(AssetStoreAPI::default()),
+            plugin_config: plugin_config.unwrap_or(PluginConfig::default()),
+            app_config: app_config.unwrap_or(AppConfig::default()),
+            extract: extract.unwrap_or(Extract::default()),
         }
     }
 
@@ -147,36 +70,67 @@ impl PluginService {
         Ok(())
     }
 
-    fn create_finished_install_bar(&self, m: &MultiProgress, index: usize, total: usize, action: String, title: String, version: String) -> ProgressBar {
+    fn create_finished_install_bar(
+        &self,
+        m: &MultiProgress,
+        index: usize,
+        total: usize,
+        action: String,
+        title: String,
+        version: String,
+    ) -> Result<ProgressBar> {
         let pb_task = m.add(ProgressBar::new(1));
-         pb_task.set_style(ProgressStyle::with_template("{prefix} {msg}")
-        .unwrap()
-        .progress_chars("#>-"));
+        pb_task.set_style(
+            ProgressStyle::with_template("{prefix} {msg}")
+                .with_context(|| "Failed to create progress bar")?
+                .progress_chars("#>-"),
+        );
         pb_task.set_prefix(format!("[{}/{}]", index, total));
         pb_task.set_message(format!("{}: {} ({})", action, title, version));
-        pb_task
+        Ok(pb_task)
     }
 
-    fn create_download_progress_bar_task(&self, m: &MultiProgress, index: usize, total: usize, action: String, title: String, version: String) -> ProgressBar {
+    fn create_download_progress_bar(
+        &self,
+        m: &MultiProgress,
+        index: usize,
+        total: usize,
+        action: String,
+        title: String,
+        version: String,
+    ) -> Result<ProgressBar> {
         let pb_task = m.add(ProgressBar::new(5000000));
-         pb_task.set_style(ProgressStyle::with_template("{spinner:.green} {prefix} {msg} [{elapsed_precise}] [{bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
-        .unwrap()
-        .progress_chars("#>-"));
+        pb_task.set_style(
+            ProgressStyle::with_template(
+                "{spinner:.green} {prefix} {msg} [{elapsed_precise}] {bytes} ({bytes_per_sec})",
+            )
+            .with_context(|| "Failed to create progress bar style")?
+            .progress_chars("#>-"),
+        );
         pb_task.set_prefix(format!("[{}/{}]", index, total));
         pb_task.set_message(format!("{}: {} ({})", action, title, version));
-        pb_task
+        Ok(pb_task)
     }
 
-    fn create_extract_progress_bar_task(&self, m: &MultiProgress, index: usize, total: usize, action: String, title: String, version: String) -> ProgressBar {
+    fn create_extract_progress_bar(
+        &self,
+        m: &MultiProgress,
+        index: usize,
+        total: usize,
+        action: String,
+        title: String,
+        version: String,
+    ) -> Result<ProgressBar> {
         let pb_task = m.add(ProgressBar::new(5000000));
-         pb_task.set_style(ProgressStyle::with_template("{spinner:.green} {prefix} {msg} [{elapsed_precise}] [{bar:.cyan/blue}] {pos:>7}/{len:7} ({eta})")
-        .unwrap()
+        pb_task.set_style(ProgressStyle::with_template("{spinner:.green} {prefix} {msg} [{elapsed_precise}] [{bar:.cyan/blue}] {pos:>7}/{len:7} ({eta})")
+        .with_context(|| "Failed to create progress bar style")?
         .progress_chars("#>-"));
         pb_task.set_prefix(format!("[{}/{}]", index, total));
         pb_task.set_message(format!("{}: {} ({})", action, title, version));
-        pb_task
+        Ok(pb_task)
     }
 
+    /// Installs a single plugin by its name, asset ID, and version
     pub async fn install_plugin(
         &self,
         name: Option<&String>,
@@ -198,17 +152,122 @@ impl PluginService {
         }
 
         let m = MultiProgress::new();
-        let plugin = self.download_plugin(&asset).await?;
-        let pb_task = self.create_extract_progress_bar_task(&m, 1, 1, String::from("Extracting"), plugin.plugin.get_title().to_string(), plugin.plugin.get_version_string().to_string());
-        let plugin_root_folder = self.extract_plugin(plugin.file_path.clone(), pb_task)?;
+        let title = asset.get_title().to_string();
+        let version = asset.get_version_string().to_string();
+        let cache_folder = self.app_config.get_cache_folder_path();
+
+        let pb_download = self.create_download_progress_bar(
+            &m,
+            1,
+            1,
+            String::from("Downloading"),
+            title,
+            version,
+        )?;
+        let downloaded_plugin = self.asset_store_api.download_plugin(&asset.clone(), pb_download, cache_folder.to_string()).await?;
+        let plugin = downloaded_plugin.get_plugin();
+        let pb_extract = self.create_extract_progress_bar(
+            &m,
+            1,
+            1,
+            String::from("Extracting"),
+            plugin.get_title().to_string(),
+            plugin.get_version_string().to_string(),
+        )?;
+
+        let addon_folder_path = self.app_config.get_addon_folder_path().to_string();
+        let plugin_root_folder = self.extract.extract_plugin(downloaded_plugin.get_file_path().clone(), addon_folder_path, pb_extract)
+            .await?;
 
         Ok(HashMap::from([(plugin_root_folder, asset.to_plugin())]))
     }
 
-    async fn install_plugins(
+    /// Downloads and extracts all plugins under /addons folder
+    async fn download_and_extract_plugins(
         &self,
-        plugins: Vec<Plugin>,
+        main_start_message: String,
+        plugins: Vec<AssetResponse>,
     ) -> Result<HashMap<String, Plugin>> {
+        let cache_folder = self.app_config.get_cache_folder_path();
+        let addon_folder = self.app_config.get_addon_folder_path();
+
+        let mut download_tasks = JoinSet::new();
+        let pb_multi = MultiProgress::new();
+        let pb_main = pb_multi.add(ProgressBar::new(0));
+        pb_main.set_style(ProgressStyle::with_template("{spinner:.green} {msg}")?);
+        pb_main.set_message(main_start_message);
+        pb_main.enable_steady_tick(Duration::from_millis(100));
+
+        for (index, asset) in plugins.iter().enumerate() {
+            let plugin = asset.clone();
+            let pb_task = self.create_download_progress_bar(
+                &pb_multi,
+                index + 1,
+                plugins.len(),
+                String::from("Downloading"),
+                plugin.get_title().to_string(),
+                plugin.get_version_string().to_string(),
+            )?;
+            let asset_store_api = self.asset_store_api.clone();
+            download_tasks.spawn(async move {
+                asset_store_api.download_plugin(&plugin, pb_task, cache_folder.to_string()).await
+            });
+        }
+
+        let result = download_tasks.join_all().await;
+        let download_tasks = result
+            .into_iter()
+            .collect::<Result<Vec<DownloadedPlugin>>>()?;
+
+        let mut extract_tasks = JoinSet::new();
+
+        pb_main.set_message("Extracting plugins");
+
+        for (index, downloaded_plugin) in download_tasks.clone().into_iter().enumerate() {
+            let plugin = downloaded_plugin.get_plugin().clone();
+            let file_path = downloaded_plugin.get_file_path().clone();
+            let pb_task = self.create_extract_progress_bar(
+                &pb_multi,
+                index + 1,
+                download_tasks.len(),
+                String::from("Extracting"),
+                plugin.get_title().to_string(),
+                plugin.get_version_string().to_string(),
+            )?;
+            let extract = self.extract.clone();
+            extract_tasks.spawn(async move {
+                extract.extract_plugin(file_path, addon_folder.to_string(), pb_task).await
+            });
+        }
+
+        while let Some(res) = extract_tasks.join_next().await {
+            let _ = res??;
+        }
+
+        let installed_plugins = download_tasks
+            .into_iter()
+            .map(|p| (p.get_root_folder().clone(), p.get_plugin().to_plugin()))
+            .collect::<HashMap<String, Plugin>>();
+
+        pb_main.finish_and_clear();
+
+        for (index, plugin) in installed_plugins.values().enumerate() {
+            let finished_bar = self.create_finished_install_bar(
+                &pb_multi,
+                index + 1,
+                installed_plugins.len(),
+                String::from("Installed"),
+                plugin.get_title().to_string(),
+                plugin.get_version().to_string(),
+            )?;
+            finished_bar.finish();
+        }
+
+        Ok(installed_plugins)
+    }
+
+    /// Install all plugins from the given list of Plugins
+    async fn install_plugins(&self, plugins: Vec<Plugin>) -> Result<HashMap<String, Plugin>> {
         let mut asset = Vec::new();
         for plugin in plugins {
             let asset_id = plugin.get_asset_id().clone();
@@ -218,49 +277,10 @@ impl PluginService {
         }
 
         let assets = try_join_all(asset).await?;
-       
-        let mut download_tasks = JoinSet::new();
-        let pb_multi = MultiProgress::new();
-        let pb_main = pb_multi.add(ProgressBar::new(0));
-        pb_main.set_style(ProgressStyle::with_template("{spinner:.green} {msg}")?);
-        pb_main.set_message("Downloading plugins");
-        pb_main.enable_steady_tick(Duration::from_millis(100));
 
-        for (index, asset) in assets.iter().enumerate() {
-            let plugin = asset.clone();
-            let pb_task = self.create_download_progress_bar_task(&pb_multi, index + 1, assets.len(), String::from("Downloading"), plugin.get_title().to_string(), plugin.get_version_string().to_string());
-            download_tasks.spawn(download_plugin(plugin, pb_task));
-        }
-
-        let result = download_tasks.join_all().await;
-        let download_tasks = result.into_iter().collect::<Result<Vec<DownloadedPlugin>>>()?;
-
-        let mut extract_tasks = JoinSet::new();
-
-        pb_main.set_message("Extracting plugins");
-
-        for (index, downloaded_plugin) in download_tasks.clone().into_iter().enumerate() {
-            let plugin = downloaded_plugin.plugin.clone();
-            let file_path = downloaded_plugin.file_path.clone();
-            let pb_task = self.create_extract_progress_bar_task(&pb_multi, index + 1, download_tasks.len(), String::from("Extracting"), plugin.get_title().to_string(), plugin.get_version_string().to_string());
-            extract_tasks.spawn(extract_plugin(file_path, pb_task));
-        }
-
-        while let Some(res) = extract_tasks.join_next().await {
-            let _ = res??;
-        }
-
-        let installed_plugins = download_tasks
-            .into_iter()
-            .map(|p| (p.root_folder, p.plugin.to_plugin()))
-            .collect::<HashMap<String, Plugin>>();
-
-        pb_main.finish_and_clear();
-
-        for (index, plugin) in installed_plugins.values().enumerate() {
-            let finished_bar = self.create_finished_install_bar(&pb_multi, index + 1, installed_plugins.len(), String::from("Installed"), plugin.get_title().to_string(), plugin.get_version().to_string());
-            finished_bar.finish();
-        }
+        let installed_plugins = self
+            .download_and_extract_plugins(String::from("Downloading plugins"), assets)
+            .await?;
 
         Ok(installed_plugins)
     }
@@ -301,7 +321,7 @@ impl PluginService {
             let ver = version;
             let asset = self
                 .asset_store_api
-                .search_asset_by_id_and_version(id.as_str(), ver.as_str())
+                .get_asset_by_id_and_version(id.as_str(), ver.as_str())
                 .await?;
             return Ok(asset);
         } else {
@@ -319,12 +339,12 @@ impl PluginService {
         if !asset_id.is_empty() {
             let asset = self
                 .asset_store_api
-                .fetch_asset_by_id(asset_id.as_str())
+                .get_asset_by_id(asset_id.clone())
                 .await?;
             return Ok(asset);
         } else if !name.is_empty() {
             let params = HashMap::from([("filter", name.as_str()), ("godot_version", "4.5")]);
-            let asset_results = self.asset_store_api.search_assets(params).await?;
+            let asset_results = self.asset_store_api.get_assets(params).await?;
 
             if asset_results.get_result_len() != 1 {
                 return Err(anyhow!(
@@ -335,7 +355,7 @@ impl PluginService {
             }
             let asset = asset_results.get_asset_list_item_by_index(0).unwrap();
             let id = asset.get_asset_id().to_owned();
-            let asset = self.asset_store_api.fetch_asset_by_id(id.as_str()).await?;
+            let asset = self.asset_store_api.get_asset_by_id(id.clone()).await?;
 
             self.plugin_config
                 .check_if_plugin_already_installed_by_asset_id(asset.get_asset_id());
@@ -366,94 +386,15 @@ impl PluginService {
         }
     }
 
-    async fn download_plugin(
-        &self,
-        asset: &AssetResponse,
-    ) -> Result<DownloadedPlugin> {
-        println!(
-            "Downloading plugin: {} ({})",
-            asset.get_title(),
-            asset.get_version_string()
-        );
-
-        let download_url = asset.get_download_url();
-
-        let url = Url::parse(&download_url)?;
-
-        let cache_folder = AppConfig::new().get_cache_folder_path();
-
-        let filename = url
-            .path_segments()
-            .and_then(|segments| segments.last())
-            .unwrap_or("temp_file.zip");
-        let filepath = format!("{}/{}", cache_folder, filename);
-
-        if !fs::try_exists(cache_folder).await? {
-            fs::create_dir(cache_folder).await?;
-        }
-
-        if fs::try_exists(&filepath).await? {
-            fs::remove_file(&filepath).await?;
-        }
-
-        let mut res = self.asset_store_api.download_asset(download_url).await?;
-        let mut downloaded = 0;
-        let total_size = res.content_length().unwrap_or(0);
-
-        let mut file = fs::File::create(&filepath).await?;
-        let pb_task = ProgressBar::new(total_size);
-        pb_task.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
-        .unwrap()
-        .progress_chars("#>-"));
-
-        while let Some(chunk) = res.chunk().await.unwrap() {
-            let new = min(downloaded + (chunk.len() as u64), total_size);
-            downloaded = new;
-            pb_task.set_position(new);
-            let result = io::AsyncWriteExt::write_all(&mut file, &chunk).await;
-            result.unwrap();
-        }
-
-        pb_task.finish();
-
-        // TODO: Verify download integrity if possible
-        // asset.get_download_commit();
-
-        match res.error_for_status() {
-            Ok(_) => {
-                let root_folder = extract::get_root_dir_from_archive(&filepath)?;
-                Ok(DownloadedPlugin {
-                    root_folder,
-                    file_path: filepath,
-                    plugin: asset.clone(),
-                })
-            }
-            Err(e) => Err(anyhow::anyhow!("Failed to fetch file: {}", e)),
-        }
-    }
-
-    fn extract_plugin(&self, file_path: String, pb_task: ProgressBar) -> Result<String> {
-        let addon_folder_path = self.app_config.get_addon_folder_path();
-
-        let extracted_folder = crate::extract::extract_zip_file(
-            file_path.clone(),
-            addon_folder_path.to_string(),
-            pb_task
-        )?;
-        FileService::remove_file(&PathBuf::from(file_path))?;
-        Ok(extracted_folder)
-    }
-
     pub async fn remove_plugin_by_name(&self, name: &str) -> Result<()> {
-        let plugin_config = PluginConfig::new();
+        let plugin_config = PluginConfig::default();
         let installed_plugin = plugin_config.get_plugin_key_by_name(name);
 
         match installed_plugin {
             Some(plugin_name) => {
                 // Remove plugin directory
-                let plugin_name = plugin_name;
-
-                let plugin_folder_path = Utils::plugin_name_to_addon_folder_path(&plugin_name);
+                let plugin_folder_path =
+                    Utils::plugin_name_to_addon_folder_path(plugin_name.clone());
                 println!("Removing plugin folder: {}", plugin_folder_path);
 
                 if fs::try_exists(&plugin_folder_path).await? {
@@ -461,12 +402,13 @@ impl PluginService {
                 } else {
                     println!(
                         "Plugin folder does not exist, trying to remove from {}",
-                        AppConfig::new().get_config_file_name()
+                        AppConfig::default().get_config_file_name()
                     );
                 }
 
                 // Remove plugin from plugin config
-                let plugin_remove_result = plugin_config.remove_installed_plugin(&plugin_name);
+                let plugin_remove_result =
+                    plugin_config.remove_installed_plugin(plugin_name.clone());
                 match plugin_remove_result {
                     Ok(_) => {}
                     Err(e) => eprintln!("Failed to remove plugin from plugin configuration: {}", e),
@@ -510,11 +452,13 @@ impl PluginService {
         for plugin in plugins {
             let asset = self
                 .asset_store_api
-                .fetch_asset_by_id(&plugin.1.get_asset_id())
+                .get_asset_by_id(plugin.1.get_asset_id().clone())
                 .await;
             match asset {
                 Ok(asset) => {
-                    has_an_update = has_an_update || asset.get_version_string() != plugin.1.get_version();
+                    has_an_update = has_an_update
+                        || asset.get_version_string().cmp(&plugin.1.get_version())
+                            == Ordering::Greater;
 
                     let version = format!(
                         "{} {}",
@@ -549,10 +493,10 @@ impl PluginService {
         Ok(())
     }
 
+    /// Update all installed plugins to their latest versions
+    /// Downloads and installs the latest versions of all plugins that have updates available
+    /// Updates the plugin configuration file with the new versions
     pub async fn update_plugins(&self) -> Result<()> {
-        println!("Updating plugins");
-        println!();
-
         let mut plugins = self
             .plugin_config
             .get_plugins()
@@ -560,56 +504,28 @@ impl PluginService {
             .collect::<Vec<_>>();
         plugins.sort_by(|a, b| a.0.cmp(&b.0));
 
-        let mut has_an_update = false;
-        let mut updated_plugins = HashMap::new();
+        let mut plugins_to_update = Vec::new();
 
         for plugin in plugins {
             let asset = self
                 .asset_store_api
-                .fetch_asset_by_id(&plugin.1.get_asset_id())
-                .await;
-            match asset {
-                Ok(asset) => {
-                    has_an_update = has_an_update || asset.get_version_string() != plugin.1.get_version();
-                    if asset.get_version_string() != plugin.1.get_version() {
-                        println!(
-                            "Updating \"{}\" from version {} to {}",
-                            plugin.1.get_title(),
-                            plugin.1.get_version(),
-                            asset.get_version_string()
-                        );
-                        let install_result = self
-                            .install_plugin(
-                                None,
-                                Some(&asset.get_asset_id().to_string()),
-                                Some(&asset.get_version_string().to_string()),
-                            )
-                            .await;
-                        match install_result {
-                            Ok(installed_plugins) => {
-                                updated_plugins.extend(installed_plugins);
-                            }
-                            Err(e) => eprintln!(
-                                "Failed to install updated plugin {}: {}",
-                                plugin.1.get_title(),
-                                e
-                            ),
-                        }
-                        println!();
-                    }
-                }
-                Err(e) => eprintln!(
-                    "Failed to fetch asset info for plugin \"{}\": {}",
-                    plugin.1.get_title(),
-                    e
-                ),
+                .get_asset_by_id(plugin.1.get_asset_id().clone())
+                .await?;
+            if asset.get_version_string().cmp(&plugin.1.get_version()) == Ordering::Greater {
+                plugins_to_update.push(asset);
             }
         }
-        self.plugin_config.add_plugins(updated_plugins.clone())?;
-        println!();
-        if !has_an_update {
+
+        if plugins_to_update.is_empty() {
             println!("All plugins are up to date.");
         } else {
+            let updated_plugins = self
+                .download_and_extract_plugins(
+                    String::from("Updating plugins"),
+                    plugins_to_update.clone(),
+                )
+                .await?;
+            self.plugin_config.add_plugins(updated_plugins.clone())?;
             println!("Plugins updated successfully.");
         }
         Ok(())
@@ -639,7 +555,7 @@ impl PluginService {
         };
 
         let params = HashMap::from([("filter", name), ("godot_version", version)]);
-        let asset_results = AssetStoreAPI::new().search_assets(params).await?;
+        let asset_results = self.asset_store_api.get_assets(params).await?;
         Ok(asset_results)
     }
 
@@ -674,6 +590,8 @@ impl PluginService {
 
 #[cfg(test)]
 mod tests {
+    use crate::plugin_service;
+
     use super::*;
 
     // Test struct that drops file after tests
@@ -689,7 +607,7 @@ mod tests {
     }
 
     fn setup_plugin_service() -> PluginService {
-        let app_config = AppConfig::default(
+        let app_config = AppConfig::new(
             None,
             None,
             Some("test/mocks/gdm.json"),
@@ -697,11 +615,12 @@ mod tests {
             Some("test/mocks/project_with_plugins_and_version.godot"),
             Some("test/addons"),
         );
-        PluginService::default(
+        PluginService::new(
             None,
             None,
-            Some(PluginConfig::default("test/mocks/gdm.json")),
+            Some(PluginConfig::new("test/mocks/gdm.json")),
             Some(app_config),
+            None,
         )
     }
 
@@ -855,10 +774,10 @@ mod tests {
         assert!(result.is_err());
     }
 
-    // install_plugins
+    // install_all_plugins
 
     fn setup_plugin_service_for_plugins(gdm_json_path: &'static str) -> PluginService {
-        let app_config = AppConfig::default(
+        let app_config = AppConfig::new(
             None,
             None,
             Some(gdm_json_path),
@@ -866,11 +785,12 @@ mod tests {
             Some("test/mocks/project_with_plugins_and_version.godot"),
             Some("test/addons"),
         );
-        PluginService::default(
+        PluginService::new(
             None,
             None,
-            Some(PluginConfig::default(gdm_json_path)),
+            Some(PluginConfig::new(gdm_json_path)),
             Some(app_config),
+            None,
         )
     }
 
@@ -882,7 +802,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    // install_plugin
+    // install_plugins
 
     #[tokio::test]
     async fn test_install_plugin_with_asset_id_and_no_version_should_return_err() {
@@ -944,8 +864,6 @@ mod tests {
 
     // add_plugin_by_id_or_name_and_version
     // add_plugins_to_godot_project
-    // download_plugin
-    // extract_plugin
     // remove_plugin_by_name
     // check_outdated_plugins
     // update_plugins
