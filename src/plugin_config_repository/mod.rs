@@ -1,8 +1,8 @@
 pub mod plugin;
 pub mod plugin_config;
 
-use crate::app_config::{AppConfig, AppConfigImpl};
-use crate::file_service::{FileService, FileServiceInternal};
+use crate::app_config::{AppConfig, DefaultAppConfig};
+use crate::file_service::{DefaultFileService, FileService};
 use crate::plugin_config_repository::plugin::Plugin;
 use crate::plugin_config_repository::plugin_config::{PluginConfig, PluginConfigImpl};
 
@@ -12,38 +12,55 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Default)]
 pub struct PluginConfigRepository {
-    app_config: AppConfig,
-    file_service: FileService,
+    app_config: DefaultAppConfig,
+    file_service: DefaultFileService,
 }
 
 impl PluginConfigRepository {
-    pub fn new(app_config: AppConfig, file_service: FileService) -> Self {
+    #[allow(dead_code)]
+    pub fn new(app_config: DefaultAppConfig, file_service: DefaultFileService) -> Self {
         PluginConfigRepository {
             app_config,
             file_service,
         }
     }
+}
 
-    pub fn add_plugins(&self, plugins: HashMap<String, Plugin>) -> Result<PluginConfig> {
+#[cfg_attr(test, mockall::automock)]
+impl PluginConfigRepositoryImpl for PluginConfigRepository {
+    fn get_file_service(&self) -> &DefaultFileService {
+        &self.file_service
+    }
+
+    fn get_app_config(&self) -> &DefaultAppConfig {
+        &self.app_config
+    }
+}
+
+pub trait PluginConfigRepositoryImpl {
+    fn get_file_service(&self) -> &DefaultFileService;
+    fn get_app_config(&self) -> &DefaultAppConfig;
+
+    fn add_plugins(&self, plugins: HashMap<String, Plugin>) -> Result<PluginConfig> {
         let plugin_config = self.load()?;
         let updated_plugin_config = plugin_config.add_plugins(plugins);
         self.save(&updated_plugin_config)?;
         Ok(updated_plugin_config)
     }
 
-    pub fn remove_plugins(&self, plugin_keys: HashSet<String>) -> Result<PluginConfig> {
+    fn remove_plugins(&self, plugin_keys: HashSet<String>) -> Result<PluginConfig> {
         let plugin_config = self.load()?;
         let updated_plugin_config = plugin_config.remove_plugins(plugin_keys);
         self.save(&updated_plugin_config)?;
         Ok(updated_plugin_config)
     }
 
-    pub fn get_plugin_key_by_name(&self, name: &str) -> Option<String> {
+    fn get_plugin_key_by_name(&self, name: &str) -> Option<String> {
         let plugin_config = self.load().ok()?;
         plugin_config.get_plugin_key_by_name(name)
     }
 
-    pub fn check_if_plugin_already_installed_by_asset_id(&self, asset_id: &str) -> Option<Plugin> {
+    fn check_if_plugin_already_installed_by_asset_id(&self, asset_id: &str) -> Option<Plugin> {
         let plugin_config = self.load().ok()?;
         plugin_config
             .check_if_plugin_already_installed_by_asset_id(asset_id)
@@ -53,7 +70,7 @@ impl PluginConfigRepository {
     /// Returns a sorted list of plugins in a tuple of (key, Plugin)
     ///
     /// The list is sorted by the plugin key in ascending order
-    pub fn get_plugins(&self) -> Result<Vec<(String, Plugin)>> {
+    fn get_plugins(&self) -> Result<Vec<(String, Plugin)>> {
         let plugin_config = self.load()?;
         let mut plugins = plugin_config
             .get_plugins()
@@ -63,22 +80,6 @@ impl PluginConfigRepository {
         plugins.sort_by(|a, b| a.0.cmp(&b.0));
         Ok(plugins)
     }
-}
-
-#[cfg_attr(test, mockall::automock)]
-impl PluginConfigRepositoryImpl for PluginConfigRepository {
-    fn get_file_service(&self) -> &FileService {
-        &self.file_service
-    }
-
-    fn get_app_config(&self) -> &AppConfig {
-        &self.app_config
-    }
-}
-
-pub trait PluginConfigRepositoryImpl {
-    fn get_file_service(&self) -> &FileService;
-    fn get_app_config(&self) -> &AppConfig;
 
     fn load(&self) -> Result<PluginConfig> {
         let config_file_path = self.get_app_config().get_config_file_path();
@@ -164,14 +165,14 @@ mod tests {
 
     #[test]
     fn test_get_plugins_should_return_correct_plugins() {
-        let app_config = AppConfig::new(
+        let app_config = DefaultAppConfig::new(
             None,
             Some(String::from("test/mocks/gdm.json")),
             None,
             None,
             None,
         );
-        let plugin_config_repository = PluginConfigRepository::new(app_config, FileService);
+        let plugin_config_repository = PluginConfigRepository::new(app_config, DefaultFileService);
         let plugins = plugin_config_repository.get_plugins().unwrap();
         assert_eq!(plugins.len(), 2);
 

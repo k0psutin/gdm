@@ -7,12 +7,12 @@ use std::{fs::File, path::PathBuf};
 use crate::file_service::cache::CacheImpl;
 
 #[derive(Debug, Clone, Default)]
-pub struct FileService;
+pub struct DefaultFileService;
 
 #[cfg_attr(test, mockall::automock)]
-impl FileServiceInternal for FileService {}
+impl FileService for DefaultFileService {}
 
-pub trait FileServiceInternal {
+pub trait FileService {
     fn open(&self, file_path: PathBuf) -> Result<File> {
         let file = File::open(file_path.clone())
             .with_context(|| format!("Failed to open file: {}", file_path.display()))?;
@@ -80,7 +80,7 @@ mod tests {
 
     #[test]
     fn test_read_file_cached_should_cache_file() {
-        let file_service = FileService;
+        let file_service = DefaultFileService;
         let test_file_path = PathBuf::from("test/mocks/test_1.txt");
         std::fs::write(&test_file_path, "Hello, world!").unwrap();
         let content_first_read = file_service
@@ -104,7 +104,7 @@ mod tests {
 
     #[test]
     fn test_write_file_should_create_file_with_text() {
-        let file_service = FileService;
+        let file_service = DefaultFileService;
         let test_file_path = PathBuf::from("test/mocks/test_2.txt");
         file_service
             .write_file(test_file_path.clone(), "Hello, world!")
@@ -118,10 +118,10 @@ mod tests {
 
     #[test]
     fn test_create_file_should_create_empty_file() {
-        let file_service = FileService;
+        let file_service = DefaultFileService;
         let test_file_path = PathBuf::from("test/mocks/test_3.txt");
         file_service.create_file(test_file_path.clone()).unwrap();
-        let content_first_read = std::fs::read_to_string(&test_file_path.clone()).unwrap();
+        let content_first_read = std::fs::read_to_string(test_file_path.clone()).unwrap();
         assert_eq!(content_first_read, "");
 
         // Clean up

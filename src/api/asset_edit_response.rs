@@ -10,13 +10,13 @@ pub struct AssetEditResponse {
     version_string: String,
     download_commit: Option<String>,
     status: String,
-    reason: String,
     author: String,
     download_url: String,
     original: AssetResponse,
 }
 
 impl AssetEditResponse {
+    #[allow(dead_code, clippy::too_many_arguments)]
     pub fn new(
         edit_id: String,
         asset_id: String,
@@ -24,7 +24,6 @@ impl AssetEditResponse {
         version_string: String,
         download_commit: Option<String>,
         status: String,
-        reason: String,
         author: String,
         download_url: String,
         original: AssetResponse,
@@ -36,7 +35,6 @@ impl AssetEditResponse {
             version_string,
             download_commit,
             status,
-            reason,
             author,
             original,
             download_url,
@@ -46,6 +44,7 @@ impl AssetEditResponse {
         &self.original
     }
 
+    #[allow(dead_code)]
     pub fn get_asset_id(&self) -> &str {
         &self.asset_id
     }

@@ -1,5 +1,6 @@
-use crate::plugin_service::{PluginService, PluginServiceImpl};
+use crate::plugin_service::{DefaultPluginService, PluginService};
 
+use anyhow::Result;
 use clap::Args;
 
 #[derive(Args)]
@@ -16,12 +17,12 @@ pub struct SearchArgs {
     godot_version: Option<String>,
 }
 
-pub async fn handle(args: &SearchArgs) -> anyhow::Result<()> {
-    let plugin_service = PluginService::default();
+pub async fn handle(args: &SearchArgs) -> Result<()> {
+    let plugin_service = DefaultPluginService::default();
     plugin_service
         .search_assets_by_name_or_version(
-            &args.name,
-            &args.godot_version.clone().unwrap_or_default(),
+            args.name.clone(),
+            args.godot_version.clone().unwrap_or_default(),
         )
         .await?;
 

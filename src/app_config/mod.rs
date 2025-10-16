@@ -4,7 +4,7 @@ use dotenv::dotenv;
 ///
 /// Settings are loaded from environment variables using the `dotenv` crate.
 #[derive(Debug, Clone)]
-pub struct AppConfig {
+pub struct DefaultAppConfig {
     api_base_url: String,
     config_file_path: String,
     cache_folder_path: String,
@@ -12,14 +12,15 @@ pub struct AppConfig {
     addon_folder_path: String,
 }
 
-impl AppConfig {
+impl DefaultAppConfig {
+    #[allow(dead_code)]
     pub fn new(
         api_base_url: Option<String>,
         config_file_path: Option<String>,
         cache_folder_path: Option<String>,
         godot_project_file_path: Option<String>,
         addon_folder_path: Option<String>,
-    ) -> AppConfig {
+    ) -> DefaultAppConfig {
         dotenv().ok();
 
         let api_base_url = api_base_url.unwrap_or_else(|| dotenv::var("API_BASE_URL").unwrap());
@@ -31,7 +32,7 @@ impl AppConfig {
             .unwrap_or_else(|| dotenv::var("GODOT_PROJECT_FILE_PATH").unwrap());
         let addon_folder_path =
             addon_folder_path.unwrap_or_else(|| dotenv::var("ADDON_FOLDER_PATH").unwrap());
-        AppConfig {
+        DefaultAppConfig {
             api_base_url,
             config_file_path,
             cache_folder_path,
@@ -41,7 +42,7 @@ impl AppConfig {
     }
 }
 
-impl Default for AppConfig {
+impl Default for DefaultAppConfig {
     fn default() -> Self {
         dotenv().ok();
 
@@ -50,7 +51,7 @@ impl Default for AppConfig {
         let cache_folder_path = dotenv::var("CACHE_FOLDER_PATH").unwrap();
         let godot_project_file_path = dotenv::var("GODOT_PROJECT_FILE_PATH").unwrap();
         let addon_folder_path = dotenv::var("ADDON_FOLDER_PATH").unwrap();
-        AppConfig {
+        DefaultAppConfig {
             api_base_url,
             config_file_path,
             cache_folder_path,
@@ -61,7 +62,7 @@ impl Default for AppConfig {
 }
 
 #[cfg_attr(test, mockall::automock)]
-impl AppConfigImpl for AppConfig {
+impl AppConfig for DefaultAppConfig {
     fn get_godot_project_file_path(&self) -> String {
         self.godot_project_file_path.clone()
     }
@@ -83,7 +84,8 @@ impl AppConfigImpl for AppConfig {
     }
 }
 
-impl dyn AppConfigImpl {
+impl dyn AppConfig {
+    #[allow(dead_code)]
     fn default() -> Box<Self> {
         dotenv().ok();
 
@@ -92,7 +94,7 @@ impl dyn AppConfigImpl {
         let cache_folder_path = dotenv::var("CACHE_FOLDER_PATH").unwrap();
         let godot_project_file_path = dotenv::var("GODOT_PROJECT_FILE_PATH").unwrap();
         let addon_folder_path = dotenv::var("ADDON_FOLDER_PATH").unwrap();
-        Box::new(AppConfig {
+        Box::new(DefaultAppConfig {
             api_base_url,
             config_file_path,
             cache_folder_path,
@@ -102,7 +104,7 @@ impl dyn AppConfigImpl {
     }
 }
 
-pub trait AppConfigImpl {
+pub trait AppConfig {
     fn get_godot_project_file_path(&self) -> String;
     fn get_api_base_url(&self) -> String;
     fn get_config_file_path(&self) -> String;

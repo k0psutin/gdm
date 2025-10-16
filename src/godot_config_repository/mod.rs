@@ -5,50 +5,49 @@ use std::path::PathBuf;
 
 use anyhow::{Result, anyhow};
 
-use crate::app_config::{AppConfig, AppConfigImpl};
-use crate::file_service::{FileService, FileServiceInternal};
+use crate::app_config::{AppConfig, DefaultAppConfig};
+use crate::file_service::{DefaultFileService, FileService};
 use crate::godot_config_repository::godot_config::{GodotConfig, GodotConfigImpl};
 use crate::plugin_config_repository::plugin_config::{PluginConfig, PluginConfigImpl};
 use crate::utils::Utils;
 
 #[derive(Debug, Clone, Default)]
-pub struct GodotConfigRepository {
-    file_service: FileService,
-    app_config: AppConfig,
+pub struct DefaultGodotConfigRepository {
+    file_service: DefaultFileService,
+    app_config: DefaultAppConfig,
 }
 
-impl GodotConfigRepository {
-    pub fn new(file_service: FileService, app_config: AppConfig) -> GodotConfigRepository {
-        GodotConfigRepository {
+impl DefaultGodotConfigRepository {
+    #[allow(dead_code)]
+    pub fn new(
+        file_service: DefaultFileService,
+        app_config: DefaultAppConfig,
+    ) -> DefaultGodotConfigRepository {
+        DefaultGodotConfigRepository {
             file_service,
             app_config,
         }
     }
-
-    pub fn update_plugins(&self, plugin_config: PluginConfig) -> Result<()> {
-        self.save(plugin_config)
-    }
-
-    pub fn get_godot_version_from_project(&self) -> Result<String> {
-        let godot_config = self.load()?;
-        godot_config.get_godot_version()
-    }
 }
 
 #[cfg_attr(test, mockall::automock)]
-impl GodotConfigRepositoryImpl for GodotConfigRepository {
-    fn get_file_service(&self) -> &FileService {
+impl GodotConfigRepository for DefaultGodotConfigRepository {
+    fn get_file_service(&self) -> &DefaultFileService {
         &self.file_service
     }
 
-    fn get_app_config(&self) -> &AppConfig {
+    fn get_app_config(&self) -> &DefaultAppConfig {
         &self.app_config
     }
-}
 
-pub trait GodotConfigRepositoryImpl {
-    fn get_file_service(&self) -> &FileService;
-    fn get_app_config(&self) -> &AppConfig;
+    fn update_plugins(&self, plugin_config: PluginConfig) -> Result<()> {
+        self.save(plugin_config)
+    }
+
+    fn get_godot_version_from_project(&self) -> Result<String> {
+        let godot_config = self.load()?;
+        godot_config.get_godot_version()
+    }
 
     fn plugin_root_folder_to_resource_path(&self, plugin_path: String) -> String {
         Utils::plugin_folder_to_resource_path(format!(
@@ -154,8 +153,8 @@ pub trait GodotConfigRepositoryImpl {
             None => None,
         };
 
-        if plugin_index.is_some() {
-            contents[plugin_index.unwrap()] =
+        if let Some(plugin_index) = plugin_index {
+            contents[plugin_index] =
                 format!("enabled={}", self.plugins_to_packed_string_array(_plugins));
             return Ok(contents);
         }
@@ -267,6 +266,24 @@ pub trait GodotConfigRepositoryImpl {
         file_service.write_file(PathBuf::from(godot_project_file_path), &lines.join("\n"))?;
         Ok(())
     }
+}
+pub trait GodotConfigRepository {
+    fn get_file_service(&self) -> &DefaultFileService;
+    fn get_app_config(&self) -> &DefaultAppConfig;
+    fn update_plugins(&self, plugin_config: PluginConfig) -> Result<()>;
+    fn get_godot_version_from_project(&self) -> Result<String>;
+    fn plugin_root_folder_to_resource_path(&self, plugin_path: String) -> String;
+    fn plugins_to_packed_string_array(&self, plugins: HashSet<String>) -> String;
+    fn save(&self, plugin_config: PluginConfig) -> Result<()>;
+    fn load(&self) -> Result<GodotConfig>;
+    fn update_project_file(
+        &self,
+        godot_project_file_path: &str,
+        plugin_config: PluginConfig,
+    ) -> Result<Vec<String>>;
+    fn read_godot_project_file(&self, godot_project_file_path: &str) -> Result<GodotConfig>;
+    fn load_project_file(&self, godot_file_path: &str) -> Result<Vec<String>>;
+    fn save_project_file(&self, godot_project_file_path: &str, lines: Vec<String>) -> Result<()>;
 }
 
 #[cfg(test)]

@@ -1,11 +1,12 @@
+use crate::api::asset::Asset;
 use crate::api::asset_list_response::AssetListResponse;
 use crate::api::asset_response::AssetResponse;
-use crate::api::{AssetStoreAPI, AssetStoreAPIImpl, DownloadedPlugin};
-use crate::app_config::{AppConfig, AppConfigImpl};
-use crate::extract_service::{ExtractService, ExtractServiceImpl};
-use crate::godot_config_repository::GodotConfigRepository;
-use crate::plugin_config_repository::PluginConfigRepository;
+use crate::api::{AssetStoreAPI, DefaultAssetStoreAPI};
+use crate::app_config::{AppConfig, DefaultAppConfig};
+use crate::extract_service::{DefaultExtractService, ExtractService};
+use crate::godot_config_repository::{DefaultGodotConfigRepository, GodotConfigRepository};
 use crate::plugin_config_repository::plugin::Plugin;
+use crate::plugin_config_repository::{PluginConfigRepository, PluginConfigRepositoryImpl};
 use crate::utils::Utils;
 
 use anyhow::{Context, Result, anyhow};
@@ -13,66 +14,91 @@ use futures::future::try_join_all;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::fs;
 use tokio::task::JoinSet;
 use tracing::{debug, error};
 
-#[derive(Default)]
-pub struct PluginService {
-    godot_config_repository: GodotConfigRepository,
-    asset_store_api: AssetStoreAPI,
-    plugin_config_repository: PluginConfigRepository,
-    app_config: AppConfig,
-    extract_service: ExtractService,
+pub struct DefaultPluginService {
+    godot_config_repository: Box<dyn GodotConfigRepository>,
+    asset_store_api: Arc<dyn AssetStoreAPI + Send + Sync>,
+    plugin_config_repository: Box<dyn PluginConfigRepositoryImpl>,
+    app_config: Box<dyn AppConfig>,
+    extract_service: Arc<dyn ExtractService + Send + Sync>,
 }
 
-impl PluginService {
-    fn new(
-        godot_config_repository: Option<GodotConfigRepository>,
-        asset_store_api: Option<AssetStoreAPI>,
-        plugin_config_repository: Option<PluginConfigRepository>,
-        app_config: Option<AppConfig>,
-        extract_service: Option<ExtractService>,
-    ) -> Self {
+impl From<AssetResponse> for Plugin {
+    fn from(asset_response: AssetResponse) -> Self {
+        Plugin::new(
+            asset_response.get_asset_id(),
+            asset_response.get_title(),
+            asset_response.get_version_string(),
+            asset_response.get_license(),
+        )
+    }
+}
+
+impl Default for DefaultPluginService {
+    fn default() -> Self {
         Self {
-            godot_config_repository: godot_config_repository.unwrap_or_default(),
-            asset_store_api: asset_store_api.unwrap_or_default(),
-            plugin_config_repository: plugin_config_repository.unwrap_or_default(),
-            app_config: app_config.unwrap_or_default(),
-            extract_service: extract_service.unwrap_or_default(),
+            godot_config_repository: Box::new(DefaultGodotConfigRepository::default()),
+            asset_store_api: Arc::new(DefaultAssetStoreAPI::default()),
+            plugin_config_repository: Box::new(PluginConfigRepository::default()),
+            app_config: Box::new(DefaultAppConfig::default()),
+            extract_service: Arc::new(DefaultExtractService::default()),
         }
     }
 }
 
-impl PluginServiceImpl for PluginService {
-    fn get_plugin_config_repository(&self) -> &PluginConfigRepository {
-        &self.plugin_config_repository
-    }
-
-    fn get_asset_store_api(&self) -> &AssetStoreAPI {
-        &self.asset_store_api
-    }
-
-    fn get_godot_config_repository(&self) -> &GodotConfigRepository {
-        &self.godot_config_repository
-    }
-
-    fn get_app_config(&self) -> &AppConfig {
-        &self.app_config
-    }
-
-    fn get_extract_service(&self) -> &ExtractService {
-        &self.extract_service
+impl DefaultPluginService {
+    #[allow(dead_code)]
+    fn new(
+        godot_config_repository: Box<dyn GodotConfigRepository>,
+        asset_store_api: Arc<dyn AssetStoreAPI + Send + Sync>,
+        plugin_config_repository: Box<dyn PluginConfigRepositoryImpl>,
+        app_config: Box<dyn AppConfig>,
+        extract_service: Arc<dyn ExtractService + Send + Sync>,
+    ) -> Self {
+        Self {
+            godot_config_repository,
+            asset_store_api,
+            plugin_config_repository,
+            app_config,
+            extract_service,
+        }
     }
 }
 
-pub trait PluginServiceImpl {
-    fn get_app_config(&self) -> &AppConfig;
-    fn get_extract_service(&self) -> &ExtractService;
-    fn get_godot_config_repository(&self) -> &GodotConfigRepository;
-    fn get_asset_store_api(&self) -> &AssetStoreAPI;
-    fn get_plugin_config_repository(&self) -> &PluginConfigRepository;
+impl PluginService for DefaultPluginService {
+    fn get_plugin_config_repository(&self) -> &dyn PluginConfigRepositoryImpl {
+        &*self.plugin_config_repository
+    }
+
+    fn get_asset_store_api(&self) -> Arc<dyn AssetStoreAPI + Send + Sync> {
+        Arc::clone(&self.asset_store_api)
+    }
+
+    fn get_godot_config_repository(&self) -> &dyn GodotConfigRepository {
+        &*self.godot_config_repository
+    }
+
+    fn get_app_config(&self) -> &dyn AppConfig {
+        &*self.app_config
+    }
+
+    fn get_extract_service(&self) -> Arc<dyn ExtractService + Send + Sync> {
+        Arc::clone(&self.extract_service)
+    }
+}
+
+pub trait PluginService {
+    fn get_app_config(&self) -> &dyn AppConfig;
+    fn get_godot_config_repository(&self) -> &dyn GodotConfigRepository;
+    fn get_plugin_config_repository(&self) -> &dyn PluginConfigRepositoryImpl;
+
+    fn get_asset_store_api(&self) -> Arc<dyn AssetStoreAPI + Send + Sync>;
+    fn get_extract_service(&self) -> Arc<dyn ExtractService + Send + Sync>;
 
     async fn install_all_plugins(&self) -> Result<()> {
         let plugins = self.get_plugin_config_repository().get_plugins()?;
@@ -175,31 +201,31 @@ pub trait PluginServiceImpl {
             title,
             version,
         )?;
-        let downloaded_plugin = self
+        let downloaded_asset = self
             .get_asset_store_api()
-            .download_plugin(&asset.clone(), pb_download, cache_folder.to_string())
+            .download_asset(&asset.clone(), pb_download, cache_folder.to_string())
             .await?;
-        let plugin = downloaded_plugin.get_plugin();
+        let asset_response = downloaded_asset.get_asset_response();
         let pb_extract_service = self.create_extract_service_progress_bar(
             &m,
             1,
             1,
             String::from("ExtractServiceing"),
-            plugin.get_title().to_string(),
-            plugin.get_version_string().to_string(),
+            asset_response.get_title().to_string(),
+            asset_response.get_version_string().to_string(),
         )?;
 
         let addon_folder_path = self.get_app_config().get_addon_folder_path().to_string();
         let plugin_root_folder = self
             .get_extract_service()
             .extract_plugin(
-                downloaded_plugin.get_file_path().clone(),
+                downloaded_asset.get_file_path().clone(),
                 addon_folder_path,
                 pb_extract_service,
             )
             .await?;
 
-        let plugins = HashMap::from([(plugin_root_folder.clone(), asset.to_plugin())]);
+        let plugins = HashMap::from([(plugin_root_folder.clone(), Plugin::from(asset))]);
         self.add_plugins(plugins)?;
         Ok(())
     }
@@ -234,30 +260,28 @@ pub trait PluginServiceImpl {
             let cache_folder_clone = cache_folder.clone();
             download_tasks.spawn(async move {
                 asset_store_api
-                    .download_plugin(&plugin, pb_task, cache_folder_clone)
+                    .download_asset(&plugin, pb_task, cache_folder_clone)
                     .await
             });
         }
 
         let result = download_tasks.join_all().await;
-        let download_tasks = result
-            .into_iter()
-            .collect::<Result<Vec<DownloadedPlugin>>>()?;
+        let download_tasks = result.into_iter().collect::<Result<Vec<Asset>>>()?;
 
         let mut extract_service_tasks = JoinSet::new();
 
         pb_main.set_message("ExtractServiceing plugins");
 
-        for (index, downloaded_plugin) in download_tasks.clone().into_iter().enumerate() {
-            let plugin = downloaded_plugin.get_plugin().clone();
-            let file_path = downloaded_plugin.get_file_path().clone();
+        for (index, downloaded_asset) in download_tasks.clone().into_iter().enumerate() {
+            let asset_response = downloaded_asset.get_asset_response().clone();
+            let file_path = downloaded_asset.get_file_path().clone();
             let pb_task = self.create_extract_service_progress_bar(
                 &pb_multi,
                 index + 1,
                 download_tasks.len(),
                 String::from("ExtractServiceing"),
-                plugin.get_title().to_string(),
-                plugin.get_version_string().to_string(),
+                asset_response.get_title().to_string(),
+                asset_response.get_version_string().to_string(),
             )?;
             let extract_service = self.get_extract_service().clone();
             let addon_folder = addon_folder.clone();
@@ -274,7 +298,12 @@ pub trait PluginServiceImpl {
 
         let installed_plugins = download_tasks
             .into_iter()
-            .map(|p| (p.get_root_folder().clone(), p.get_plugin().to_plugin()))
+            .map(|p| {
+                (
+                    p.get_root_folder().clone(),
+                    Plugin::from(p.get_asset_response()),
+                )
+            })
             .collect::<HashMap<String, Plugin>>();
 
         pb_main.finish_and_clear();
@@ -354,11 +383,9 @@ pub trait PluginServiceImpl {
                 "Finding plugin by asset ID and version: {} {}",
                 asset_id, version
             );
-            let id = asset_id;
-            let ver = version;
             let asset = self
                 .get_asset_store_api()
-                .get_asset_by_id_and_version(id.as_str(), ver.as_str())
+                .get_asset_by_id_and_version(asset_id, version)
                 .await?;
             Ok(asset)
         } else {
@@ -381,7 +408,10 @@ pub trait PluginServiceImpl {
                 .await?;
             Ok(asset)
         } else if !name.is_empty() {
-            let params = HashMap::from([("filter", name.as_str()), ("godot_version", "4.5")]);
+            let params = HashMap::from([
+                ("filter".to_string(), name.clone()),
+                ("godot_version".to_string(), "4.5".to_string()),
+            ]);
             let asset_results = self.get_asset_store_api().get_assets(params).await?;
 
             if asset_results.get_result_len() != 1 {
@@ -581,8 +611,8 @@ pub trait PluginServiceImpl {
 
     async fn get_asset_list_response_by_name_or_version(
         &self,
-        name: &str,
-        version: &str,
+        name: String,
+        version: String,
     ) -> Result<AssetListResponse> {
         let godot_config_repository = self.get_godot_config_repository();
         let parsed_version = godot_config_repository.get_godot_version_from_project()?;
@@ -598,24 +628,27 @@ pub trait PluginServiceImpl {
         }
 
         let version = if version.is_empty() {
-            parsed_version.as_str()
+            parsed_version
         } else {
             version
         };
 
-        let params = HashMap::from([("filter", name), ("godot_version", version)]);
+        let params = HashMap::from([
+            ("filter".to_string(), name),
+            ("godot_version".to_string(), version),
+        ]);
         let asset_results = self.get_asset_store_api().get_assets(params).await?;
         Ok(asset_results)
     }
 
-    async fn search_assets_by_name_or_version(&self, name: &str, version: &str) -> Result<()> {
+    async fn search_assets_by_name_or_version(&self, name: String, version: String) -> Result<()> {
         let asset_list_response = self
-            .get_asset_list_response_by_name_or_version(name, version)
+            .get_asset_list_response_by_name_or_version(name.clone(), version.clone())
             .await?;
 
         match asset_list_response.get_result_len() {
-            0 => println!("No assets found matching \"{}\"", name),
-            1 => println!("Found 1 asset matching \"{}\":", name),
+            0 => println!("No assets found matching \"{}\"", name.clone()),
+            1 => println!("Found 1 asset matching \"{}\":", name.clone()),
             n => println!("Found {} assets matching \"{}\":", n, name),
         }
 
@@ -639,47 +672,33 @@ pub trait PluginServiceImpl {
 
 #[cfg(test)]
 mod tests {
+    use crate::api::MockDefaultAssetStoreAPI;
+    use crate::app_config::MockDefaultAppConfig;
+    use crate::extract_service::MockDefaultExtractService;
+    use crate::godot_config_repository::MockDefaultGodotConfigRepository;
+    use crate::plugin_config_repository::MockPluginConfigRepository;
+
     use super::*;
 
-    use crate::{
-        api::MockAssetStoreAPI,
-        app_config::{AppConfig, MockAppConfig},
-        extract_service::MockExtractService,
-        godot_config_repository::MockGodotConfigRepository,
-        plugin_service::PluginServiceImpl,
-    };
-
-    pub struct MockPluginService {
-        godot_config_repository: MockGodotConfigRepository,
-        asset_store_api: MockAssetStoreAPI,
-        plugin_config_repository: MockGodotConfigRepository,
-        app_config: MockAppConfig,
-        extract_service: MockExtractService,
+    fn setup_plugin_service() -> DefaultPluginService {
+        DefaultPluginService::default()
     }
 
-    impl PluginServiceImpl for MockPluginService {
-        fn get_plugin_config_repository(&self) -> &MockGodotConfigRepository {
-            &self.plugin_config_repository
-        }
+    fn setup_plugin_service_mocks() -> DefaultPluginService {
+        let mut godot_config_repository = Box::new(MockDefaultGodotConfigRepository::default());
+        let asset_store_api = Arc::new(MockDefaultAssetStoreAPI::default());
+        let plugin_config_repository = Box::new(MockPluginConfigRepository::default());
+        let app_config = Box::new(MockDefaultAppConfig::default());
+        let extract_service = Arc::new(MockDefaultExtractService::default());
 
-        fn get_asset_store_api(&self) -> &MockAssetStoreAPI {
-            &self.asset_store_api
-        }
-
-        fn get_godot_config_repository(&self) -> &GodotConfigRepository {
-            &self.godot_config_repository
-        }
-
-        fn get_app_config(&self) -> &MockAppConfig {
-            &self.app_config
-        }
-
-        fn get_extract_service(&self) -> &MockExtractService {
-            &self.extract_service
-        }
+        DefaultPluginService::new(
+            godot_config_repository,
+            asset_store_api,
+            plugin_config_repository,
+            app_config,
+            extract_service,
+        )
     }
-
-    // find_plugin_by_id_or_name
 
     #[tokio::test]
     async fn test_find_plugin_by_id_or_name_with_id_with_none_parameters_should_return_error() {
@@ -767,8 +786,8 @@ mod tests {
     #[tokio::test]
     async fn test_get_asset_list_response_by_name_or_version_with_no_results_should_return_ok() {
         let plugin_service = setup_plugin_service();
-        let name = "some_non_existent_plugin_name";
-        let version = "4.5";
+        let name = "some_non_existent_plugin_name".to_string();
+        let version = "4.5".to_string();
         let result_list = plugin_service
             .get_asset_list_response_by_name_or_version(name, version)
             .await;
@@ -781,8 +800,8 @@ mod tests {
     async fn test_get_asset_list_response_by_name_or_version_with_exact_name_should_return_one_result()
      {
         let plugin_service = setup_plugin_service();
-        let name = "Godot Unit Testing";
-        let version = "4.5";
+        let name = "Godot Unit Testing".to_string();
+        let version = "4.5".to_string();
         let result = plugin_service
             .get_asset_list_response_by_name_or_version(name, version)
             .await;
@@ -797,8 +816,8 @@ mod tests {
     #[tokio::test]
     async fn test_get_asset_list_response_by_name_or_version_without_name_should_return_err() {
         let plugin_service = setup_plugin_service();
-        let name = "";
-        let version = "4.5";
+        let name = "".to_string();
+        let version = "4.5".to_string();
         let result = plugin_service
             .get_asset_list_response_by_name_or_version(name, version)
             .await;
@@ -809,8 +828,8 @@ mod tests {
     async fn test_get_asset_list_response_by_name_or_version_without_version_should_return_response()
      {
         let plugin_service = setup_plugin_service();
-        let name = "Godot Unit Testing";
-        let version = "";
+        let name = "Godot Unit Testing".to_string();
+        let version = "".to_string();
         let result = plugin_service
             .get_asset_list_response_by_name_or_version(name, version)
             .await;
@@ -821,8 +840,8 @@ mod tests {
     async fn test_get_asset_list_response_by_name_or_version_without_name_or_version_should_return_err()
      {
         let plugin_service = setup_plugin_service();
-        let name = "";
-        let version = "";
+        let name = String::new();
+        let version = String::new();
         let result = plugin_service
             .get_asset_list_response_by_name_or_version(name, version)
             .await;

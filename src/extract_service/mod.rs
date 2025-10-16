@@ -6,20 +6,20 @@ use std::io;
 use std::path::PathBuf;
 
 use crate::app_config::AppConfig;
-use crate::app_config::AppConfigImpl;
-use crate::file_service::FileService;
-use crate::file_service::FileServiceInternal;
+use crate::app_config::DefaultAppConfig;
+use crate::file_service::{DefaultFileService, FileService};
 use crate::utils::Utils;
 
-#[derive(Clone, Default)]
-pub struct ExtractService {
-    file_service: FileService,
-    app_config: AppConfig,
+#[derive(Clone, Debug, Default)]
+pub struct DefaultExtractService {
+    file_service: DefaultFileService,
+    app_config: DefaultAppConfig,
 }
 
-impl ExtractService {
-    pub fn new(file_service: FileService, app_config: AppConfig) -> Self {
-        ExtractService {
+impl DefaultExtractService {
+    #[allow(dead_code)]
+    pub fn new(file_service: DefaultFileService, app_config: DefaultAppConfig) -> Self {
+        DefaultExtractService {
             file_service,
             app_config,
         }
@@ -27,19 +27,15 @@ impl ExtractService {
 }
 
 #[cfg_attr(test, mockall::automock)]
-impl ExtractServiceImpl for ExtractService {
-    fn get_file_service(&self) -> &FileService {
+#[async_trait::async_trait]
+impl ExtractService for DefaultExtractService {
+    fn get_file_service(&self) -> &DefaultFileService {
         &self.file_service
     }
 
-    fn get_app_config(&self) -> &AppConfig {
+    fn get_app_config(&self) -> &DefaultAppConfig {
         &self.app_config
     }
-}
-
-pub trait ExtractServiceImpl {
-    fn get_app_config(&self) -> &AppConfig;
-    fn get_file_service(&self) -> &FileService;
 
     fn create_extract_path(&self, root: PathBuf, path: PathBuf) -> PathBuf {
         let index = path.iter().skip(1).position(|p| p == "addons");
@@ -172,13 +168,38 @@ pub trait ExtractServiceImpl {
     }
 }
 
+#[async_trait::async_trait]
+pub trait ExtractService: Send + Sync {
+    fn get_app_config(&self) -> &DefaultAppConfig;
+    fn get_file_service(&self) -> &DefaultFileService;
+    fn create_extract_path(&self, root: PathBuf, path: PathBuf) -> PathBuf;
+
+    fn get_root_directory_name_from_archive(
+        &self,
+        archive: &mut zip::ZipArchive<fs::File>,
+    ) -> Result<PathBuf>;
+    fn get_root_dir_from_archive(&self, file_path: &str) -> anyhow::Result<String>;
+    fn extract_zip_file(
+        &self,
+        file_path: String,
+        destination: String,
+        pb_task: ProgressBar,
+    ) -> anyhow::Result<()>;
+    async fn extract_plugin(
+        &self,
+        file_path: String,
+        addon_folder_path: String,
+        pb_task: ProgressBar,
+    ) -> Result<String>;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_get_root_directory_name_from_archive_with_addons_folder() {
-        let extract = ExtractService::default();
+        let extract = DefaultExtractService::default();
         let file = fs::File::open("test/mocks/zip_files/test_with_addons_folder.zip").unwrap();
         let mut archive = zip::ZipArchive::new(file).unwrap();
         let root_dir = extract.get_root_directory_name_from_archive(&mut archive);
@@ -187,7 +208,7 @@ mod tests {
 
     #[test]
     fn test_get_root_directory_name_from_archive_without_addons_folder() {
-        let extract = ExtractService::default();
+        let extract = DefaultExtractService::default();
         let file = fs::File::open("test/mocks/zip_files/test_without_addons_folder.zip").unwrap();
         let mut archive = zip::ZipArchive::new(file).unwrap();
         let root_dir = extract.get_root_directory_name_from_archive(&mut archive);
@@ -196,7 +217,7 @@ mod tests {
 
     #[test]
     fn test_get_root_directory_name_from_archive_without_root_should_return_error() {
-        let extract = ExtractService::default();
+        let extract = DefaultExtractService::default();
         let file = fs::File::open("test/mocks/zip_files/test_without_root_folder.zip").unwrap();
         let mut archive = zip::ZipArchive::new(file).unwrap();
         let result = extract.get_root_directory_name_from_archive(&mut archive);
@@ -205,7 +226,7 @@ mod tests {
 
     #[test]
     fn test_extract_zip_file() {
-        let extract = ExtractService::default();
+        let extract = DefaultExtractService::default();
         let pb_task = ProgressBar::new(5000000);
         let result = extract.extract_zip_file(
             String::from("test/mocks/zip_files/test_with_addons_folder.zip"),
@@ -218,7 +239,7 @@ mod tests {
 
     #[test]
     fn test_create_extract_path_should_return_with_addons_folder_path_2() {
-        let extract = ExtractService::default();
+        let extract = DefaultExtractService::default();
         let path = ["zip_filename", "some_plugin", "file.txt"]
             .iter()
             .collect::<PathBuf>();
@@ -233,7 +254,7 @@ mod tests {
 
     #[test]
     fn test_create_extract_path_should_return_with_addons_folder_path_3() {
-        let extract = ExtractService::default();
+        let extract = DefaultExtractService::default();
         let path = ["zip_filename", "some_plugin", "file.txt"]
             .iter()
             .collect::<PathBuf>();
@@ -248,7 +269,7 @@ mod tests {
 
     #[test]
     fn test_create_extract_path_should_not_modify_existing_folder_path() {
-        let extract = ExtractService::default();
+        let extract = DefaultExtractService::default();
         let path = ["zip_filename", "addons", "some_plugin", "test.txt"]
             .iter()
             .collect::<PathBuf>();
@@ -263,7 +284,7 @@ mod tests {
 
     #[test]
     fn test_create_extract_path_should_modify_existing_path() {
-        let extract = ExtractService::default();
+        let extract = DefaultExtractService::default();
         let path = [
             "zip_filename",
             "some_folder",

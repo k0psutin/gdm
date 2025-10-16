@@ -1,15 +1,18 @@
 mod add;
-mod remove;
 mod install;
-mod search;
 mod outdated;
+mod remove;
+mod search;
 mod update;
 
-use anyhow::{Result};
+use anyhow::Result;
 
 use clap::{Parser, Subcommand};
 
-use crate::commands::{add::AddArgs, install::InstallArgs, outdated::OutdatedArgs, remove::RemoveArgs, search::SearchArgs, update::UpdateArgs};
+use crate::commands::{
+    add::AddArgs, install::InstallArgs, outdated::OutdatedArgs, remove::RemoveArgs,
+    search::SearchArgs, update::UpdateArgs,
+};
 
 #[derive(Parser)]
 #[command(about, version, author, long_about = None)]
@@ -32,22 +35,22 @@ pub async fn handle(command: &Commands) -> Result<()> {
     match command {
         Commands::Add(add_args) => {
             add::handle(add_args).await?;
-        },
+        }
         Commands::Install(_) => {
             install::handle().await?;
-        },
+        }
         Commands::Outdated(_) => {
             outdated::handle().await?;
-        },
+        }
         Commands::Remove(remove_args) => {
             remove::handle(remove_args).await?;
-        },
+        }
         Commands::Search(search_args) => {
             search::handle(search_args).await?;
-        },
+        }
         Commands::Update(_) => {
             update::handle().await?;
-        },
+        }
     }
 
     Ok(())

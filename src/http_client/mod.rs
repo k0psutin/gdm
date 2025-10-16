@@ -2,45 +2,44 @@ use std::collections::HashMap;
 
 use anyhow::{Result, anyhow};
 use reqwest::Response;
-use serde::de::{DeserializeOwned};
-use serde_json;
+use serde::de::DeserializeOwned;
+use tracing::{error, info};
 use url::Url;
-use tracing::{debug, error, info};
 
 #[derive(Debug, Clone)]
-pub struct HttpClient {}
+pub struct DefaultHttpClient {}
 
-impl HttpClient {
-    pub fn new() -> HttpClient {
-        HttpClient {}
+impl DefaultHttpClient {
+    pub fn new() -> DefaultHttpClient {
+        DefaultHttpClient {}
     }
 }
 
-impl Default for HttpClient {
+impl Default for DefaultHttpClient {
     fn default() -> Self {
-        HttpClient::new()
+        DefaultHttpClient::new()
     }
 }
 
-impl HttpClientImpl for HttpClient {}
-
-pub trait HttpClientImpl {
+#[cfg_attr(test, mockall::automock)]
+#[async_trait::async_trait]
+impl HttpClient for DefaultHttpClient {
     fn get_url(&self, base_url: String, path: String) -> String {
         format!("{}{}", base_url, path)
     }
 
-    async fn get<T>(&self, base_url: String, path: String, params: HashMap<&str, &str>) -> Result<T>
-    where
-        T: DeserializeOwned,
-    {
+    async fn get<T: DeserializeOwned + Send + 'static>(
+        &self,
+        base_url: String,
+        path: String,
+        params: HashMap<String, String>,
+    ) -> Result<T> {
         let _url = Url::parse_with_params(&self.get_url(base_url, path), params)?;
 
         match reqwest::get(_url.as_str()).await {
             Ok(response) => {
                 info!("[GET] {} [{}]", _url, response.status());
-                let body = response.text().await?;
-                debug!("Response Body: {}", body);
-                let data = serde_json::from_str::<T>(&body)?;
+                let data = response.json::<T>().await?;
                 Ok(data)
             }
             Err(e) => {
@@ -49,7 +48,7 @@ pub trait HttpClientImpl {
                     None => error!("[GET] {} - Error: {}", _url, e),
                 }
                 Err(anyhow!("Failed to fetch data: {}", e))
-            },
+            }
         }
     }
 
@@ -67,7 +66,21 @@ pub trait HttpClientImpl {
                     None => error!("[GET] {} - Error: {}", _url, e),
                 }
                 Err(anyhow!("Failed to fetch file: {}", e))
-            },
+            }
         }
     }
+}
+
+#[async_trait::async_trait]
+pub trait HttpClient: Send + Sync {
+    fn get_url(&self, base_url: String, path: String) -> String;
+    async fn get<T: DeserializeOwned + Send + 'static>(
+        &self,
+        base_url: String,
+        path: String,
+        params: HashMap<String, String>,
+    ) -> Result<T>
+    where
+        T: DeserializeOwned;
+    async fn get_file(&self, file_url: String) -> Result<Response>;
 }

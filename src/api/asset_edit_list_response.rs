@@ -1,4 +1,4 @@
-use serde::{Deserialize};
+use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct AssetEditListResponse {
@@ -24,11 +24,8 @@ pub struct AssetEditListItem {
 }
 
 impl AssetEditListItem {
-    pub fn new(
-        edit_id: String,
-        asset_id: String,
-        version_string: String,
-    ) -> AssetEditListItem {
+    #[allow(dead_code)]
+    pub fn new(edit_id: String, asset_id: String, version_string: String) -> AssetEditListItem {
         AssetEditListItem {
             edit_id,
             asset_id,
@@ -40,6 +37,7 @@ impl AssetEditListItem {
         &self.edit_id
     }
 
+    #[allow(dead_code)]
     pub fn get_asset_id(&self) -> &str {
         &self.asset_id
     }

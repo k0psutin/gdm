@@ -6,6 +6,7 @@ pub struct AssetListResponse {
 }
 
 impl AssetListResponse {
+    #[allow(dead_code)]
     pub fn new(result: Vec<AssetListItem>) -> AssetListResponse {
         AssetListResponse { result }
     }
@@ -54,7 +55,7 @@ impl Display for AssetListItem {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(
             f,
-"Asset ID: {}
+            "Asset ID: {}
 Title: {}
 Author: {}
 Category: {}
