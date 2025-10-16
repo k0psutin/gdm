@@ -1,32 +1,29 @@
-use clap::{ArgMatches, Command};
-use crate::plugin_service::PluginService;
+use crate::plugin_service::{PluginService, PluginServiceImpl};
 
-pub const COMMAND_NAME: &str = "search";
+use clap::Args;
 
-pub fn configure() -> Command {
-    Command::new(COMMAND_NAME)
-        .about("Searches for a specific plugin")
-        .arg(
-            clap::Arg::new("name")
-                .help("Name of the plugin to search for, e.g. \"Godot Unit Testing\"")
-                .required(true)
-                .value_parser(clap::value_parser!(String)),
-        ).arg(
-            clap::Arg::new("godot-version")
-                .help("The Godot version to search for, e.g. 4.5")
-                .required(false)
-                .long("godot-version")
-                .value_parser(clap::value_parser!(String)),
-        )
+#[derive(Args)]
+#[command(
+    about = "Search for plugins by name. If godot version can't be determined from the project, it can be provided with --godot-version"
+)]
+pub struct SearchArgs {
+    #[arg(help = "Name or part of the name of the plugin, e.g. \"Godot Unit Testing\"")]
+    name: String,
+    #[arg(
+        long,
+        help = "Specify the Godot version if it can't be determined from the project, e.g. --godot-version 4.5"
+    )]
+    godot_version: Option<String>,
 }
 
-pub async fn handle(_matches: &ArgMatches) -> anyhow::Result<()> {
-    
-    let name = _matches.get_one::<String>("name").unwrap();
-    let godot_version = _matches.get_one::<String>("godot-version").map(|s| s.as_str()).unwrap_or("");
-
+pub async fn handle(args: &SearchArgs) -> anyhow::Result<()> {
     let plugin_service = PluginService::default();
-    plugin_service.search_assets_by_name_or_version(name, godot_version).await?;
-    
+    plugin_service
+        .search_assets_by_name_or_version(
+            &args.name,
+            &args.godot_version.clone().unwrap_or_default(),
+        )
+        .await?;
+
     Ok(())
 }

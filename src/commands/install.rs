@@ -1,13 +1,12 @@
-use clap::{ArgMatches, Command};
-use crate::plugin_service::PluginService;
+use crate::plugin_service::{PluginService, PluginServiceImpl};
 
-pub const COMMAND_NAME: &str = "install";
+use clap::Args;
 
-pub fn configure() -> Command {
-    Command::new(COMMAND_NAME).about("Installs all plugins listed in the dependency file")
-}
+#[derive(Args)]
+#[command(about = "Install all plugins with versions listed in the configuration file.")]
+pub struct InstallArgs {}
 
-pub async fn handle(_matches: &ArgMatches) -> anyhow::Result<()> {
+pub async fn handle() -> anyhow::Result<()> {
     let plugin_service = PluginService::default();
     plugin_service.install_all_plugins().await?;    
     Ok(())

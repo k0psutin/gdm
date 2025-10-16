@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
-use crate::plugin_config::Plugin;
+use crate::plugin_config_repository::plugin::Plugin;
+use crate::api::asset_edit_response::AssetEditResponse;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct AssetResponse {
@@ -18,7 +19,37 @@ pub struct AssetResponse {
 }
 
 impl AssetResponse {
-    pub fn from_asset_edit_response(edit: &crate::api::asset_edit_response::AssetEditResponse) -> AssetResponse {
+    pub fn new(
+        asset_id: String,
+        title: String,
+        version: String,
+        version_string: String,
+        godot_version: String,
+        rating: String,
+        cost: String,
+        description: String,
+        download_provider: String,
+        download_commit: String,
+        modify_date: String,
+        download_url: String,
+    ) -> AssetResponse {
+        AssetResponse {
+            asset_id,
+            title,
+            version,
+            version_string,
+            godot_version,
+            rating,
+            cost,
+            description,
+            download_provider,
+            download_commit,
+            modify_date,
+            download_url,
+        }
+    }
+
+    pub fn from_asset_edit_response(edit: &AssetEditResponse) -> AssetResponse {
         let asset = edit.get_original();
         AssetResponse {
             asset_id: asset.asset_id.clone(),
@@ -41,27 +72,28 @@ impl AssetResponse {
             self.asset_id.clone(),
             self.title.clone(),
             self.version_string.clone(),
+            self.cost.clone(),
         )
     }
 
-    pub fn get_download_url(&self) -> &str {
-        &self.download_url
+    pub fn get_download_url(&self) -> String {
+        self.download_url.clone()
     }
 
-    pub fn get_title(&self) -> &str {
-        &self.title
+    pub fn get_title(&self) -> String {
+        self.title.clone()
     }
 
-    pub fn get_asset_id(&self) -> &str {
-        &self.asset_id
+    pub fn get_asset_id(&self) -> String {
+        self.asset_id.clone()
     }
 
-    pub fn get_version_string(&self) -> &str {
-        &self.version_string
+    pub fn get_version_string(&self) -> String {
+        self.version_string.clone()
     }
 
-    pub fn get_download_commit(&self) -> &str {
-        &self.download_commit
+    pub fn get_download_commit(&self) -> String {
+        self.download_commit.clone()
     }
 }
 
@@ -117,5 +149,6 @@ mod tests {
         assert_eq!(plugin.get_asset_id(), "456");
         assert_eq!(plugin.get_title(), "Test Asset");
         assert_eq!(plugin.get_version(), "0.0.1");
+        assert_eq!(plugin.get_license(), "MIT");
     }
 }

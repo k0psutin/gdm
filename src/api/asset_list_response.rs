@@ -1,9 +1,15 @@
+use std::fmt::{Display, Formatter, Result as FmtResult};
+
 #[derive(serde::Deserialize, Debug)]
 pub struct AssetListResponse {
     result: Vec<AssetListItem>,
 }
 
 impl AssetListResponse {
+    pub fn new(result: Vec<AssetListItem>) -> AssetListResponse {
+        AssetListResponse { result }
+    }
+
     pub fn get_result_len(&self) -> usize {
         self.result.len()
     }
@@ -21,9 +27,10 @@ impl AssetListResponse {
             return;
         }
 
-        println!();
         for asset in self.get_results() {
-            asset.print_info();
+            println!();
+            println!("{}", asset);
+            println!();
         }
     }
 }
@@ -33,9 +40,7 @@ pub struct AssetListItem {
     asset_id: String,
     title: String,
     author: String,
-    author_id: String,
     category: String,
-    category_id: String,
     godot_version: String,
     rating: String,
     cost: String,
@@ -45,6 +50,37 @@ pub struct AssetListItem {
     modify_date: String,
 }
 
+impl Display for AssetListItem {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        write!(
+            f,
+"Asset ID: {}
+Title: {}
+Author: {}
+Category: {}
+Godot Ver.: {}
+Version: {} ({})
+License: {}
+Rating: {}
+Support: {}
+Last Updated: {}
+Asset URL: https://godotengine.org/asset-library/asset/{}",
+            self.asset_id,
+            self.title,
+            self.author,
+            self.category,
+            self.godot_version,
+            self.version_string,
+            self.version,
+            self.cost,
+            self.rating,
+            self.support_level,
+            self.modify_date,
+            self.asset_id
+        )
+    }
+}
+
 impl AssetListItem {
     pub fn get_title(&self) -> &str {
         &self.title
@@ -52,27 +88,6 @@ impl AssetListItem {
 
     pub fn get_asset_id(&self) -> &str {
         &self.asset_id
-    }
-
-    pub fn print_info(&self) {
-        println!("Title:        {}", self.title);
-        println!("Author:       {} (ID: {})", self.author, self.author_id);
-        println!("Category:     {} (ID: {})", self.category, self.category_id);
-        println!("Godot Ver.:   {}", self.godot_version);
-        println!(
-            "Version:      {} (Internal: {})",
-            self.version_string, self.version
-        );
-        println!("License:      {}", self.cost);
-        println!("Rating:       {}", self.rating);
-        println!("Support:      {}", self.support_level);
-        println!("Asset ID:     {}", self.asset_id);
-        println!("Last Updated: {}", self.modify_date);
-        println!(
-            "Asset URL:    https://godotengine.org/asset-library/asset/{}",
-            self.asset_id
-        );
-        println!();
     }
 }
 
@@ -85,9 +100,7 @@ mod tests {
             asset_id: "123".to_string(),
             title: "Test Asset".to_string(),
             author: "Test Author".to_string(),
-            author_id: "456".to_string(),
             category: "Test Category".to_string(),
-            category_id: "789".to_string(),
             godot_version: "3.3".to_string(),
             rating: "5".to_string(),
             cost: "Free".to_string(),
@@ -103,10 +116,29 @@ mod tests {
         let asset = setup_asset_list_item();
         assert_eq!(asset.get_asset_id(), "123");
     }
-    
+
     #[test]
     fn test_should_return_title() {
         let asset = setup_asset_list_item();
         assert_eq!(asset.get_title(), "Test Asset");
+    }
+
+    #[test]
+    fn test_asset_list_item_display() {
+        let asset = setup_asset_list_item();
+        let display_output = format!("{}", asset);
+        let expected = "\
+    Asset ID: 123
+    Title: Test Asset
+    Author: Test Author
+    Category: Test Category
+    Godot Ver.: 3.3
+    Version: 1.0 (1.0)
+    License: Free
+    Rating: 5
+    Support: Community
+    Last Updated: 2023-01-01
+    Asset URL: https://godotengine.org/asset-library/asset/123";
+        assert_eq!(display_output, expected);
     }
 }

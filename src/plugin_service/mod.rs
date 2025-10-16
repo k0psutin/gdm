@@ -1,70 +1,84 @@
-use crate::api::{AssetStoreAPI, DownloadedPlugin};
 use crate::api::asset_list_response::AssetListResponse;
-use crate::api::asset_response::{AssetResponse};
-use crate::app_config::AppConfig;
-use crate::extract::Extract;
-use crate::godot_config::GodotConfig;
-use crate::plugin_config::{Plugin, PluginConfig};
+use crate::api::asset_response::AssetResponse;
+use crate::api::{AssetStoreAPI, AssetStoreAPIImpl, DownloadedPlugin};
+use crate::app_config::{AppConfig, AppConfigImpl};
+use crate::extract_service::{ExtractService, ExtractServiceImpl};
+use crate::godot_config_repository::GodotConfigRepository;
+use crate::plugin_config_repository::PluginConfigRepository;
+use crate::plugin_config_repository::plugin::Plugin;
 use crate::utils::Utils;
 
 use anyhow::{Context, Result, anyhow};
 use futures::future::try_join_all;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 use tokio::fs;
 use tokio::task::JoinSet;
+use tracing::{debug, error};
 
-#[faux::create]
+#[derive(Default)]
 pub struct PluginService {
-    godot_config: GodotConfig,
+    godot_config_repository: GodotConfigRepository,
     asset_store_api: AssetStoreAPI,
-    plugin_config: PluginConfig,
+    plugin_config_repository: PluginConfigRepository,
     app_config: AppConfig,
-    extract: Extract,
+    extract_service: ExtractService,
 }
 
-#[faux::methods]
 impl PluginService {
-    pub fn default() -> Self {
-        Self {
-            godot_config: GodotConfig::default(),
-            asset_store_api: AssetStoreAPI::default(),
-            plugin_config: PluginConfig::default(),
-            app_config: AppConfig::default(),
-            extract: Extract::default(),
-        }
-    }
-
-    pub fn new(
-        godot_config: Option<GodotConfig>,
+    fn new(
+        godot_config_repository: Option<GodotConfigRepository>,
         asset_store_api: Option<AssetStoreAPI>,
-        plugin_config: Option<PluginConfig>,
+        plugin_config_repository: Option<PluginConfigRepository>,
         app_config: Option<AppConfig>,
-        extract: Option<Extract>,
+        extract_service: Option<ExtractService>,
     ) -> Self {
         Self {
-            godot_config: godot_config.unwrap_or(GodotConfig::default()),
-            asset_store_api: asset_store_api.unwrap_or(AssetStoreAPI::default()),
-            plugin_config: plugin_config.unwrap_or(PluginConfig::default()),
-            app_config: app_config.unwrap_or(AppConfig::default()),
-            extract: extract.unwrap_or(Extract::default()),
+            godot_config_repository: godot_config_repository.unwrap_or_default(),
+            asset_store_api: asset_store_api.unwrap_or_default(),
+            plugin_config_repository: plugin_config_repository.unwrap_or_default(),
+            app_config: app_config.unwrap_or_default(),
+            extract_service: extract_service.unwrap_or_default(),
         }
     }
+}
 
-    pub async fn install_all_plugins(&self) -> Result<()> {
-        let plugins = self
-            .plugin_config
-            .get_plugins()
-            .values()
-            .into_iter()
-            .map(|p| p.clone())
-            .collect::<Vec<Plugin>>();
+impl PluginServiceImpl for PluginService {
+    fn get_plugin_config_repository(&self) -> &PluginConfigRepository {
+        &self.plugin_config_repository
+    }
 
+    fn get_asset_store_api(&self) -> &AssetStoreAPI {
+        &self.asset_store_api
+    }
+
+    fn get_godot_config_repository(&self) -> &GodotConfigRepository {
+        &self.godot_config_repository
+    }
+
+    fn get_app_config(&self) -> &AppConfig {
+        &self.app_config
+    }
+
+    fn get_extract_service(&self) -> &ExtractService {
+        &self.extract_service
+    }
+}
+
+pub trait PluginServiceImpl {
+    fn get_app_config(&self) -> &AppConfig;
+    fn get_extract_service(&self) -> &ExtractService;
+    fn get_godot_config_repository(&self) -> &GodotConfigRepository;
+    fn get_asset_store_api(&self) -> &AssetStoreAPI;
+    fn get_plugin_config_repository(&self) -> &PluginConfigRepository;
+
+    async fn install_all_plugins(&self) -> Result<()> {
+        let plugins = self.get_plugin_config_repository().get_plugins()?;
         self.install_plugins(plugins).await?;
 
-        println!("");
+        println!();
         println!("done.");
 
         Ok(())
@@ -112,7 +126,7 @@ impl PluginService {
         Ok(pb_task)
     }
 
-    fn create_extract_progress_bar(
+    fn create_extract_service_progress_bar(
         &self,
         m: &MultiProgress,
         index: usize,
@@ -131,21 +145,18 @@ impl PluginService {
     }
 
     /// Installs a single plugin by its name, asset ID, and version
-    pub async fn install_plugin(
-        &self,
-        name: Option<&String>,
-        asset_id: Option<&String>,
-        version: Option<&String>,
-    ) -> Result<HashMap<String, Plugin>> {
-        let _name = name.unwrap_or(&String::from("")).to_string();
-        let _asset_id = asset_id.unwrap_or(&String::from("")).to_string();
-        let _version = version.unwrap_or(&String::from("")).to_string();
+    async fn install_plugin(&self, name: String, asset_id: String, version: String) -> Result<()> {
         let asset: AssetResponse;
-        if !_version.is_empty() && !_asset_id.is_empty() {
+        if !version.is_empty() && !asset_id.is_empty() {
+            let _asset_id = asset_id.clone();
+            let _version = version.clone();
+
             asset = self
                 .find_plugin_by_asset_id_and_version(_asset_id, _version)
                 .await?;
-        } else if !_name.is_empty() || !_asset_id.is_empty() {
+        } else if !name.is_empty() || !asset_id.is_empty() {
+            let _name = name.clone();
+            let _asset_id = asset_id.clone();
             asset = self.find_plugin_by_id_or_name(_asset_id, _name).await?;
         } else {
             return Err(anyhow!("No name or asset ID provided"));
@@ -154,7 +165,7 @@ impl PluginService {
         let m = MultiProgress::new();
         let title = asset.get_title().to_string();
         let version = asset.get_version_string().to_string();
-        let cache_folder = self.app_config.get_cache_folder_path();
+        let cache_folder = self.get_app_config().get_cache_folder_path();
 
         let pb_download = self.create_download_progress_bar(
             &m,
@@ -164,32 +175,43 @@ impl PluginService {
             title,
             version,
         )?;
-        let downloaded_plugin = self.asset_store_api.download_plugin(&asset.clone(), pb_download, cache_folder.to_string()).await?;
+        let downloaded_plugin = self
+            .get_asset_store_api()
+            .download_plugin(&asset.clone(), pb_download, cache_folder.to_string())
+            .await?;
         let plugin = downloaded_plugin.get_plugin();
-        let pb_extract = self.create_extract_progress_bar(
+        let pb_extract_service = self.create_extract_service_progress_bar(
             &m,
             1,
             1,
-            String::from("Extracting"),
+            String::from("ExtractServiceing"),
             plugin.get_title().to_string(),
             plugin.get_version_string().to_string(),
         )?;
 
-        let addon_folder_path = self.app_config.get_addon_folder_path().to_string();
-        let plugin_root_folder = self.extract.extract_plugin(downloaded_plugin.get_file_path().clone(), addon_folder_path, pb_extract)
+        let addon_folder_path = self.get_app_config().get_addon_folder_path().to_string();
+        let plugin_root_folder = self
+            .get_extract_service()
+            .extract_plugin(
+                downloaded_plugin.get_file_path().clone(),
+                addon_folder_path,
+                pb_extract_service,
+            )
             .await?;
 
-        Ok(HashMap::from([(plugin_root_folder, asset.to_plugin())]))
+        let plugins = HashMap::from([(plugin_root_folder.clone(), asset.to_plugin())]);
+        self.add_plugins(plugins)?;
+        Ok(())
     }
 
-    /// Downloads and extracts all plugins under /addons folder
-    async fn download_and_extract_plugins(
+    /// Downloads and extract_services all plugins under /addons folder
+    async fn download_and_extract_service_plugins(
         &self,
         main_start_message: String,
         plugins: Vec<AssetResponse>,
     ) -> Result<HashMap<String, Plugin>> {
-        let cache_folder = self.app_config.get_cache_folder_path();
-        let addon_folder = self.app_config.get_addon_folder_path();
+        let cache_folder = self.get_app_config().get_cache_folder_path();
+        let addon_folder = self.get_app_config().get_addon_folder_path();
 
         let mut download_tasks = JoinSet::new();
         let pb_multi = MultiProgress::new();
@@ -208,9 +230,12 @@ impl PluginService {
                 plugin.get_title().to_string(),
                 plugin.get_version_string().to_string(),
             )?;
-            let asset_store_api = self.asset_store_api.clone();
+            let asset_store_api = self.get_asset_store_api().clone();
+            let cache_folder_clone = cache_folder.clone();
             download_tasks.spawn(async move {
-                asset_store_api.download_plugin(&plugin, pb_task, cache_folder.to_string()).await
+                asset_store_api
+                    .download_plugin(&plugin, pb_task, cache_folder_clone)
+                    .await
             });
         }
 
@@ -219,28 +244,31 @@ impl PluginService {
             .into_iter()
             .collect::<Result<Vec<DownloadedPlugin>>>()?;
 
-        let mut extract_tasks = JoinSet::new();
+        let mut extract_service_tasks = JoinSet::new();
 
-        pb_main.set_message("Extracting plugins");
+        pb_main.set_message("ExtractServiceing plugins");
 
         for (index, downloaded_plugin) in download_tasks.clone().into_iter().enumerate() {
             let plugin = downloaded_plugin.get_plugin().clone();
             let file_path = downloaded_plugin.get_file_path().clone();
-            let pb_task = self.create_extract_progress_bar(
+            let pb_task = self.create_extract_service_progress_bar(
                 &pb_multi,
                 index + 1,
                 download_tasks.len(),
-                String::from("Extracting"),
+                String::from("ExtractServiceing"),
                 plugin.get_title().to_string(),
                 plugin.get_version_string().to_string(),
             )?;
-            let extract = self.extract.clone();
-            extract_tasks.spawn(async move {
-                extract.extract_plugin(file_path, addon_folder.to_string(), pb_task).await
+            let extract_service = self.get_extract_service().clone();
+            let addon_folder = addon_folder.clone();
+            extract_service_tasks.spawn(async move {
+                extract_service
+                    .extract_plugin(file_path, addon_folder, pb_task)
+                    .await
             });
         }
 
-        while let Some(res) = extract_tasks.join_next().await {
+        while let Some(res) = extract_service_tasks.join_next().await {
             let _ = res??;
         }
 
@@ -267,9 +295,12 @@ impl PluginService {
     }
 
     /// Install all plugins from the given list of Plugins
-    async fn install_plugins(&self, plugins: Vec<Plugin>) -> Result<HashMap<String, Plugin>> {
+    async fn install_plugins(
+        &self,
+        plugins: Vec<(String, Plugin)>,
+    ) -> Result<HashMap<String, Plugin>> {
         let mut asset = Vec::new();
-        for plugin in plugins {
+        for (_, plugin) in plugins {
             let asset_id = plugin.get_asset_id().clone();
             let version = plugin.get_version().clone();
             let asset_request = self.find_plugin_by_asset_id_and_version(asset_id, version);
@@ -279,35 +310,37 @@ impl PluginService {
         let assets = try_join_all(asset).await?;
 
         let installed_plugins = self
-            .download_and_extract_plugins(String::from("Downloading plugins"), assets)
+            .download_and_extract_service_plugins(String::from("Downloading plugins"), assets)
             .await?;
+
+        self.add_plugins(installed_plugins.clone())?;
 
         Ok(installed_plugins)
     }
 
-    pub async fn add_plugin_by_id_or_name_and_version(
+    async fn add_plugin_by_id_or_name_and_version(
         &self,
-        asset_id: Option<&String>,
-        name: Option<&String>,
-        version: Option<&String>,
+        asset_id: Option<String>,
+        name: Option<String>,
+        version: Option<String>,
     ) -> Result<()> {
-        let installed_plugins = self.install_plugin(asset_id, name, version).await?;
-        self.add_plugins_to_config(installed_plugins.clone())?;
-        self.add_plugins_to_godot_project(installed_plugins)?;
+        let _name = name.unwrap_or_default();
+        let _asset_id = asset_id.unwrap_or_default();
+        let _version = version.unwrap_or_default();
+
+        if _name.is_empty() && _asset_id.is_empty() {
+            return Err(anyhow!("Either name or asset ID must be provided."));
+        }
+
+        self.install_plugin(_name, _asset_id, _version).await?;
         Ok(())
     }
 
-    fn add_plugins_to_godot_project(&self, plugins: HashMap<String, Plugin>) -> Result<()> {
-        self.godot_config
-            .add_installed_plugins(plugins)
-            .with_context(|| format!("Failed to add plugins to Godot project configuration",))?;
-
-        println!("Plugins added to Godot project configuration.");
-        Ok(())
-    }
-
-    fn add_plugins_to_config(&self, plugins: HashMap<String, Plugin>) -> Result<()> {
-        self.plugin_config.add_plugins(plugins)?;
+    fn add_plugins(&self, plugins: HashMap<String, Plugin>) -> Result<()> {
+        let godot_config_repository = self.get_godot_config_repository();
+        let plugin_config_repository = self.get_plugin_config_repository();
+        let plugin_config = plugin_config_repository.add_plugins(plugins)?;
+        godot_config_repository.update_plugins(plugin_config)?;
         Ok(())
     }
 
@@ -317,17 +350,22 @@ impl PluginService {
         version: String,
     ) -> Result<AssetResponse> {
         if !asset_id.is_empty() && !version.is_empty() {
+            debug!(
+                "Finding plugin by asset ID and version: {} {}",
+                asset_id, version
+            );
             let id = asset_id;
             let ver = version;
             let asset = self
-                .asset_store_api
+                .get_asset_store_api()
                 .get_asset_by_id_and_version(id.as_str(), ver.as_str())
                 .await?;
-            return Ok(asset);
+            Ok(asset)
         } else {
-            return Err(anyhow!(
+            error!("Asset ID or version is empty");
+            Err(anyhow!(
                 "Both asset ID and version must be provided to search by version."
-            ));
+            ))
         }
     }
 
@@ -338,13 +376,13 @@ impl PluginService {
     ) -> Result<AssetResponse> {
         if !asset_id.is_empty() {
             let asset = self
-                .asset_store_api
+                .get_asset_store_api()
                 .get_asset_by_id(asset_id.clone())
                 .await?;
-            return Ok(asset);
+            Ok(asset)
         } else if !name.is_empty() {
             let params = HashMap::from([("filter", name.as_str()), ("godot_version", "4.5")]);
-            let asset_results = self.asset_store_api.get_assets(params).await?;
+            let asset_results = self.get_asset_store_api().get_assets(params).await?;
 
             if asset_results.get_result_len() != 1 {
                 return Err(anyhow!(
@@ -355,10 +393,13 @@ impl PluginService {
             }
             let asset = asset_results.get_asset_list_item_by_index(0).unwrap();
             let id = asset.get_asset_id().to_owned();
-            let asset = self.asset_store_api.get_asset_by_id(id.clone()).await?;
+            let asset = self
+                .get_asset_store_api()
+                .get_asset_by_id(id.clone())
+                .await?;
 
-            self.plugin_config
-                .check_if_plugin_already_installed_by_asset_id(asset.get_asset_id());
+            // self.get_plugin_config()
+            //     .check_if_plugin_already_installed_by_asset_id(asset.get_asset_id());
             // TODO check if plugin is already installed to addons folder
             // let existing_plugin = plugin_config.get_plugin_by_asset_id(asset.get_asset_id().to_string());
 
@@ -380,54 +421,64 @@ impl PluginService {
             //     }
             //     None => {}
             // }
-            return Ok(asset);
+            Ok(asset)
         } else {
-            return Err(anyhow!("No name or asset ID provided"));
+            error!("No name or asset ID provided: {}, {}", name, asset_id);
+            println!("No name or asset ID provided");
+            Err(anyhow!("No name or asset ID provided"))
         }
     }
 
-    pub async fn remove_plugin_by_name(&self, name: &str) -> Result<()> {
-        let plugin_config = PluginConfig::default();
-        let installed_plugin = plugin_config.get_plugin_key_by_name(name);
+    async fn remove_plugin_by_name(&self, name: &str) -> Result<()> {
+        let godot_config_repository = self.get_godot_config_repository();
+        let plugin_config_repository = self.get_plugin_config_repository();
+
+        let installed_plugin = plugin_config_repository.get_plugin_key_by_name(name);
+        let addon_folder = self.get_app_config().get_addon_folder_path();
 
         match installed_plugin {
             Some(plugin_name) => {
-                // Remove plugin directory
                 let plugin_folder_path =
-                    Utils::plugin_name_to_addon_folder_path(plugin_name.clone());
-                println!("Removing plugin folder: {}", plugin_folder_path);
+                    Utils::plugin_name_to_addon_folder_path(plugin_name.clone(), addon_folder);
 
+                // Remove plugin directory if it exists
+                // TODO use fileservice
                 if fs::try_exists(&plugin_folder_path).await? {
+                    println!("Removing plugin folder: {}", plugin_folder_path);
                     fs::remove_dir_all(&plugin_folder_path).await?;
                 } else {
                     println!(
                         "Plugin folder does not exist, trying to remove from {}",
-                        AppConfig::default().get_config_file_name()
+                        self.get_app_config().get_config_file_path()
                     );
                 }
 
                 // Remove plugin from plugin config
-                let plugin_remove_result =
-                    plugin_config.remove_installed_plugin(plugin_name.clone());
-                match plugin_remove_result {
-                    Ok(_) => {}
-                    Err(e) => eprintln!("Failed to remove plugin from plugin configuration: {}", e),
-                }
+                let plugin_config = plugin_config_repository
+                    .remove_plugins(HashSet::from([plugin_name.clone()]))
+                    .with_context(|| {
+                        format!(
+                            "Failed to remove plugin {} from plugin configuration",
+                            plugin_name
+                        )
+                    })?;
 
                 // Remove plugin from godot project config
-                let remove_result = self
-                    .godot_config
-                    .remove_installed_plugin(vec![plugin_name.clone()]);
-                match remove_result {
-                    Ok(_) => println!("Plugin {} removed successfully.", plugin_name),
-                    Err(e) => eprintln!(
-                        "Failed to remove plugin from Godot project configuration: {}",
-                        e
-                    ),
-                }
+                godot_config_repository
+                    .update_plugins(plugin_config)
+                    .with_context(|| {
+                        format!(
+                            "Failed to remove plugin {} from Godot project configuration",
+                            plugin_name
+                        )
+                    })?;
+                println!("Plugin {} removed successfully.", plugin_name);
                 Ok(())
             }
-            None => Err(anyhow!("Plugin {} is not installed.", name)),
+            None => {
+                println!("Plugin {} is not installed.", name);
+                Ok(())
+            }
         }
     }
 
@@ -435,57 +486,49 @@ impl PluginService {
     /// Prints a list of outdated plugins with their current and latest versions, e.g.:
     /// Plugin                  Current    Latest
     /// some_plugin             1.5.0      1.6.0 (update available)
-    pub async fn check_outdated_plugins(&self) -> Result<()> {
+    async fn check_outdated_plugins(&self) -> Result<()> {
+        let plugin_config_repository = self.get_plugin_config_repository();
+
         println!("Checking for outdated plugins");
         println!();
 
-        let mut plugins = self
-            .plugin_config
-            .get_plugins()
-            .into_iter()
-            .collect::<Vec<_>>();
-        plugins.sort_by(|a, b| a.0.cmp(&b.0));
+        let plugins = plugin_config_repository.get_plugins()?;
 
         println!("{0: <40} {1: <20} {2: <20}", "Plugin", "Current", "Latest");
-        let mut has_an_update = false;
+        let mut updated_plugins = Vec::new();
 
         for plugin in plugins {
             let asset = self
-                .asset_store_api
+                .get_asset_store_api()
                 .get_asset_by_id(plugin.1.get_asset_id().clone())
-                .await;
-            match asset {
-                Ok(asset) => {
-                    has_an_update = has_an_update
-                        || asset.get_version_string().cmp(&plugin.1.get_version())
-                            == Ordering::Greater;
+                .await?;
 
-                    let version = format!(
-                        "{} {}",
-                        asset.get_version_string(),
-                        if has_an_update {
-                            "(update available)"
-                        } else {
-                            ""
-                        }
-                    );
-                    println!(
-                        "{0: <40} {1: <20} {2: <20}",
-                        plugin.0,
-                        plugin.1.get_version(),
-                        version
-                    );
-                }
-                Err(e) => eprintln!(
-                    "Failed to fetch asset info for plugin {}: {}",
-                    plugin.1.get_title(),
-                    e
-                ),
+            let has_an_update =
+                asset.get_version_string().cmp(&plugin.1.get_version()) == Ordering::Greater;
+
+            if has_an_update {
+                updated_plugins.push(asset.clone());
             }
+
+            let version = format!(
+                "{} {}",
+                asset.get_version_string(),
+                if has_an_update {
+                    "(update available)"
+                } else {
+                    ""
+                }
+            );
+            println!(
+                "{0: <40} {1: <20} {2: <20}",
+                plugin.0,
+                plugin.1.get_version(),
+                version
+            );
         }
         println!();
 
-        if !has_an_update {
+        if updated_plugins.is_empty() {
             println!("All plugins are up to date.");
         } else {
             println!("To update a plugins, use: gdm update");
@@ -496,22 +539,27 @@ impl PluginService {
     /// Update all installed plugins to their latest versions
     /// Downloads and installs the latest versions of all plugins that have updates available
     /// Updates the plugin configuration file with the new versions
-    pub async fn update_plugins(&self) -> Result<()> {
-        let mut plugins = self
-            .plugin_config
-            .get_plugins()
-            .into_iter()
-            .collect::<Vec<_>>();
-        plugins.sort_by(|a, b| a.0.cmp(&b.0));
+    async fn update_plugins(&self) -> Result<()> {
+        // TODO Not working
+        let plugin_config_repository = self.get_plugin_config_repository();
+        let plugins = plugin_config_repository.get_plugins()?;
+
+        debug!("Checking for plugin updates for {:?} plugins", plugins);
 
         let mut plugins_to_update = Vec::new();
 
-        for plugin in plugins {
+        for (_, plugin) in plugins {
             let asset = self
-                .asset_store_api
-                .get_asset_by_id(plugin.1.get_asset_id().clone())
+                .get_asset_store_api()
+                .get_asset_by_id(plugin.get_asset_id().clone())
                 .await?;
-            if asset.get_version_string().cmp(&plugin.1.get_version()) == Ordering::Greater {
+            debug!(
+                "Comparing plugin {} version {} with latest version {}",
+                plugin.get_title(),
+                plugin.get_version(),
+                asset.get_version_string()
+            );
+            if asset.get_version_string().cmp(&plugin.get_version()) == Ordering::Greater {
                 plugins_to_update.push(asset);
             }
         }
@@ -520,12 +568,12 @@ impl PluginService {
             println!("All plugins are up to date.");
         } else {
             let updated_plugins = self
-                .download_and_extract_plugins(
+                .download_and_extract_service_plugins(
                     String::from("Updating plugins"),
                     plugins_to_update.clone(),
                 )
                 .await?;
-            self.plugin_config.add_plugins(updated_plugins.clone())?;
+            plugin_config_repository.add_plugins(updated_plugins.clone())?;
             println!("Plugins updated successfully.");
         }
         Ok(())
@@ -536,7 +584,8 @@ impl PluginService {
         name: &str,
         version: &str,
     ) -> Result<AssetListResponse> {
-        let parsed_version = self.godot_config.get_godot_version()?;
+        let godot_config_repository = self.get_godot_config_repository();
+        let parsed_version = godot_config_repository.get_godot_version_from_project()?;
 
         if name.is_empty() {
             return Err(anyhow!("No name provided"));
@@ -555,11 +604,11 @@ impl PluginService {
         };
 
         let params = HashMap::from([("filter", name), ("godot_version", version)]);
-        let asset_results = self.asset_store_api.get_assets(params).await?;
+        let asset_results = self.get_asset_store_api().get_assets(params).await?;
         Ok(asset_results)
     }
 
-    pub async fn search_assets_by_name_or_version(&self, name: &str, version: &str) -> Result<()> {
+    async fn search_assets_by_name_or_version(&self, name: &str, version: &str) -> Result<()> {
         let asset_list_response = self
             .get_asset_list_response_by_name_or_version(name, version)
             .await?;
@@ -590,38 +639,44 @@ impl PluginService {
 
 #[cfg(test)]
 mod tests {
-    use crate::plugin_service;
-
     use super::*;
 
-    // Test struct that drops file after tests
-    #[derive(Debug)]
-    struct TestResource {
-        path: String,
+    use crate::{
+        api::MockAssetStoreAPI,
+        app_config::{AppConfig, MockAppConfig},
+        extract_service::MockExtractService,
+        godot_config_repository::MockGodotConfigRepository,
+        plugin_service::PluginServiceImpl,
+    };
+
+    pub struct MockPluginService {
+        godot_config_repository: MockGodotConfigRepository,
+        asset_store_api: MockAssetStoreAPI,
+        plugin_config_repository: MockGodotConfigRepository,
+        app_config: MockAppConfig,
+        extract_service: MockExtractService,
     }
 
-    impl Drop for TestResource {
-        fn drop(&mut self) {
-            std::fs::remove_file(&self.path).unwrap();
+    impl PluginServiceImpl for MockPluginService {
+        fn get_plugin_config_repository(&self) -> &MockGodotConfigRepository {
+            &self.plugin_config_repository
         }
-    }
 
-    fn setup_plugin_service() -> PluginService {
-        let app_config = AppConfig::new(
-            None,
-            None,
-            Some("test/mocks/gdm.json"),
-            None,
-            Some("test/mocks/project_with_plugins_and_version.godot"),
-            Some("test/addons"),
-        );
-        PluginService::new(
-            None,
-            None,
-            Some(PluginConfig::new("test/mocks/gdm.json")),
-            Some(app_config),
-            None,
-        )
+        fn get_asset_store_api(&self) -> &MockAssetStoreAPI {
+            &self.asset_store_api
+        }
+
+        fn get_godot_config_repository(&self) -> &GodotConfigRepository {
+            &self.godot_config_repository
+        }
+
+        fn get_app_config(&self) -> &MockAppConfig {
+            &self.app_config
+        }
+
+        fn get_extract_service(&self) -> &MockExtractService {
+            &self.extract_service
+        }
     }
 
     // find_plugin_by_id_or_name
@@ -776,27 +831,9 @@ mod tests {
 
     // install_all_plugins
 
-    fn setup_plugin_service_for_plugins(gdm_json_path: &'static str) -> PluginService {
-        let app_config = AppConfig::new(
-            None,
-            None,
-            Some(gdm_json_path),
-            None,
-            Some("test/mocks/project_with_plugins_and_version.godot"),
-            Some("test/addons"),
-        );
-        PluginService::new(
-            None,
-            None,
-            Some(PluginConfig::new(gdm_json_path)),
-            Some(app_config),
-            None,
-        )
-    }
-
     #[tokio::test]
     async fn test_install_plugins_should_install_all_plugins_in_config() {
-        let plugin_service = setup_plugin_service_for_plugins("test/mocks/gdm_with_plugins.json");
+        let plugin_service = setup_plugin_service();
         let result = plugin_service.install_all_plugins().await;
         println!("{:?}", result);
         assert!(result.is_ok());
@@ -806,58 +843,49 @@ mod tests {
 
     #[tokio::test]
     async fn test_install_plugin_with_asset_id_and_no_version_should_return_err() {
-        let plugin_service = setup_plugin_service_for_plugins("test/mocks/gdm_with_plugins.json");
-        let name = None;
-        let asset_id = Some("1709".to_string());
-        let version = None;
-        let result = plugin_service
-            .install_plugin(name, asset_id.as_ref(), version)
-            .await;
+        let plugin_service = setup_plugin_service();
+        let name = String::default();
+        let asset_id = String::from("1709");
+        let version = String::default();
+        let result = plugin_service.install_plugin(name, asset_id, version).await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_install_plugin_with_only_version_should_return_err() {
-        let plugin_service = setup_plugin_service_for_plugins("test/mocks/gdm_with_plugins.json");
-        let name = None;
-        let asset_id = None;
-        let version = Some("9.1.0".to_string());
-        let result = plugin_service
-            .install_plugin(name, asset_id.as_ref(), version.as_ref())
-            .await;
+        let plugin_service = setup_plugin_service();
+        let name = String::default();
+        let asset_id = String::default();
+        let version = String::from("9.1.0");
+        let result = plugin_service.install_plugin(name, asset_id, version).await;
         assert!(result.is_err());
     }
-
     #[tokio::test]
     async fn test_install_plugin_with_asset_id_and_version_should_install_plugin() {
-        let plugin_service = setup_plugin_service_for_plugins("test/mocks/gdm_with_plugins.json");
-        let name = None;
-        let asset_id = Some("1709".to_string());
-        let version = Some("9.1.0".to_string());
-        let result = plugin_service
-            .install_plugin(name, asset_id.as_ref(), version.as_ref())
-            .await;
+        let plugin_service = setup_plugin_service();
+        let name = String::new();
+        let asset_id = String::from("1709");
+        let version = String::from("9.1.0");
+        let result = plugin_service.install_plugin(name, asset_id, version).await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_install_plugin_with_asset_id_should_install_plugin() {
-        let plugin_service = setup_plugin_service_for_plugins("test/mocks/gdm_with_plugins.json");
-        let name = None;
-        let asset_id = Some("1709".to_string());
-        let version = None;
-        let result = plugin_service
-            .install_plugin(name, asset_id.as_ref(), version)
-            .await;
+        let plugin_service = setup_plugin_service();
+        let name = String::new();
+        let asset_id = String::from("1709");
+        let version = String::new();
+        let result = plugin_service.install_plugin(name, asset_id, version).await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_install_plugin_with_name_should_install_plugin() {
-        let plugin_service = setup_plugin_service_for_plugins("test/mocks/gdm_with_plugins.json");
-        let name = Some(&"Godot Unit Testing".to_string());
-        let asset_id = None;
-        let version = None;
+        let plugin_service = setup_plugin_service();
+        let name = String::from("Godot Unit Testing");
+        let asset_id = String::new();
+        let version = String::new();
         let result = plugin_service.install_plugin(name, asset_id, version).await;
         assert!(result.is_ok());
     }

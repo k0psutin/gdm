@@ -5,30 +5,49 @@ mod search;
 mod outdated;
 mod update;
 
-use clap::{ArgMatches, Command};
 use anyhow::{Result};
 
-pub fn configure(command: Command) -> Command {
-    command.subcommand(add::configure())
-    .subcommand(remove::configure())
-    .subcommand(install::configure())
-    .subcommand(search::configure())
-    .subcommand(outdated::configure())
-    .subcommand(update::configure())
-    .arg_required_else_help(true)
+use clap::{Parser, Subcommand};
+
+use crate::commands::{add::AddArgs, install::InstallArgs, outdated::OutdatedArgs, remove::RemoveArgs, search::SearchArgs, update::UpdateArgs};
+
+#[derive(Parser)]
+#[command(about, version, author, long_about = None)]
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Commands,
 }
 
-pub async fn handle(matches: &ArgMatches) -> Result<()> {
-    if let Some((cmd, _matches)) = matches.subcommand() {
-        match cmd {
-            add::COMMAND_NAME => { add::handle(_matches).await?; },
-            remove::COMMAND_NAME => { remove::handle(_matches).await?; },
-            install::COMMAND_NAME => { install::handle(_matches).await?; },
-            search::COMMAND_NAME => { search::handle(_matches).await?; },
-            outdated::COMMAND_NAME => { outdated::handle(_matches).await?; },
-            update::COMMAND_NAME => { update::handle(_matches).await?; },
-            &_ => {}
-        }
+#[derive(Subcommand)]
+pub enum Commands {
+    Add(AddArgs),
+    Install(InstallArgs),
+    Outdated(OutdatedArgs),
+    Remove(RemoveArgs),
+    Search(SearchArgs),
+    Update(UpdateArgs),
+}
+
+pub async fn handle(command: &Commands) -> Result<()> {
+    match command {
+        Commands::Add(add_args) => {
+            add::handle(add_args).await?;
+        },
+        Commands::Install(_) => {
+            install::handle().await?;
+        },
+        Commands::Outdated(_) => {
+            outdated::handle().await?;
+        },
+        Commands::Remove(remove_args) => {
+            remove::handle(remove_args).await?;
+        },
+        Commands::Search(search_args) => {
+            search::handle(search_args).await?;
+        },
+        Commands::Update(_) => {
+            update::handle().await?;
+        },
     }
 
     Ok(())

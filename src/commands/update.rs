@@ -1,14 +1,12 @@
-use clap::{ArgMatches, Command};
-use crate::plugin_service;
+use crate::plugin_service::{self, PluginServiceImpl};
 
-pub const COMMAND_NAME: &str = "update";
+use clap::Args;
 
-pub fn configure() -> Command {
-    Command::new(COMMAND_NAME)
-        .about("Updates outdated plugins")
-}
+#[derive(Args)]
+#[command(about = "Update all outdated plugins")]
+pub struct UpdateArgs {}
 
-pub async fn handle(_matches: &ArgMatches) -> anyhow::Result<()> {
+pub async fn handle() -> anyhow::Result<()> {
     let plugin_service = plugin_service::PluginService::default();
     plugin_service.update_plugins().await?;
     Ok(())

@@ -1,33 +1,38 @@
 mod api;
-mod commands;
-mod plugin_config;
 mod app_config;
-mod godot_config;
-mod extract;
-mod http_client;
-mod plugin_service;
+mod commands;
+mod extract_service;
 mod file_service;
+mod godot_config_repository;
+mod http_client;
+mod plugin_config_repository;
+mod plugin_service;
 mod utils;
 
-use clap::Command;
-use crate::app_config::AppConfig;
+use crate::commands::Cli;
+use anyhow::Result;
+use clap::Parser;
+use dotenv::dotenv;
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-        let application_name = AppConfig::default().get_application_name();
-        let mut command = Command::new(application_name)
-            .version("0.1.0")
-            .about("A CLI tool to manage Godot dependencies");
-        command = commands::configure(command);
+async fn main() -> Result<()> {
+    dotenv().ok();
 
-        let matches = command.get_matches();
-        let result = commands::handle(&matches).await;
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(EnvFilter::from_default_env())
+        .init();
 
-        return match result {
-            Ok(()) => Ok(()),
-            Err(e) => {
-                eprintln!("{}", e);
-                Ok(())
-            }
-        };
+    let cli = Cli::parse();
+
+    let result = commands::handle(&cli.command).await;
+
+    match result {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+    }
 }

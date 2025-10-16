@@ -4,35 +4,55 @@ use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
-use zip;
 
+use crate::app_config::AppConfig;
+use crate::app_config::AppConfigImpl;
 use crate::file_service::FileService;
+use crate::file_service::FileServiceInternal;
 use crate::utils::Utils;
 
-#[faux::create]
-#[derive(Clone)]
-pub struct Extract;
+#[derive(Clone, Default)]
+pub struct ExtractService {
+    file_service: FileService,
+    app_config: AppConfig,
+}
 
-#[faux::methods]
-impl Extract {
-    pub fn new() -> Self {
-        Extract {}
+impl ExtractService {
+    pub fn new(file_service: FileService, app_config: AppConfig) -> Self {
+        ExtractService {
+            file_service,
+            app_config,
+        }
     }
-    pub fn default() -> Self {
-        Self::new()
+}
+
+#[cfg_attr(test, mockall::automock)]
+impl ExtractServiceImpl for ExtractService {
+    fn get_file_service(&self) -> &FileService {
+        &self.file_service
     }
+
+    fn get_app_config(&self) -> &AppConfig {
+        &self.app_config
+    }
+}
+
+pub trait ExtractServiceImpl {
+    fn get_app_config(&self) -> &AppConfig;
+    fn get_file_service(&self) -> &FileService;
+
     fn create_extract_path(&self, root: PathBuf, path: PathBuf) -> PathBuf {
         let index = path.iter().skip(1).position(|p| p == "addons");
         match index {
             Some(i) => {
                 let components: Vec<_> = path.iter().skip(i + 2).collect();
-                let mut new_path = PathBuf::from(root);
+                let mut new_path = root;
                 new_path.extend(components);
                 new_path
             }
             None => {
                 let components: Vec<_> = path.iter().skip(1).collect();
-                let mut new_path = PathBuf::from(root);
+                let mut new_path = root;
                 new_path.extend(components);
                 new_path
             }
@@ -40,7 +60,7 @@ impl Extract {
     }
 
     fn get_root_directory_name_from_archive(
-        &self, 
+        &self,
         archive: &mut zip::ZipArchive<fs::File>,
     ) -> Result<PathBuf> {
         let mut paths = HashSet::new();
@@ -52,10 +72,8 @@ impl Extract {
                     continue;
                 }
                 paths.insert(path);
-            } else if file.is_file() {
-                if path.iter().count() == 1 {
-                    return Err(anyhow!("Invalid archive structure: no root folder"));
-                }
+            } else if file.is_file() && path.iter().count() == 1 {
+                return Err(anyhow!("Invalid archive structure: no root folder"));
             }
         }
         if paths.is_empty() {
@@ -69,7 +87,7 @@ impl Extract {
         }
     }
 
-    pub fn get_root_dir_from_archive(&self, file_path: &str) -> anyhow::Result<String> {
+    fn get_root_dir_from_archive(&self, file_path: &str) -> anyhow::Result<String> {
         let file = fs::File::open(file_path)?;
         let mut archive = zip::ZipArchive::new(file)?;
         let plugin_root_dir: PathBuf = self.get_root_directory_name_from_archive(&mut archive)?;
@@ -77,12 +95,13 @@ impl Extract {
     }
 
     fn extract_zip_file(
-        &self, 
+        &self,
         file_path: String,
         destination: String,
         pb_task: ProgressBar,
     ) -> anyhow::Result<()> {
-        let file = fs::File::open(file_path)?;
+        let file_service = self.get_file_service();
+        let file = file_service.open(PathBuf::from(file_path))?;
         let _destination = PathBuf::from(&destination);
 
         let mut archive = zip::ZipArchive::new(file)?;
@@ -98,14 +117,14 @@ impl Extract {
             };
 
             if file.is_dir() {
-                FileService::create_directory(&outpath).unwrap();
+                file_service.create_directory(outpath).unwrap();
             } else {
-                if let Some(p) = outpath.parent() {
-                    if !p.exists() {
-                        FileService::create_directory(&PathBuf::from(p)).unwrap();
-                    }
+                if let Some(p) = outpath.parent()
+                    && !p.exists()
+                {
+                    file_service.create_directory(PathBuf::from(p)).unwrap();
                 }
-                let mut outfile = FileService::create_file(&outpath).unwrap();
+                let mut outfile = file_service.create_file(outpath).unwrap();
                 io::copy(&mut file, &mut outfile).unwrap();
             }
             // Get and Set permissions
@@ -122,31 +141,34 @@ impl Extract {
         Ok(())
     }
 
-    /// Extracts a downloaded plugin zip file to the addons folder and removes the zip file afterwards
+    /// ExtractServices a downloaded plugin zip file to the addons folder and removes the zip file afterwards
     ///
     /// Removes the old plugin folder if it already exists
-    pub async fn extract_plugin(
-        &self, 
+    async fn extract_plugin(
+        &self,
         file_path: String,
         addon_folder_path: String,
         pb_task: ProgressBar,
     ) -> Result<String> {
+        let file_service = self.get_file_service();
         let plugin_folder = self.get_root_dir_from_archive(&file_path)?;
-        let plugin_folder_path = Utils::plugin_name_to_addon_folder_path(plugin_folder);
+        let addon_folder = self.get_app_config().get_addon_folder_path();
+        let plugin_folder_path =
+            Utils::plugin_name_to_addon_folder_path(plugin_folder.clone(), addon_folder);
 
-        if FileService::directory_exists(&PathBuf::from(&format!(
+        if file_service.directory_exists(PathBuf::from(&format!(
             "{}/{}",
             &addon_folder_path, &plugin_folder_path
         ))) {
-            FileService::remove_dir_all(&PathBuf::from(&format!(
+            file_service.remove_dir_all(PathBuf::from(&format!(
                 "{}/{}",
                 &addon_folder_path, &plugin_folder_path
             )))?;
         }
 
         self.extract_zip_file(file_path.clone(), addon_folder_path, pb_task)?;
-        FileService::remove_file(&PathBuf::from(file_path))?;
-        Ok(plugin_folder_path)
+        file_service.remove_file(PathBuf::from(file_path))?;
+        Ok(plugin_folder)
     }
 }
 
@@ -156,7 +178,7 @@ mod tests {
 
     #[test]
     fn test_get_root_directory_name_from_archive_with_addons_folder() {
-        let extract = Extract::new();
+        let extract = ExtractService::default();
         let file = fs::File::open("test/mocks/zip_files/test_with_addons_folder.zip").unwrap();
         let mut archive = zip::ZipArchive::new(file).unwrap();
         let root_dir = extract.get_root_directory_name_from_archive(&mut archive);
@@ -165,7 +187,7 @@ mod tests {
 
     #[test]
     fn test_get_root_directory_name_from_archive_without_addons_folder() {
-        let extract = Extract::new();
+        let extract = ExtractService::default();
         let file = fs::File::open("test/mocks/zip_files/test_without_addons_folder.zip").unwrap();
         let mut archive = zip::ZipArchive::new(file).unwrap();
         let root_dir = extract.get_root_directory_name_from_archive(&mut archive);
@@ -174,7 +196,7 @@ mod tests {
 
     #[test]
     fn test_get_root_directory_name_from_archive_without_root_should_return_error() {
-        let extract = Extract::new();
+        let extract = ExtractService::default();
         let file = fs::File::open("test/mocks/zip_files/test_without_root_folder.zip").unwrap();
         let mut archive = zip::ZipArchive::new(file).unwrap();
         let result = extract.get_root_directory_name_from_archive(&mut archive);
@@ -183,7 +205,7 @@ mod tests {
 
     #[test]
     fn test_extract_zip_file() {
-        let extract = Extract::new();
+        let extract = ExtractService::default();
         let pb_task = ProgressBar::new(5000000);
         let result = extract.extract_zip_file(
             String::from("test/mocks/zip_files/test_with_addons_folder.zip"),
@@ -196,83 +218,67 @@ mod tests {
 
     #[test]
     fn test_create_extract_path_should_return_with_addons_folder_path_2() {
-        let extract = Extract::new();
-        let path = PathBuf::from(
-            ["zip_filename", "some_plugin", "file.txt"]
-                .iter()
-                .collect::<PathBuf>(),
-        );
+        let extract = ExtractService::default();
+        let path = ["zip_filename", "some_plugin", "file.txt"]
+            .iter()
+            .collect::<PathBuf>();
         let extract_path = extract.create_extract_path(PathBuf::from("addons"), path);
         assert_eq!(
             extract_path,
-            PathBuf::from(
-                ["addons", "some_plugin", "file.txt"]
-                    .iter()
-                    .collect::<PathBuf>()
-            )
+            ["addons", "some_plugin", "file.txt"]
+                .iter()
+                .collect::<PathBuf>()
         );
     }
 
     #[test]
     fn test_create_extract_path_should_return_with_addons_folder_path_3() {
-        let extract = Extract::new();
-        let path = PathBuf::from(
-            ["zip_filename", "some_plugin", "file.txt"]
-                .iter()
-                .collect::<PathBuf>(),
-        );
+        let extract = ExtractService::default();
+        let path = ["zip_filename", "some_plugin", "file.txt"]
+            .iter()
+            .collect::<PathBuf>();
         let extract_path = extract.create_extract_path(PathBuf::from("test/addons"), path);
         assert_eq!(
             extract_path,
-            PathBuf::from(
-                ["test", "addons", "some_plugin", "file.txt"]
-                    .iter()
-                    .collect::<PathBuf>()
-            )
+            ["test", "addons", "some_plugin", "file.txt"]
+                .iter()
+                .collect::<PathBuf>()
         );
     }
 
     #[test]
     fn test_create_extract_path_should_not_modify_existing_folder_path() {
-        let extract = Extract::new();
-        let path = PathBuf::from(
-            ["zip_filename", "addons", "some_plugin", "test.txt"]
-                .iter()
-                .collect::<PathBuf>(),
-        );
+        let extract = ExtractService::default();
+        let path = ["zip_filename", "addons", "some_plugin", "test.txt"]
+            .iter()
+            .collect::<PathBuf>();
         let extract_path = extract.create_extract_path(PathBuf::from("addons"), path);
         assert_eq!(
             extract_path,
-            PathBuf::from(
-                ["addons", "some_plugin", "test.txt"]
-                    .iter()
-                    .collect::<PathBuf>()
-            )
+            ["addons", "some_plugin", "test.txt"]
+                .iter()
+                .collect::<PathBuf>()
         );
     }
 
     #[test]
     fn test_create_extract_path_should_modify_existing_path() {
-        let extract = Extract::new();
-        let path = PathBuf::from(
-            [
-                "zip_filename",
-                "some_folder",
-                "addons",
-                "some_plugin",
-                "test.txt",
-            ]
-            .iter()
-            .collect::<PathBuf>(),
-        );
+        let extract = ExtractService::default();
+        let path = [
+            "zip_filename",
+            "some_folder",
+            "addons",
+            "some_plugin",
+            "test.txt",
+        ]
+        .iter()
+        .collect::<PathBuf>();
         let extract_path = extract.create_extract_path(PathBuf::from("addons"), path);
         assert_eq!(
             extract_path,
-            PathBuf::from(
-                ["addons", "some_plugin", "test.txt"]
-                    .iter()
-                    .collect::<PathBuf>()
-            )
+            ["addons", "some_plugin", "test.txt"]
+                .iter()
+                .collect::<PathBuf>()
         );
     }
 }

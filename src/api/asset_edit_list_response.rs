@@ -3,25 +3,12 @@ use serde::{Deserialize};
 #[derive(Debug, Deserialize)]
 pub struct AssetEditListResponse {
     result: Vec<AssetEditListItem>,
-    page: usize,
     pages: usize,
 }
 
 impl AssetEditListResponse {
-    pub fn get_page(&self) -> usize {
-        self.page
-    }
-
     pub fn get_pages(&self) -> usize {
         self.pages
-    }
-
-    pub fn get_result_len(&self) -> usize {
-        self.result.len()
-    }
-
-    pub fn get_asset_edit_list_item_by_index(&self, index: usize) -> Option<&AssetEditListItem> {
-        self.result.get(index)
     }
 
     pub fn get_results(&self) -> &Vec<AssetEditListItem> {
@@ -33,24 +20,22 @@ impl AssetEditListResponse {
 pub struct AssetEditListItem {
     edit_id: String,
     asset_id: String,
-    user_id: String,
-    submit_date: String,
-    modify_date: String,
-    title: String,
-    description: String,
-    godot_version: String,
     version_string: String,
-    cost: String,
-    browse_url: String,
-    icon_url: String,
-    category: Option<String>,
-    support_level: String,
-    status: String,
-    reason: String,
-    author: String,
 }
 
 impl AssetEditListItem {
+    pub fn new(
+        edit_id: String,
+        asset_id: String,
+        version_string: String,
+    ) -> AssetEditListItem {
+        AssetEditListItem {
+            edit_id,
+            asset_id,
+            version_string,
+        }
+    }
+
     pub fn get_edit_id(&self) -> &str {
         &self.edit_id
     }

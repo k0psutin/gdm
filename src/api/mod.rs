@@ -1,21 +1,21 @@
-pub mod asset_response;
-pub mod asset_list_response;
 pub mod asset_edit_list_response;
 pub mod asset_edit_response;
-
-use std::collections::HashMap;
-use asset_response::AssetResponse;
-use asset_list_response::AssetListResponse;
-use indicatif::ProgressBar;
-use anyhow::Result;
-use tokio::{fs, io};
-use url::Url;
+pub mod asset_list_response;
+pub mod asset_response;
 
 use crate::api::asset_edit_list_response::AssetEditListResponse;
 use crate::api::asset_edit_response::AssetEditResponse;
-use crate::app_config::AppConfig;
-use crate::http_client;
-use crate::extract::Extract;
+use crate::app_config::{AppConfig, AppConfigImpl};
+use crate::extract_service::{ExtractService, ExtractServiceImpl};
+use crate::http_client::{HttpClient, HttpClientImpl};
+
+use anyhow::Result;
+use asset_list_response::AssetListResponse;
+use asset_response::AssetResponse;
+use indicatif::ProgressBar;
+use std::collections::HashMap;
+use tokio::{fs, io};
+use url::Url;
 
 #[derive(Debug, Clone)]
 pub struct DownloadedPlugin {
@@ -25,51 +25,81 @@ pub struct DownloadedPlugin {
 }
 
 impl DownloadedPlugin {
-    pub fn get_root_folder(&self) -> &String {
-        &self.root_folder
+    pub fn get_root_folder(&self) -> String {
+        self.root_folder.clone()
     }
 
-    pub fn get_file_path(&self) -> &String {
-        &self.file_path
+    pub fn get_file_path(&self) -> String {
+        self.file_path.clone()
     }
 
-    pub fn get_plugin(&self) -> &AssetResponse {
-        &self.plugin
+    pub fn get_plugin(&self) -> AssetResponse {
+        self.plugin.clone()
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default)]
 pub struct AssetStoreAPI {
-    api_base_url: String,
+    http_client: HttpClient,
+    app_config: AppConfig,
 }
 
 impl AssetStoreAPI {
-    pub fn default() -> AssetStoreAPI {
+    pub fn new(http_client: HttpClient, app_config: AppConfig) -> AssetStoreAPI {
         AssetStoreAPI {
-            api_base_url: AppConfig::default().get_api_base_url().to_string(),
+            http_client,
+            app_config,
         }
     }
+}
 
-    pub fn new(api_base_url: String) -> AssetStoreAPI {
-        AssetStoreAPI { api_base_url }
+#[cfg_attr(test, mockall::automock)]
+impl AssetStoreAPIImpl for AssetStoreAPI {
+    fn get_base_url(&self) -> String {
+        self.app_config.get_api_base_url()
     }
-    
-    pub async fn get_asset_by_id(&self, asset_id: String) -> anyhow::Result<AssetResponse> {
-        match http_client::get( format!("{}/asset/{}", self.api_base_url, asset_id), [].into()).await {
+
+    fn get_http_client(&self) -> &HttpClient {
+        &self.http_client
+    }
+}
+
+pub trait AssetStoreAPIImpl {
+    fn get_http_client(&self) -> &HttpClient;
+    fn get_base_url(&self) -> String;
+
+    async fn get_asset_by_id(&self, asset_id: String) -> anyhow::Result<AssetResponse> {
+        match self
+            .get_http_client()
+            .get(
+                self.get_base_url(),
+                format!("/asset/{}", asset_id),
+                [].into(),
+            )
+            .await
+        {
             Ok(data) => Ok(data),
             Err(e) => Err(anyhow::anyhow!("Failed to get asset by ID: {}", e)),
         }
     }
 
-    pub async fn get_assets(&self, params: HashMap<&str, &str>) -> anyhow::Result<AssetListResponse> {
-        match http_client::get( format!("{}/asset", self.api_base_url), params).await {
+    async fn get_assets(&self, params: HashMap<&str, &str>) -> anyhow::Result<AssetListResponse> {
+        match self
+            .get_http_client()
+            .get(self.get_base_url(), String::from("/asset"), params)
+            .await
+        {
             Ok(data) => Ok(data),
             Err(e) => Err(anyhow::anyhow!("Failed to get assets: {}", e)),
         }
     }
 
-    pub async fn get_asset_by_id_and_version(&self, asset_id: &str, version: &str) -> anyhow::Result<AssetResponse> {
-        let mut page = 0 as usize;
+    async fn get_asset_by_id_and_version(
+        &self,
+        asset_id: &str,
+        version: &str,
+    ) -> anyhow::Result<AssetResponse> {
+        let mut page = 0;
         loop {
             let edits_response = self.get_asset_edits_by_asset_id(asset_id, page).await?;
             for edit in edits_response.get_results().iter() {
@@ -80,29 +110,58 @@ impl AssetStoreAPI {
                 }
             }
             if page == edits_response.get_pages() - 1 {
-                break; 
+                break;
             }
             page += 1;
         }
-        Err(anyhow::anyhow!("No asset found for asset_id: {} with version: {}", asset_id, version))
+        Err(anyhow::anyhow!(
+            "No asset found for asset_id: {} with version: {}",
+            asset_id,
+            version
+        ))
     }
 
-    pub async fn get_asset_edits_by_asset_id(&self, asset_id: &str, page: usize) -> anyhow::Result<AssetEditListResponse> {
-        match http_client::get( format!("{}/asset/edit", self.api_base_url), [("asset", asset_id), ("status", "new accepted"), ("page", &page.to_string())].into()).await {
+    async fn get_asset_edits_by_asset_id(
+        &self,
+        asset_id: &str,
+        page: usize,
+    ) -> anyhow::Result<AssetEditListResponse> {
+        match self
+            .get_http_client()
+            .get(
+                self.get_base_url(),
+                String::from("/asset/edit"),
+                [
+                    ("asset", asset_id),
+                    ("status", "new accepted"),
+                    ("page", &page.to_string()),
+                ]
+                .into(),
+            )
+            .await
+        {
             Ok(data) => Ok(data),
             Err(e) => Err(anyhow::anyhow!("Failed to get assets: {}", e)),
         }
     }
 
-    pub async fn get_asset_edit_by_edit_id(&self, edit_id: &str) -> anyhow::Result<AssetEditResponse> {
-        match http_client::get( format!("{}/asset/edit/{}", self.api_base_url, edit_id), [].into()).await {
+    async fn get_asset_edit_by_edit_id(&self, edit_id: &str) -> anyhow::Result<AssetEditResponse> {
+        match self
+            .get_http_client()
+            .get(
+                self.get_base_url(),
+                format!("/asset/edit/{}", edit_id),
+                [].into(),
+            )
+            .await
+        {
             Ok(data) => Ok(data),
             Err(e) => Err(anyhow::anyhow!("Failed to get assets: {}", e)),
         }
     }
 
-    async fn download_file(&self, download_url: &str) -> anyhow::Result<reqwest::Response> {
-        match http_client::get_file(download_url.to_string()).await {
+    async fn download_file(&self, download_url: String) -> anyhow::Result<reqwest::Response> {
+        match self.get_http_client().get_file(download_url).await {
             Ok(response) => Ok(response),
             Err(e) => Err(anyhow::anyhow!("Failed to download file: {}", e)),
         }
@@ -111,7 +170,7 @@ impl AssetStoreAPI {
     /// Downloads a plugin from the Asset Store and returns a DownloadedPlugin struct
     ///
     /// Downloaded files are saved to the cache folder defined in the AppConfig
-    pub async fn download_plugin(
+    async fn download_plugin(
         &self,
         asset: &AssetResponse,
         pb_task: ProgressBar,
@@ -123,7 +182,7 @@ impl AssetStoreAPI {
 
         let filename = url
             .path_segments()
-            .and_then(|segments| segments.last())
+            .and_then(|mut segments| segments.next_back())
             .unwrap_or("temp_file.zip");
         let filepath = format!("{}/{}", cache_folder, filename);
 
@@ -151,7 +210,7 @@ impl AssetStoreAPI {
 
         match res.error_for_status() {
             Ok(_) => {
-                let root_folder = Extract::new().get_root_dir_from_archive(&filepath)?;
+                let root_folder = ExtractService::default().get_root_dir_from_archive(&filepath)?;
                 Ok(DownloadedPlugin {
                     root_folder,
                     file_path: filepath,
@@ -174,7 +233,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_asset_by_id() {
         let api = setup_test_api();
-        let asset_id = String::from( "1709");
+        let asset_id = String::from("1709");
         let result = api.get_asset_by_id(asset_id.clone()).await;
         assert!(result.is_ok());
         let asset = result.unwrap();
@@ -212,7 +271,7 @@ mod tests {
         assert!(result.is_ok());
         let edit_list = result.unwrap();
         assert!(!edit_list.get_results().is_empty());
-        let edit_list_item = edit_list.get_asset_edit_list_item_by_index(0).unwrap();
+        let edit_list_item = edit_list.get_results().first().unwrap();
         assert_eq!(edit_list_item.get_asset_id(), asset_id);
     }
 
@@ -257,13 +316,13 @@ mod tests {
         let edit_id = "1709";
         let version = "0.0.1";
         let result = api.get_asset_by_id_and_version(edit_id, version).await;
-        assert!(result.is_err());   
+        assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_download_file_should_return_response() {
         let api = setup_test_api();
-        let download_url = "https://github.com/DaviD4Chirino/Awesome-Scene-Manager/archive/b1a3f22bf4e1f086006b2d529b64ea6e8fec4bf2.zip";
+        let download_url = String::from("some_uri");
         let result = api.download_file(download_url).await;
         assert!(result.is_ok());
         let response = result.unwrap();

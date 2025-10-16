@@ -1,38 +1,22 @@
-use clap::{ArgMatches, Command, value_parser};
-use crate::plugin_service::PluginService;
+use crate::plugin_service::{PluginService, PluginServiceImpl};
 
-pub const COMMAND_NAME: &str = "add";
+use clap::Args;
+use tracing::debug;
 
-pub fn configure() -> Command {
-    Command::new(COMMAND_NAME)
-        .about("Add a new dependency")
-        .arg(
-            clap::Arg::new("name")
-                .help("The name of the dependency to add, e.g. gut")
-                .required(false)
-                .value_parser(value_parser!(String)),
-        )
-        .arg(
-            clap::Arg::new("asset-id")
-                .help("The asset ID of the plugin to add, e.g. 12345")
-                .required(false)
-                .long("asset-id")
-                .value_parser(value_parser!(String)),
-        )
-        .arg(
-            clap::Arg::new("version")
-                .help("The version of the plugin to add, e.g. 1.0.0")
-                .required(false)
-                .value_parser(value_parser!(String)),
-        )
+#[derive(Args, Debug)]
+#[command(about = "Add a plugin to the project. You can specify the plugin by name or asset ID, and optionally provide a version.")]
+pub struct AddArgs {
+    #[arg(help = "Name of the plugin, e.g. \"Godot Unit Testing\"")]
+    name: Option<String>,
+    #[arg(long, help = "Asset ID of the plugin, e.g. \"67845\"")]
+    asset_id: Option<String>,
+    #[arg(long, help = "Version of the plugin, e.g. \"1.0.0\"")]
+    version: Option<String>,
 }
 
-pub async fn handle(matches: &ArgMatches) -> anyhow::Result<()> {
-    let name = matches.get_one::<String>("name");
-    let asset_id = matches.get_one::<String>("asset-id");
-    let version = matches.get_one::<String>("version");
-
+pub async fn handle(args: &AddArgs) -> anyhow::Result<()> {
+    debug!("Adding plugin with args: {:?}", args);
     let plugin_service = PluginService::default();
-    plugin_service.add_plugin_by_id_or_name_and_version(asset_id, name, version).await?;
+    plugin_service.add_plugin_by_id_or_name_and_version(args.asset_id.clone(), args.name.clone(), args.version.clone()).await?;
     Ok(())
 }

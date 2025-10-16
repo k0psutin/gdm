@@ -1,20 +1,16 @@
-use clap::{value_parser, ArgMatches, Arg, Command};
-use crate::plugin_service::PluginService;
+use crate::plugin_service::{PluginService, PluginServiceImpl};
 
-pub const COMMAND_NAME: &str = "remove";
+use clap::Args;
 
-pub fn configure() -> Command {
-    Command::new(COMMAND_NAME).about("Remove a dependency").arg(
-        Arg::new("name")
-            .help("The name of the dependency to remove, e.g. gut. Matches the name in the dependency file.")
-            .required(true)
-            .value_parser(value_parser!(String)),
-    )
+#[derive(Args)]
+#[command(about = "Remove a plugin by name. Use the exact name as listed in the configuration file, e.g. \"gut\"")]
+pub struct RemoveArgs {
+    #[arg(help = "Name of the plugin to remove, e.g. \"gut\"")]
+    name: String,
 }
 
-pub async fn handle(matches: &ArgMatches) -> anyhow::Result<()> {
-    let name = matches.get_one::<String>("name").unwrap();
+pub async fn handle(args: &RemoveArgs) -> anyhow::Result<()> {
     let plugin_service = PluginService::default();
-    plugin_service.remove_plugin_by_name(name).await?;
+    plugin_service.remove_plugin_by_name(&args.name).await?;
     Ok(())
 }
