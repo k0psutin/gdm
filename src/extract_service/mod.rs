@@ -3,6 +3,7 @@ use indicatif::ProgressBar;
 use std::collections::HashSet;
 use std::fs;
 use std::io;
+use std::path::Path;
 use std::path::PathBuf;
 
 use crate::app_config::AppConfig;
@@ -10,15 +11,17 @@ use crate::app_config::DefaultAppConfig;
 use crate::file_service::{DefaultFileService, FileService};
 use crate::utils::Utils;
 
-#[derive(Clone, Debug, Default)]
 pub struct DefaultExtractService {
-    file_service: DefaultFileService,
-    app_config: DefaultAppConfig,
+    file_service: Box<dyn FileService + Send + Sync + 'static>,
+    app_config: Box<dyn AppConfig + Send + Sync + 'static>,
 }
 
 impl DefaultExtractService {
     #[allow(dead_code)]
-    pub fn new(file_service: DefaultFileService, app_config: DefaultAppConfig) -> Self {
+    pub fn new(
+        file_service: Box<dyn FileService + Send + Sync + 'static>,
+        app_config: Box<dyn AppConfig + Send + Sync + 'static>,
+    ) -> Self {
         DefaultExtractService {
             file_service,
             app_config,
@@ -26,15 +29,24 @@ impl DefaultExtractService {
     }
 }
 
+impl Default for DefaultExtractService {
+    fn default() -> Self {
+        DefaultExtractService {
+            file_service: Box::new(DefaultFileService),
+            app_config: Box::new(DefaultAppConfig::default()),
+        }
+    }
+}
+
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
 impl ExtractService for DefaultExtractService {
-    fn get_file_service(&self) -> &DefaultFileService {
-        &self.file_service
+    fn get_file_service(&self) -> &dyn FileService {
+        &*self.file_service
     }
 
-    fn get_app_config(&self) -> &DefaultAppConfig {
-        &self.app_config
+    fn get_app_config(&self) -> &dyn AppConfig {
+        &*self.app_config
     }
 
     fn create_extract_path(&self, root: PathBuf, path: PathBuf) -> PathBuf {
@@ -83,22 +95,20 @@ impl ExtractService for DefaultExtractService {
         }
     }
 
-    fn get_root_dir_from_archive(&self, file_path: &str) -> anyhow::Result<String> {
+    fn get_root_dir_from_archive(&self, file_path: &Path) -> Result<PathBuf> {
         let file = fs::File::open(file_path)?;
         let mut archive = zip::ZipArchive::new(file)?;
-        let plugin_root_dir: PathBuf = self.get_root_directory_name_from_archive(&mut archive)?;
-        Ok(plugin_root_dir.display().to_string())
+        self.get_root_directory_name_from_archive(&mut archive)
     }
 
     fn extract_zip_file(
         &self,
-        file_path: String,
-        destination: String,
+        file_path: &Path,
+        destination: &Path,
         pb_task: ProgressBar,
     ) -> anyhow::Result<()> {
         let file_service = self.get_file_service();
-        let file = file_service.open(PathBuf::from(file_path))?;
-        let _destination = PathBuf::from(&destination);
+        let file = file_service.open(file_path)?;
 
         let mut archive = zip::ZipArchive::new(file)?;
         let file_count = archive.file_names().count();
@@ -108,19 +118,23 @@ impl ExtractService for DefaultExtractService {
             let mut file = archive.by_index(i)?;
             pb_task.inc(1);
             let outpath = match file.enclosed_name() {
-                Some(path) => self.create_extract_path(_destination.clone(), path),
+                Some(path) => {
+                    self.create_extract_path(destination.to_path_buf(), path.to_path_buf())
+                }
                 None => continue,
             };
 
+            let extract_path = outpath.as_path();
+
             if file.is_dir() {
-                file_service.create_directory(outpath).unwrap();
+                file_service.create_directory(extract_path).unwrap();
             } else {
                 if let Some(p) = outpath.parent()
                     && !p.exists()
                 {
-                    file_service.create_directory(PathBuf::from(p)).unwrap();
+                    file_service.create_directory(p).unwrap();
                 }
-                let mut outfile = file_service.create_file(outpath).unwrap();
+                let mut outfile = file_service.create_file(extract_path).unwrap();
                 io::copy(&mut file, &mut outfile).unwrap();
             }
             // Get and Set permissions
@@ -140,57 +154,41 @@ impl ExtractService for DefaultExtractService {
     /// ExtractServices a downloaded plugin zip file to the addons folder and removes the zip file afterwards
     ///
     /// Removes the old plugin folder if it already exists
-    async fn extract_plugin(
-        &self,
-        file_path: String,
-        addon_folder_path: String,
-        pb_task: ProgressBar,
-    ) -> Result<String> {
+    async fn extract_plugin(&self, file_path: &Path, pb_task: ProgressBar) -> Result<PathBuf> {
         let file_service = self.get_file_service();
-        let plugin_folder = self.get_root_dir_from_archive(&file_path)?;
+        let plugin_folder = self.get_root_dir_from_archive(file_path)?;
         let addon_folder = self.get_app_config().get_addon_folder_path();
         let plugin_folder_path =
-            Utils::plugin_name_to_addon_folder_path(plugin_folder.clone(), addon_folder);
+            Utils::plugin_name_to_addon_folder_path(&plugin_folder, addon_folder);
 
-        if file_service.directory_exists(PathBuf::from(&format!(
-            "{}/{}",
-            &addon_folder_path, &plugin_folder_path
-        ))) {
-            file_service.remove_dir_all(PathBuf::from(&format!(
-                "{}/{}",
-                &addon_folder_path, &plugin_folder_path
-            )))?;
+        if file_service.directory_exists(&plugin_folder_path) {
+            file_service.remove_dir_all(&plugin_folder_path)?;
         }
 
-        self.extract_zip_file(file_path.clone(), addon_folder_path, pb_task)?;
-        file_service.remove_file(PathBuf::from(file_path))?;
+        self.extract_zip_file(file_path, Path::new(&addon_folder), pb_task)?;
+        file_service.remove_file(file_path)?;
         Ok(plugin_folder)
     }
 }
 
 #[async_trait::async_trait]
-pub trait ExtractService: Send + Sync {
-    fn get_app_config(&self) -> &DefaultAppConfig;
-    fn get_file_service(&self) -> &DefaultFileService;
+pub trait ExtractService: Send + Sync + 'static {
+    fn get_app_config(&self) -> &dyn AppConfig;
+    fn get_file_service(&self) -> &dyn FileService;
     fn create_extract_path(&self, root: PathBuf, path: PathBuf) -> PathBuf;
 
     fn get_root_directory_name_from_archive(
         &self,
         archive: &mut zip::ZipArchive<fs::File>,
     ) -> Result<PathBuf>;
-    fn get_root_dir_from_archive(&self, file_path: &str) -> anyhow::Result<String>;
+    fn get_root_dir_from_archive(&self, file_path: &Path) -> Result<PathBuf>;
     fn extract_zip_file(
         &self,
-        file_path: String,
-        destination: String,
+        file_path: &Path,
+        destination: &Path,
         pb_task: ProgressBar,
     ) -> anyhow::Result<()>;
-    async fn extract_plugin(
-        &self,
-        file_path: String,
-        addon_folder_path: String,
-        pb_task: ProgressBar,
-    ) -> Result<String>;
+    async fn extract_plugin(&self, file_path: &Path, pb_task: ProgressBar) -> Result<PathBuf>;
 }
 
 #[cfg(test)]
@@ -229,8 +227,8 @@ mod tests {
         let extract = DefaultExtractService::default();
         let pb_task = ProgressBar::new(5000000);
         let result = extract.extract_zip_file(
-            String::from("test/mocks/zip_files/test_with_addons_folder.zip"),
-            String::from("test/addons"),
+            Path::new("test/mocks/zip_files/test_with_addons_folder.zip"),
+            Path::new("test/addons"),
             pb_task,
         );
         assert!(result.is_ok());

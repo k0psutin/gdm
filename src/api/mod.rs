@@ -9,6 +9,7 @@ use crate::api::asset_edit_list_response::AssetEditListResponse;
 use crate::api::asset_edit_response::AssetEditResponse;
 use crate::app_config::{AppConfig, DefaultAppConfig};
 use crate::extract_service::{DefaultExtractService, ExtractService};
+use crate::file_service::{DefaultFileService, FileService};
 use crate::http_client::{DefaultHttpClient, HttpClient};
 
 use anyhow::{Result, anyhow};
@@ -16,36 +17,51 @@ use asset_list_response::AssetListResponse;
 use asset_response::AssetResponse;
 use indicatif::ProgressBar;
 use std::collections::HashMap;
+use std::path::Path;
 use tokio::{fs, io};
 use url::Url;
 
-#[derive(Debug, Clone, Default)]
 pub struct DefaultAssetStoreAPI {
     http_client: DefaultHttpClient,
-    app_config: DefaultAppConfig,
-    extract_service: DefaultExtractService,
+    app_config: Box<dyn AppConfig + Send + Sync + 'static>,
+    extract_service: Box<dyn ExtractService + Send + Sync + 'static>,
+    file_service: Box<dyn FileService + Send + Sync + 'static>,
 }
 
 impl DefaultAssetStoreAPI {
     #[allow(dead_code)]
     pub fn new(
         http_client: DefaultHttpClient,
-        app_config: DefaultAppConfig,
-        extract_service: DefaultExtractService,
+        app_config: Box<dyn AppConfig + Send + Sync + 'static>,
+        extract_service: Box<dyn ExtractService + Send + Sync + 'static>,
+        file_service: Box<dyn FileService + Send + Sync + 'static>,
     ) -> DefaultAssetStoreAPI {
         DefaultAssetStoreAPI {
             http_client,
             app_config,
             extract_service,
+            file_service,
+        }
+    }
+}
+
+impl Default for DefaultAssetStoreAPI {
+    fn default() -> Self {
+        DefaultAssetStoreAPI {
+            http_client: DefaultHttpClient::default(),
+            app_config: Box::new(DefaultAppConfig::default()),
+            extract_service: Box::new(DefaultExtractService::default()),
+            file_service: Box::new(DefaultFileService),
         }
     }
 }
 
 #[async_trait::async_trait]
 pub trait AssetStoreAPI: Send + Sync {
-    fn get_extract_service(&self) -> &DefaultExtractService;
+    fn get_extract_service(&self) -> &dyn ExtractService;
     fn get_http_client(&self) -> &DefaultHttpClient;
     fn get_base_url(&self) -> String;
+    fn get_file_service(&self) -> &dyn FileService;
 
     async fn get_asset_by_id(&self, asset_id: String) -> Result<AssetResponse>;
 
@@ -71,15 +87,19 @@ pub trait AssetStoreAPI: Send + Sync {
         &self,
         asset: &AssetResponse,
         pb_task: ProgressBar,
-        cache_folder: String,
+        cache_folder: &Path,
     ) -> Result<Asset>;
 }
 
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
 impl AssetStoreAPI for DefaultAssetStoreAPI {
-    fn get_extract_service(&self) -> &DefaultExtractService {
-        &self.extract_service
+    fn get_file_service(&self) -> &dyn FileService {
+        &*self.file_service
+    }
+
+    fn get_extract_service(&self) -> &dyn ExtractService {
+        &*self.extract_service
     }
 
     fn get_base_url(&self) -> String {
@@ -196,7 +216,7 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
         &self,
         asset: &AssetResponse,
         pb_task: ProgressBar,
-        cache_folder: String,
+        cache_folder: &Path,
     ) -> Result<Asset> {
         let download_url = asset.get_download_url();
 
@@ -206,14 +226,14 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
             .path_segments()
             .and_then(|mut segments| segments.next_back())
             .unwrap_or("temp_file.zip");
-        let filepath = format!("{}/{}", cache_folder, filename);
+        let filepath = cache_folder.join(filename);
 
-        if !fs::try_exists(cache_folder.clone()).await? {
-            fs::create_dir(cache_folder.clone()).await?;
+        if !self.get_file_service().directory_exists(cache_folder) {
+            self.get_file_service().create_directory(cache_folder)?;
         }
 
-        if fs::try_exists(&filepath).await? {
-            fs::remove_file(&filepath).await?;
+        if self.get_file_service().file_exists(&filepath) {
+            self.get_file_service().remove_file(&filepath)?;
         }
 
         let mut res = self.download_file(download_url).await?;
@@ -235,7 +255,11 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
                 let root_folder = self
                     .get_extract_service()
                     .get_root_dir_from_archive(&filepath)?;
-                Ok(Asset::new(root_folder, filepath, asset.clone()))
+                Ok(Asset::new(
+                    root_folder.display().to_string(),
+                    filepath,
+                    asset.clone(),
+                ))
             }
             Err(e) => Err(anyhow!("Failed to fetch file: {}", e)),
         }

@@ -1,5 +1,7 @@
 use dotenv::dotenv;
 
+use std::path::Path;
+
 /// Application configuration settings
 ///
 /// Settings are loaded from environment variables using the `dotenv` crate.
@@ -63,24 +65,24 @@ impl Default for DefaultAppConfig {
 
 #[cfg_attr(test, mockall::automock)]
 impl AppConfig for DefaultAppConfig {
-    fn get_godot_project_file_path(&self) -> String {
-        self.godot_project_file_path.clone()
+    fn get_godot_project_file_path(&self) -> &Path {
+        Path::new(&self.godot_project_file_path)
     }
 
     fn get_api_base_url(&self) -> String {
         self.api_base_url.clone()
     }
 
-    fn get_config_file_path(&self) -> String {
-        self.config_file_path.clone()
+    fn get_config_file_path(&self) -> &Path {
+        Path::new(&self.config_file_path)
     }
 
-    fn get_cache_folder_path(&self) -> String {
-        self.cache_folder_path.clone()
+    fn get_cache_folder_path(&self) -> &Path {
+        Path::new(&self.cache_folder_path)
     }
 
-    fn get_addon_folder_path(&self) -> String {
-        self.addon_folder_path.clone()
+    fn get_addon_folder_path(&self) -> &Path {
+        Path::new(&self.addon_folder_path)
     }
 }
 
@@ -104,10 +106,10 @@ impl dyn AppConfig {
     }
 }
 
-pub trait AppConfig {
-    fn get_godot_project_file_path(&self) -> String;
+pub trait AppConfig: Send + Sync + 'static {
+    fn get_godot_project_file_path(&self) -> &Path;
     fn get_api_base_url(&self) -> String;
-    fn get_config_file_path(&self) -> String;
-    fn get_cache_folder_path(&self) -> String;
-    fn get_addon_folder_path(&self) -> String;
+    fn get_config_file_path(&self) -> &Path;
+    fn get_cache_folder_path(&self) -> &Path;
+    fn get_addon_folder_path(&self) -> &Path;
 }

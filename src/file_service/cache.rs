@@ -27,16 +27,19 @@ impl CacheImpl for Cache {
 pub trait CacheImpl {
     fn get_cache(&self) -> &Mutex<HashMap<String, String>>;
 
-    fn has_key(&self, key: String) -> bool {
-        self.get_cache().lock().unwrap().contains_key(&key)
+    fn has_key(&self, key: &str) -> bool {
+        self.get_cache().lock().unwrap().contains_key(key)
     }
 
-    fn get(&self, key: String) -> Option<String> {
-        self.get_cache().lock().unwrap().get(&key).cloned()
+    fn get(&self, key: &str) -> Option<String> {
+        self.get_cache().lock().unwrap().get(key).cloned()
     }
 
-    fn insert(&self, key: String, value: String) {
-        self.get_cache().lock().unwrap().insert(key, value);
+    fn insert(&self, key: &str, value: &str) {
+        self.get_cache()
+            .lock()
+            .unwrap()
+            .insert(key.to_string(), value.to_string());
     }
 }
 
@@ -47,23 +50,23 @@ mod tests {
     #[test]
     fn test_cache_insert_and_get() {
         let cache = Cache::new();
-        cache.insert("key1".to_string(), "value1".to_string());
-        assert_eq!(cache.get("key1".to_string()), Some("value1".to_string()));
-        assert!(cache.has_key("key1".to_string()));
-        assert!(!cache.has_key("key2".to_string()));
+        cache.insert("key1", "value1");
+        assert_eq!(cache.get("key1"), Some("value1".to_string()));
+        assert!(cache.has_key("key1"));
+        assert!(!cache.has_key("key2"));
     }
 
     #[test]
     fn test_cache_get_should_return_none_for_missing_key() {
         let cache = Cache::new();
-        assert_eq!(cache.get("key1".to_string()), None);
+        assert_eq!(cache.get("key1"), None);
     }
 
     #[test]
     fn test_cache_insert_overwrites_existing_key() {
         let cache = Cache::new();
-        cache.insert("key1".to_string(), "value1".to_string());
-        cache.insert("key1".to_string(), "value2".to_string());
-        assert_eq!(cache.get("key1".to_string()), Some("value2".to_string()));
+        cache.insert("key1", "value1");
+        cache.insert("key1", "value2");
+        assert_eq!(cache.get("key1"), Some("value2".to_string()));
     }
 }

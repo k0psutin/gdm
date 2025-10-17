@@ -8,18 +8,28 @@ use crate::plugin_config_repository::plugin_config::{PluginConfig, PluginConfigI
 
 use anyhow::{Context, Result};
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
 
-#[derive(Debug, Clone, Default)]
-pub struct PluginConfigRepository {
-    app_config: DefaultAppConfig,
-    file_service: DefaultFileService,
+pub struct DefaultPluginConfigRepository {
+    app_config: Box<dyn AppConfig + Send + Sync + 'static>,
+    file_service: Box<dyn FileService + Send + Sync + 'static>,
 }
 
-impl PluginConfigRepository {
+impl Default for DefaultPluginConfigRepository {
+    fn default() -> Self {
+        DefaultPluginConfigRepository {
+            file_service: Box::new(DefaultFileService),
+            app_config: Box::new(DefaultAppConfig::default()),
+        }
+    }
+}
+
+impl DefaultPluginConfigRepository {
     #[allow(dead_code)]
-    pub fn new(app_config: DefaultAppConfig, file_service: DefaultFileService) -> Self {
-        PluginConfigRepository {
+    pub fn new(
+        app_config: Box<dyn AppConfig + Send + Sync + 'static>,
+        file_service: Box<dyn FileService + Send + Sync + 'static>,
+    ) -> Self {
+        DefaultPluginConfigRepository {
             app_config,
             file_service,
         }
@@ -27,19 +37,14 @@ impl PluginConfigRepository {
 }
 
 #[cfg_attr(test, mockall::automock)]
-impl PluginConfigRepositoryImpl for PluginConfigRepository {
-    fn get_file_service(&self) -> &DefaultFileService {
-        &self.file_service
+impl PluginConfigRepository for DefaultPluginConfigRepository {
+    fn get_file_service(&self) -> &dyn FileService {
+        &*self.file_service
     }
 
-    fn get_app_config(&self) -> &DefaultAppConfig {
-        &self.app_config
+    fn get_app_config(&self) -> &dyn AppConfig {
+        &*self.app_config
     }
-}
-
-pub trait PluginConfigRepositoryImpl {
-    fn get_file_service(&self) -> &DefaultFileService;
-    fn get_app_config(&self) -> &DefaultAppConfig;
 
     fn add_plugins(&self, plugins: HashMap<String, Plugin>) -> Result<PluginConfig> {
         let plugin_config = self.load()?;
@@ -83,40 +88,48 @@ pub trait PluginConfigRepositoryImpl {
 
     fn load(&self) -> Result<PluginConfig> {
         let config_file_path = self.get_app_config().get_config_file_path();
-        self.load_plugin_config(&config_file_path)
-    }
-
-    fn save(&self, config: &PluginConfig) -> Result<()> {
-        self.save_plugin_config(config)
-    }
-
-    fn load_plugin_config(&self, path: &str) -> Result<PluginConfig> {
         let file_service = self.get_file_service();
 
-        if !file_service.file_exists(PathBuf::from(path)) {
+        if !file_service.file_exists(config_file_path) {
             return Ok(PluginConfig::default());
         }
-        let content = file_service.read_file_cached(PathBuf::from(path))?;
-        let config: PluginConfig = serde_json::from_str(&content)
-            .with_context(|| format!("Failed to parse plugin config file: {}", path))?;
+        let content = file_service.read_file_cached(config_file_path)?;
+        let config: PluginConfig = serde_json::from_str(&content).with_context(|| {
+            format!(
+                "Failed to parse plugin config file: {}",
+                config_file_path.display()
+            )
+        })?;
         Ok(config)
     }
 
-    fn save_plugin_config(&self, config: &PluginConfig) -> Result<()> {
+    fn save(&self, config: &PluginConfig) -> Result<()> {
         let config_file_path = self.get_app_config().get_config_file_path();
-        let file = self
-            .get_file_service()
-            .create_file(PathBuf::from(config_file_path.clone()))?;
+
+        let file = self.get_file_service().create_file(config_file_path)?;
 
         serde_json::to_writer_pretty(file, config).with_context(|| {
             format!(
                 "Failed to write configuration to file: {}",
-                config_file_path
+                config_file_path.display()
             )
         })?;
 
         Ok(())
     }
+}
+
+pub trait PluginConfigRepository {
+    fn get_file_service(&self) -> &dyn FileService;
+    fn get_app_config(&self) -> &dyn AppConfig;
+
+    fn add_plugins(&self, plugins: HashMap<String, Plugin>) -> Result<PluginConfig>;
+    fn remove_plugins(&self, plugin_keys: HashSet<String>) -> Result<PluginConfig>;
+    fn get_plugin_key_by_name(&self, name: &str) -> Option<String>;
+    fn check_if_plugin_already_installed_by_asset_id(&self, asset_id: &str) -> Option<Plugin>;
+    fn get_plugins(&self) -> Result<Vec<(String, Plugin)>>;
+    fn load(&self) -> Result<PluginConfig>;
+    fn save(&self, config: &PluginConfig) -> Result<()>;
 }
 
 #[cfg(test)]
@@ -125,8 +138,8 @@ mod tests {
 
     #[test]
     fn test_load_non_existent_file_should_return_default_config() {
-        let plugin_config_repository = PluginConfigRepository::default();
-        let result = plugin_config_repository.load_plugin_config("non_existent_file.json");
+        let plugin_config_repository = DefaultPluginConfigRepository::default();
+        let result = plugin_config_repository.load();
         assert!(result.is_ok());
         let config = result.unwrap();
         assert_eq!(config.get_plugins().len(), 0);
@@ -134,8 +147,8 @@ mod tests {
 
     #[test]
     fn test_load_should_return_correct_plugin_config() {
-        let plugin_config_repository = PluginConfigRepository::default();
-        let result = plugin_config_repository.load_plugin_config("test/mocks/gdm.json");
+        let plugin_config_repository = DefaultPluginConfigRepository::default();
+        let result = plugin_config_repository.load();
         assert!(result.is_ok());
         let config = result.unwrap();
         assert_eq!(config.get_plugins().len(), 2);
@@ -172,7 +185,7 @@ mod tests {
             None,
             None,
         );
-        let plugin_config_repository = PluginConfigRepository::new(app_config, DefaultFileService);
+        let plugin_config_repository = DefaultPluginConfigRepository::default();
         let plugins = plugin_config_repository.get_plugins().unwrap();
         assert_eq!(plugins.len(), 2);
 

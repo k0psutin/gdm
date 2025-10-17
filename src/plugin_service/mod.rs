@@ -4,9 +4,10 @@ use crate::api::asset_response::AssetResponse;
 use crate::api::{AssetStoreAPI, DefaultAssetStoreAPI};
 use crate::app_config::{AppConfig, DefaultAppConfig};
 use crate::extract_service::{DefaultExtractService, ExtractService};
+use crate::file_service::{DefaultFileService, FileService};
 use crate::godot_config_repository::{DefaultGodotConfigRepository, GodotConfigRepository};
 use crate::plugin_config_repository::plugin::Plugin;
-use crate::plugin_config_repository::{PluginConfigRepository, PluginConfigRepositoryImpl};
+use crate::plugin_config_repository::{DefaultPluginConfigRepository, PluginConfigRepository};
 use crate::utils::Utils;
 
 use anyhow::{Context, Result, anyhow};
@@ -14,18 +15,19 @@ use futures::future::try_join_all;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::fs;
 use tokio::task::JoinSet;
 use tracing::{debug, error};
 
 pub struct DefaultPluginService {
     godot_config_repository: Box<dyn GodotConfigRepository>,
     asset_store_api: Arc<dyn AssetStoreAPI + Send + Sync>,
-    plugin_config_repository: Box<dyn PluginConfigRepositoryImpl>,
+    plugin_config_repository: Box<dyn PluginConfigRepository>,
     app_config: Box<dyn AppConfig>,
     extract_service: Arc<dyn ExtractService + Send + Sync>,
+    file_service: Arc<dyn FileService + Send + Sync>,
 }
 
 impl From<AssetResponse> for Plugin {
@@ -44,9 +46,10 @@ impl Default for DefaultPluginService {
         Self {
             godot_config_repository: Box::new(DefaultGodotConfigRepository::default()),
             asset_store_api: Arc::new(DefaultAssetStoreAPI::default()),
-            plugin_config_repository: Box::new(PluginConfigRepository::default()),
+            plugin_config_repository: Box::new(DefaultPluginConfigRepository::default()),
             app_config: Box::new(DefaultAppConfig::default()),
             extract_service: Arc::new(DefaultExtractService::default()),
+            file_service: Arc::new(DefaultFileService),
         }
     }
 }
@@ -56,9 +59,10 @@ impl DefaultPluginService {
     fn new(
         godot_config_repository: Box<dyn GodotConfigRepository>,
         asset_store_api: Arc<dyn AssetStoreAPI + Send + Sync>,
-        plugin_config_repository: Box<dyn PluginConfigRepositoryImpl>,
+        plugin_config_repository: Box<dyn PluginConfigRepository>,
         app_config: Box<dyn AppConfig>,
         extract_service: Arc<dyn ExtractService + Send + Sync>,
+        file_service: Arc<dyn FileService + Send + Sync>,
     ) -> Self {
         Self {
             godot_config_repository,
@@ -66,12 +70,13 @@ impl DefaultPluginService {
             plugin_config_repository,
             app_config,
             extract_service,
+            file_service,
         }
     }
 }
 
 impl PluginService for DefaultPluginService {
-    fn get_plugin_config_repository(&self) -> &dyn PluginConfigRepositoryImpl {
+    fn get_plugin_config_repository(&self) -> &dyn PluginConfigRepository {
         &*self.plugin_config_repository
     }
 
@@ -90,13 +95,18 @@ impl PluginService for DefaultPluginService {
     fn get_extract_service(&self) -> Arc<dyn ExtractService + Send + Sync> {
         Arc::clone(&self.extract_service)
     }
+
+    fn get_file_service(&self) -> Arc<dyn FileService + Send + Sync> {
+        Arc::clone(&self.file_service)
+    }
 }
 
 pub trait PluginService {
     fn get_app_config(&self) -> &dyn AppConfig;
     fn get_godot_config_repository(&self) -> &dyn GodotConfigRepository;
-    fn get_plugin_config_repository(&self) -> &dyn PluginConfigRepositoryImpl;
+    fn get_plugin_config_repository(&self) -> &dyn PluginConfigRepository;
 
+    fn get_file_service(&self) -> Arc<dyn FileService + Send + Sync>;
     fn get_asset_store_api(&self) -> Arc<dyn AssetStoreAPI + Send + Sync>;
     fn get_extract_service(&self) -> Arc<dyn ExtractService + Send + Sync>;
 
@@ -203,7 +213,7 @@ pub trait PluginService {
         )?;
         let downloaded_asset = self
             .get_asset_store_api()
-            .download_asset(&asset.clone(), pb_download, cache_folder.to_string())
+            .download_asset(&asset.clone(), pb_download, cache_folder)
             .await?;
         let asset_response = downloaded_asset.get_asset_response();
         let pb_extract_service = self.create_extract_service_progress_bar(
@@ -215,17 +225,13 @@ pub trait PluginService {
             asset_response.get_version_string().to_string(),
         )?;
 
-        let addon_folder_path = self.get_app_config().get_addon_folder_path().to_string();
         let plugin_root_folder = self
             .get_extract_service()
-            .extract_plugin(
-                downloaded_asset.get_file_path().clone(),
-                addon_folder_path,
-                pb_extract_service,
-            )
+            .extract_plugin(downloaded_asset.get_file_path(), pb_extract_service)
             .await?;
 
-        let plugins = HashMap::from([(plugin_root_folder.clone(), Plugin::from(asset))]);
+        let plugin_name = plugin_root_folder.display().to_string();
+        let plugins = HashMap::from([(plugin_name, Plugin::from(asset))]);
         self.add_plugins(plugins)?;
         Ok(())
     }
@@ -237,7 +243,6 @@ pub trait PluginService {
         plugins: Vec<AssetResponse>,
     ) -> Result<HashMap<String, Plugin>> {
         let cache_folder = self.get_app_config().get_cache_folder_path();
-        let addon_folder = self.get_app_config().get_addon_folder_path();
 
         let mut download_tasks = JoinSet::new();
         let pb_multi = MultiProgress::new();
@@ -257,10 +262,10 @@ pub trait PluginService {
                 plugin.get_version_string().to_string(),
             )?;
             let asset_store_api = self.get_asset_store_api().clone();
-            let cache_folder_clone = cache_folder.clone();
+            let cache_folder_clone = cache_folder.to_owned();
             download_tasks.spawn(async move {
                 asset_store_api
-                    .download_asset(&plugin, pb_task, cache_folder_clone)
+                    .download_asset(&plugin, pb_task, &cache_folder_clone)
                     .await
             });
         }
@@ -284,12 +289,8 @@ pub trait PluginService {
                 asset_response.get_version_string().to_string(),
             )?;
             let extract_service = self.get_extract_service().clone();
-            let addon_folder = addon_folder.clone();
-            extract_service_tasks.spawn(async move {
-                extract_service
-                    .extract_plugin(file_path, addon_folder, pb_task)
-                    .await
-            });
+            extract_service_tasks
+                .spawn(async move { extract_service.extract_plugin(&file_path, pb_task).await });
         }
 
         while let Some(res) = extract_service_tasks.join_next().await {
@@ -301,7 +302,7 @@ pub trait PluginService {
             .map(|p| {
                 (
                     p.get_root_folder().clone(),
-                    Plugin::from(p.get_asset_response()),
+                    Plugin::from(p.get_asset_response().clone()),
                 )
             })
             .collect::<HashMap<String, Plugin>>();
@@ -468,19 +469,21 @@ pub trait PluginService {
 
         match installed_plugin {
             Some(plugin_name) => {
-                let plugin_folder_path =
-                    Utils::plugin_name_to_addon_folder_path(plugin_name.clone(), addon_folder);
+                let plugin_folder_path = Utils::plugin_name_to_addon_folder_path(
+                    Path::new(plugin_name.as_str()),
+                    addon_folder,
+                );
 
                 // Remove plugin directory if it exists
-                // TODO use fileservice
-                if fs::try_exists(&plugin_folder_path).await? {
-                    println!("Removing plugin folder: {}", plugin_folder_path);
-                    fs::remove_dir_all(&plugin_folder_path).await?;
-                } else {
+                if self.get_file_service().file_exists(&plugin_folder_path) {
                     println!(
-                        "Plugin folder does not exist, trying to remove from {}",
-                        self.get_app_config().get_config_file_path()
+                        "Removing plugin folder: {}",
+                        plugin_folder_path.clone().display()
                     );
+                    self.get_file_service()
+                        .remove_dir_all(&plugin_folder_path)?
+                } else {
+                    println!("Plugin folder does not exist, trying to remove from gdm config");
                 }
 
                 // Remove plugin from plugin config
@@ -675,8 +678,9 @@ mod tests {
     use crate::api::MockDefaultAssetStoreAPI;
     use crate::app_config::MockDefaultAppConfig;
     use crate::extract_service::MockDefaultExtractService;
+    use crate::file_service::MockDefaultFileService;
     use crate::godot_config_repository::MockDefaultGodotConfigRepository;
-    use crate::plugin_config_repository::MockPluginConfigRepository;
+    use crate::plugin_config_repository::MockDefaultPluginConfigRepository;
 
     use super::*;
 
@@ -687,9 +691,10 @@ mod tests {
     fn setup_plugin_service_mocks() -> DefaultPluginService {
         let mut godot_config_repository = Box::new(MockDefaultGodotConfigRepository::default());
         let asset_store_api = Arc::new(MockDefaultAssetStoreAPI::default());
-        let plugin_config_repository = Box::new(MockPluginConfigRepository::default());
+        let plugin_config_repository = Box::new(MockDefaultPluginConfigRepository::default());
         let app_config = Box::new(MockDefaultAppConfig::default());
         let extract_service = Arc::new(MockDefaultExtractService::default());
+        let file_service = Arc::new(MockDefaultFileService::default());
 
         DefaultPluginService::new(
             godot_config_repository,
@@ -697,6 +702,7 @@ mod tests {
             plugin_config_repository,
             app_config,
             extract_service,
+            file_service,
         )
     }
 

@@ -1,7 +1,7 @@
 pub mod godot_config;
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::Path;
 
 use anyhow::{Result, anyhow};
 
@@ -11,17 +11,25 @@ use crate::godot_config_repository::godot_config::{GodotConfig, GodotConfigImpl}
 use crate::plugin_config_repository::plugin_config::{PluginConfig, PluginConfigImpl};
 use crate::utils::Utils;
 
-#[derive(Debug, Clone, Default)]
 pub struct DefaultGodotConfigRepository {
-    file_service: DefaultFileService,
-    app_config: DefaultAppConfig,
+    file_service: Box<dyn FileService + Send + Sync + 'static>,
+    app_config: Box<dyn AppConfig + Send + Sync + 'static>,
+}
+
+impl Default for DefaultGodotConfigRepository {
+    fn default() -> Self {
+        DefaultGodotConfigRepository {
+            file_service: Box::new(DefaultFileService),
+            app_config: Box::new(DefaultAppConfig::default()),
+        }
+    }
 }
 
 impl DefaultGodotConfigRepository {
     #[allow(dead_code)]
     pub fn new(
-        file_service: DefaultFileService,
-        app_config: DefaultAppConfig,
+        file_service: Box<dyn FileService + Send + Sync + 'static>,
+        app_config: Box<dyn AppConfig + Send + Sync + 'static>,
     ) -> DefaultGodotConfigRepository {
         DefaultGodotConfigRepository {
             file_service,
@@ -32,12 +40,12 @@ impl DefaultGodotConfigRepository {
 
 #[cfg_attr(test, mockall::automock)]
 impl GodotConfigRepository for DefaultGodotConfigRepository {
-    fn get_file_service(&self) -> &DefaultFileService {
-        &self.file_service
+    fn get_file_service(&self) -> &dyn FileService {
+        &*self.file_service
     }
 
-    fn get_app_config(&self) -> &DefaultAppConfig {
-        &self.app_config
+    fn get_app_config(&self) -> &dyn AppConfig {
+        &*self.app_config
     }
 
     fn update_plugins(&self, plugin_config: PluginConfig) -> Result<()> {
@@ -50,11 +58,12 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
     }
 
     fn plugin_root_folder_to_resource_path(&self, plugin_path: String) -> String {
-        Utils::plugin_folder_to_resource_path(format!(
-            "{}/{}",
-            self.get_app_config().get_addon_folder_path(),
-            plugin_path
-        ))
+        let addon_folder_path = self
+            .get_app_config()
+            .get_addon_folder_path()
+            .display()
+            .to_string();
+        Utils::plugin_folder_to_resource_path(format!("{}/{}", addon_folder_path, plugin_path))
     }
 
     fn plugins_to_packed_string_array(&self, plugins: HashSet<String>) -> String {
@@ -73,32 +82,27 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
 
     fn save(&self, plugin_config: PluginConfig) -> Result<()> {
         let godot_project_file_path = self.get_app_config().get_godot_project_file_path();
-        if !self
-            .get_file_service()
-            .file_exists(PathBuf::from(&godot_project_file_path))
-        {
+        let file_path = Path::new(&godot_project_file_path);
+        if !self.get_file_service().file_exists(file_path) {
             return Err(anyhow!(
                 "Godot project file not found: {}",
-                godot_project_file_path
+                godot_project_file_path.display()
             ));
         }
-        let lines = self.update_project_file(&godot_project_file_path, plugin_config)?;
-        self.save_project_file(&godot_project_file_path, lines)?;
+        let lines = self.update_project_file(godot_project_file_path, plugin_config)?;
+        self.save_project_file(godot_project_file_path, lines)?;
         Ok(())
     }
 
     fn load(&self) -> Result<GodotConfig> {
         let godot_project_file_path = self.get_app_config().get_godot_project_file_path();
-        if !self
-            .get_file_service()
-            .file_exists(PathBuf::from(&godot_project_file_path))
-        {
+        if !self.get_file_service().file_exists(godot_project_file_path) {
             return Err(anyhow!(
                 "Godot project file not found: {}",
-                godot_project_file_path
+                godot_project_file_path.display()
             ));
         }
-        let config = self.read_godot_project_file(&godot_project_file_path)?;
+        let config = self.read_godot_project_file(godot_project_file_path)?;
         Ok(config)
     }
 
@@ -114,7 +118,7 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
     /// ```
     fn update_project_file(
         &self,
-        godot_project_file_path: &str,
+        godot_project_file_path: &Path,
         plugin_config: PluginConfig,
     ) -> Result<Vec<String>> {
         let _plugins = HashSet::from_iter(
@@ -201,7 +205,7 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
     ///
     /// ```
     ///
-    fn read_godot_project_file(&self, godot_project_file_path: &str) -> Result<GodotConfig> {
+    fn read_godot_project_file(&self, godot_project_file_path: &Path) -> Result<GodotConfig> {
         let contents = self.load_project_file(godot_project_file_path)?;
         let mut output: HashMap<String, Vec<String>> = HashMap::new();
         output.insert("config/plugins".to_string(), vec![]);
@@ -243,33 +247,31 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
         Ok(GodotConfig::new(config_version, godot_version))
     }
 
-    fn load_project_file(&self, godot_file_path: &str) -> Result<Vec<String>> {
-        let file = self
-            .get_file_service()
-            .read_file_cached(PathBuf::from(godot_file_path))?;
+    fn load_project_file(&self, godot_file_path: &Path) -> Result<Vec<String>> {
+        let file = self.get_file_service().read_file_cached(godot_file_path)?;
         let lines = file.split('\n').map(|s| s.to_string()).collect::<Vec<_>>();
         Ok(lines)
     }
 
-    fn save_project_file(&self, godot_project_file_path: &str, lines: Vec<String>) -> Result<()> {
+    fn save_project_file(&self, godot_project_file_path: &Path, lines: Vec<String>) -> Result<()> {
         let file_service = self.get_file_service();
 
         if lines.is_empty() {
             return Err(anyhow!("No content to write to the project file"));
         }
-        if !file_service.file_exists(PathBuf::from(godot_project_file_path)) {
+        if !file_service.file_exists(godot_project_file_path) {
             return Err(anyhow!(
                 "Godot project file not found: {}",
-                godot_project_file_path
+                godot_project_file_path.display()
             ));
         }
-        file_service.write_file(PathBuf::from(godot_project_file_path), &lines.join("\n"))?;
+        file_service.write_file(godot_project_file_path, &lines.join("\n"))?;
         Ok(())
     }
 }
 pub trait GodotConfigRepository {
-    fn get_file_service(&self) -> &DefaultFileService;
-    fn get_app_config(&self) -> &DefaultAppConfig;
+    fn get_file_service(&self) -> &dyn FileService;
+    fn get_app_config(&self) -> &dyn AppConfig;
     fn update_plugins(&self, plugin_config: PluginConfig) -> Result<()>;
     fn get_godot_version_from_project(&self) -> Result<String>;
     fn plugin_root_folder_to_resource_path(&self, plugin_path: String) -> String;
@@ -278,12 +280,12 @@ pub trait GodotConfigRepository {
     fn load(&self) -> Result<GodotConfig>;
     fn update_project_file(
         &self,
-        godot_project_file_path: &str,
+        godot_project_file_path: &Path,
         plugin_config: PluginConfig,
     ) -> Result<Vec<String>>;
-    fn read_godot_project_file(&self, godot_project_file_path: &str) -> Result<GodotConfig>;
-    fn load_project_file(&self, godot_file_path: &str) -> Result<Vec<String>>;
-    fn save_project_file(&self, godot_project_file_path: &str, lines: Vec<String>) -> Result<()>;
+    fn read_godot_project_file(&self, godot_project_file_path: &Path) -> Result<GodotConfig>;
+    fn load_project_file(&self, godot_file_path: &Path) -> Result<Vec<String>>;
+    fn save_project_file(&self, godot_project_file_path: &Path, lines: Vec<String>) -> Result<()>;
 }
 
 #[cfg(test)]

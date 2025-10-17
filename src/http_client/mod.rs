@@ -74,6 +74,7 @@ impl HttpClient for DefaultHttpClient {
 #[async_trait::async_trait]
 pub trait HttpClient: Send + Sync {
     fn get_url(&self, base_url: String, path: String) -> String;
+
     async fn get<T: DeserializeOwned + Send + 'static>(
         &self,
         base_url: String,
@@ -82,5 +83,6 @@ pub trait HttpClient: Send + Sync {
     ) -> Result<T>
     where
         T: DeserializeOwned;
+
     async fn get_file(&self, file_url: String) -> Result<Response>;
 }
