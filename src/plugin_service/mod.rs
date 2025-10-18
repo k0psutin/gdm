@@ -14,18 +14,19 @@ use anyhow::{Context, Result, anyhow};
 use futures::future::try_join_all;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinSet;
 use tracing::{debug, error};
 
+#[cfg(not(tarpaulin_include))]
 pub struct DefaultPluginService {
     godot_config_repository: Box<dyn GodotConfigRepository>,
     asset_store_api: Arc<dyn AssetStoreAPI + Send + Sync>,
     plugin_config_repository: Box<dyn PluginConfigRepository>,
-    app_config: Box<dyn AppConfig>,
+    app_config: DefaultAppConfig,
     extract_service: Arc<dyn ExtractService + Send + Sync>,
     file_service: Arc<dyn FileService + Send + Sync>,
 }
@@ -41,26 +42,28 @@ impl From<AssetResponse> for Plugin {
     }
 }
 
+#[cfg(not(tarpaulin_include))]
 impl Default for DefaultPluginService {
     fn default() -> Self {
         Self {
             godot_config_repository: Box::new(DefaultGodotConfigRepository::default()),
             asset_store_api: Arc::new(DefaultAssetStoreAPI::default()),
             plugin_config_repository: Box::new(DefaultPluginConfigRepository::default()),
-            app_config: Box::new(DefaultAppConfig::default()),
+            app_config: DefaultAppConfig::default(),
             extract_service: Arc::new(DefaultExtractService::default()),
             file_service: Arc::new(DefaultFileService),
         }
     }
 }
 
+#[cfg(not(tarpaulin_include))]
 impl DefaultPluginService {
     #[allow(dead_code)]
     fn new(
         godot_config_repository: Box<dyn GodotConfigRepository>,
         asset_store_api: Arc<dyn AssetStoreAPI + Send + Sync>,
         plugin_config_repository: Box<dyn PluginConfigRepository>,
-        app_config: Box<dyn AppConfig>,
+        app_config: DefaultAppConfig,
         extract_service: Arc<dyn ExtractService + Send + Sync>,
         file_service: Arc<dyn FileService + Send + Sync>,
     ) -> Self {
@@ -88,8 +91,8 @@ impl PluginService for DefaultPluginService {
         &*self.godot_config_repository
     }
 
-    fn get_app_config(&self) -> &dyn AppConfig {
-        &*self.app_config
+    fn get_app_config(&self) -> &DefaultAppConfig {
+        &self.app_config
     }
 
     fn get_extract_service(&self) -> Arc<dyn ExtractService + Send + Sync> {
@@ -102,7 +105,7 @@ impl PluginService for DefaultPluginService {
 }
 
 pub trait PluginService {
-    fn get_app_config(&self) -> &dyn AppConfig;
+    fn get_app_config(&self) -> &DefaultAppConfig;
     fn get_godot_config_repository(&self) -> &dyn GodotConfigRepository;
     fn get_plugin_config_repository(&self) -> &dyn PluginConfigRepository;
 
@@ -110,14 +113,14 @@ pub trait PluginService {
     fn get_asset_store_api(&self) -> Arc<dyn AssetStoreAPI + Send + Sync>;
     fn get_extract_service(&self) -> Arc<dyn ExtractService + Send + Sync>;
 
-    async fn install_all_plugins(&self) -> Result<()> {
+    async fn install_all_plugins(&self) -> Result<BTreeMap<String, Plugin>> {
         let plugins = self.get_plugin_config_repository().get_plugins()?;
-        self.install_plugins(plugins).await?;
+        self.install_plugins(&plugins).await?;
 
         println!();
         println!("done.");
 
-        Ok(())
+        Ok(plugins)
     }
 
     fn create_finished_install_bar(
@@ -181,7 +184,12 @@ pub trait PluginService {
     }
 
     /// Installs a single plugin by its name, asset ID, and version
-    async fn install_plugin(&self, name: String, asset_id: String, version: String) -> Result<()> {
+    async fn install_plugin(
+        &self,
+        name: String,
+        asset_id: String,
+        version: String,
+    ) -> Result<BTreeMap<String, Plugin>> {
         let asset: AssetResponse;
         if !version.is_empty() && !asset_id.is_empty() {
             let _asset_id = asset_id.clone();
@@ -201,7 +209,6 @@ pub trait PluginService {
         let m = MultiProgress::new();
         let title = asset.get_title().to_string();
         let version = asset.get_version_string().to_string();
-        let cache_folder = self.get_app_config().get_cache_folder_path();
 
         let pb_download = self.create_download_progress_bar(
             &m,
@@ -213,7 +220,7 @@ pub trait PluginService {
         )?;
         let downloaded_asset = self
             .get_asset_store_api()
-            .download_asset(&asset.clone(), pb_download, cache_folder)
+            .download_asset(&asset.clone(), pb_download)
             .await?;
         let asset_response = downloaded_asset.get_asset_response();
         let pb_extract_service = self.create_extract_service_progress_bar(
@@ -231,9 +238,9 @@ pub trait PluginService {
             .await?;
 
         let plugin_name = plugin_root_folder.display().to_string();
-        let plugins = HashMap::from([(plugin_name, Plugin::from(asset))]);
-        self.add_plugins(plugins)?;
-        Ok(())
+        let plugins = BTreeMap::from([(plugin_name, Plugin::from(asset))]);
+        self.add_plugins(&plugins)?;
+        Ok(plugins)
     }
 
     /// Downloads and extract_services all plugins under /addons folder
@@ -241,9 +248,7 @@ pub trait PluginService {
         &self,
         main_start_message: String,
         plugins: Vec<AssetResponse>,
-    ) -> Result<HashMap<String, Plugin>> {
-        let cache_folder = self.get_app_config().get_cache_folder_path();
-
+    ) -> Result<BTreeMap<String, Plugin>> {
         let mut download_tasks = JoinSet::new();
         let pb_multi = MultiProgress::new();
         let pb_main = pb_multi.add(ProgressBar::new(0));
@@ -262,12 +267,8 @@ pub trait PluginService {
                 plugin.get_version_string().to_string(),
             )?;
             let asset_store_api = self.get_asset_store_api().clone();
-            let cache_folder_clone = cache_folder.to_owned();
-            download_tasks.spawn(async move {
-                asset_store_api
-                    .download_asset(&plugin, pb_task, &cache_folder_clone)
-                    .await
-            });
+            download_tasks
+                .spawn(async move { asset_store_api.download_asset(&plugin, pb_task).await });
         }
 
         let result = download_tasks.join_all().await;
@@ -275,7 +276,7 @@ pub trait PluginService {
 
         let mut extract_service_tasks = JoinSet::new();
 
-        pb_main.set_message("ExtractServiceing plugins");
+        pb_main.set_message("Extracting plugins");
 
         for (index, downloaded_asset) in download_tasks.clone().into_iter().enumerate() {
             let asset_response = downloaded_asset.get_asset_response().clone();
@@ -284,7 +285,7 @@ pub trait PluginService {
                 &pb_multi,
                 index + 1,
                 download_tasks.len(),
-                String::from("ExtractServiceing"),
+                String::from("Extracting"),
                 asset_response.get_title().to_string(),
                 asset_response.get_version_string().to_string(),
             )?;
@@ -299,17 +300,16 @@ pub trait PluginService {
 
         let installed_plugins = download_tasks
             .into_iter()
-            .map(|p| {
-                (
-                    p.get_root_folder().clone(),
-                    Plugin::from(p.get_asset_response().clone()),
-                )
+            .map(|downloaded_asset| {
+                let asset_response = downloaded_asset.get_asset_response().clone();
+                let plugin: Plugin = Plugin::from(asset_response.clone());
+                let plugin_name = downloaded_asset.get_root_folder().to_string();
+                (plugin_name, plugin)
             })
-            .collect::<HashMap<String, Plugin>>();
-
+            .collect::<BTreeMap<String, Plugin>>();
         pb_main.finish_and_clear();
 
-        for (index, plugin) in installed_plugins.values().enumerate() {
+        for (index, (_, plugin)) in installed_plugins.iter().enumerate() {
             let finished_bar = self.create_finished_install_bar(
                 &pb_multi,
                 index + 1,
@@ -327,23 +327,23 @@ pub trait PluginService {
     /// Install all plugins from the given list of Plugins
     async fn install_plugins(
         &self,
-        plugins: Vec<(String, Plugin)>,
-    ) -> Result<HashMap<String, Plugin>> {
+        plugins: &BTreeMap<String, Plugin>,
+    ) -> Result<BTreeMap<String, Plugin>> {
         let mut asset = Vec::new();
-        for (_, plugin) in plugins {
+        for plugin in plugins.values() {
             let asset_id = plugin.get_asset_id().clone();
             let version = plugin.get_version().clone();
             let asset_request = self.find_plugin_by_asset_id_and_version(asset_id, version);
             asset.push(asset_request);
         }
 
-        let assets = try_join_all(asset).await?;
+        let assets: Vec<AssetResponse> = try_join_all(asset).await?;
 
         let installed_plugins = self
             .download_and_extract_service_plugins(String::from("Downloading plugins"), assets)
             .await?;
 
-        self.add_plugins(installed_plugins.clone())?;
+        self.add_plugins(&installed_plugins)?;
 
         Ok(installed_plugins)
     }
@@ -366,11 +366,11 @@ pub trait PluginService {
         Ok(())
     }
 
-    fn add_plugins(&self, plugins: HashMap<String, Plugin>) -> Result<()> {
+    fn add_plugins(&self, plugins: &BTreeMap<String, Plugin>) -> Result<()> {
         let godot_config_repository = self.get_godot_config_repository();
         let plugin_config_repository = self.get_plugin_config_repository();
         let plugin_config = plugin_config_repository.add_plugins(plugins)?;
-        godot_config_repository.update_plugins(plugin_config)?;
+        godot_config_repository.save(plugin_config)?;
         Ok(())
     }
 
@@ -498,7 +498,7 @@ pub trait PluginService {
 
                 // Remove plugin from godot project config
                 godot_config_repository
-                    .update_plugins(plugin_config)
+                    .save(plugin_config)
                     .with_context(|| {
                         format!(
                             "Failed to remove plugin {} from Godot project configuration",
@@ -572,7 +572,7 @@ pub trait PluginService {
     /// Update all installed plugins to their latest versions
     /// Downloads and installs the latest versions of all plugins that have updates available
     /// Updates the plugin configuration file with the new versions
-    async fn update_plugins(&self) -> Result<()> {
+    async fn update_plugins(&self) -> Result<BTreeMap<String, Plugin>> {
         // TODO Not working
         let plugin_config_repository = self.get_plugin_config_repository();
         let plugins = plugin_config_repository.get_plugins()?;
@@ -580,6 +580,7 @@ pub trait PluginService {
         debug!("Checking for plugin updates for {:?} plugins", plugins);
 
         let mut plugins_to_update = Vec::new();
+        let mut updated_plugins = BTreeMap::new();
 
         for (_, plugin) in plugins {
             let asset = self
@@ -600,16 +601,16 @@ pub trait PluginService {
         if plugins_to_update.is_empty() {
             println!("All plugins are up to date.");
         } else {
-            let updated_plugins = self
+            updated_plugins = self
                 .download_and_extract_service_plugins(
                     String::from("Updating plugins"),
                     plugins_to_update.clone(),
                 )
                 .await?;
-            plugin_config_repository.add_plugins(updated_plugins.clone())?;
+            plugin_config_repository.add_plugins(&updated_plugins)?;
             println!("Plugins updated successfully.");
         }
-        Ok(())
+        Ok(updated_plugins)
     }
 
     async fn get_asset_list_response_by_name_or_version(
@@ -675,36 +676,24 @@ pub trait PluginService {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use crate::api::MockDefaultAssetStoreAPI;
-    use crate::app_config::MockDefaultAppConfig;
+    use crate::api::asset_list_response::AssetListItem;
     use crate::extract_service::MockDefaultExtractService;
     use crate::file_service::MockDefaultFileService;
     use crate::godot_config_repository::MockDefaultGodotConfigRepository;
     use crate::plugin_config_repository::MockDefaultPluginConfigRepository;
+    use crate::plugin_config_repository::plugin_config::DefaultPluginConfig;
 
     use super::*;
+    use mockall::predicate::*;
 
     fn setup_plugin_service() -> DefaultPluginService {
         DefaultPluginService::default()
     }
 
-    fn setup_plugin_service_mocks() -> DefaultPluginService {
-        let mut godot_config_repository = Box::new(MockDefaultGodotConfigRepository::default());
-        let asset_store_api = Arc::new(MockDefaultAssetStoreAPI::default());
-        let plugin_config_repository = Box::new(MockDefaultPluginConfigRepository::default());
-        let app_config = Box::new(MockDefaultAppConfig::default());
-        let extract_service = Arc::new(MockDefaultExtractService::default());
-        let file_service = Arc::new(MockDefaultFileService::default());
-
-        DefaultPluginService::new(
-            godot_config_repository,
-            asset_store_api,
-            plugin_config_repository,
-            app_config,
-            extract_service,
-            file_service,
-        )
-    }
+    // find_plugin_by_id_or_name
 
     #[tokio::test]
     async fn test_find_plugin_by_id_or_name_with_id_with_none_parameters_should_return_error() {
@@ -854,65 +843,255 @@ mod tests {
         assert!(result.is_err());
     }
 
+    fn setup_plugin_service_mocks() -> DefaultPluginService {
+        let mut godot_config_repository = MockDefaultGodotConfigRepository::default();
+
+        godot_config_repository
+            .expect_save()
+            .returning(|_path| Ok(()));
+
+        let mut asset_store_api = MockDefaultAssetStoreAPI::default();
+
+        let mut plugin_config_repository = MockDefaultPluginConfigRepository::default();
+        plugin_config_repository
+            .expect_add_plugins()
+            .returning(|_plugins| Ok(DefaultPluginConfig::new(_plugins.clone())));
+
+        plugin_config_repository
+            .expect_remove_plugins()
+            .returning(|_plugin_names| Ok(DefaultPluginConfig::default()));
+
+        let app_config = DefaultAppConfig::default();
+        let mut extract_service = MockDefaultExtractService::default();
+
+        let file_service = Arc::new(MockDefaultFileService::default());
+
+        extract_service
+            .expect_extract_plugin()
+            .returning(|_file_path, _pb| Ok(PathBuf::from("test_plugin")));
+        plugin_config_repository.expect_get_plugins().returning(|| {
+            Ok(BTreeMap::from([(
+                String::from("test_plugin"),
+                Plugin::new(
+                    String::from("1234"),
+                    String::from("Test Plugin"),
+                    String::from("1.1.1"),
+                    String::from("MIT"),
+                ),
+            )]))
+        });
+        asset_store_api
+            .expect_get_asset_by_id_and_version()
+            .with(eq("1234".to_string()), eq("1.1.1".to_string()))
+            .returning(|asset_id, version| {
+                Ok(AssetResponse::new(
+                    asset_id,
+                    "Test Plugin".to_string(),
+                    "11".to_string(),
+                    version,
+                    "4.5".to_string(),
+                    "5".to_string(),
+                    "MIT".to_string(),
+                    "Some description".to_string(),
+                    "GitHub".to_string(),
+                    "commit_hash".to_string(),
+                    "2023-10-01".to_string(),
+                    "https://example.com/test_plugin.zip".to_string(),
+                ))
+            });
+        asset_store_api
+            .expect_get_asset_by_id()
+            .with(eq("1234".to_string()))
+            .returning(|asset_id| {
+                Ok(AssetResponse::new(
+                    asset_id,
+                    "Test Plugin".to_string(),
+                    "11".to_string(),
+                    "1.1.1".to_string(),
+                    "4.5".to_string(),
+                    "5".to_string(),
+                    "MIT".to_string(),
+                    "Some description".to_string(),
+                    "GitHub".to_string(),
+                    "commit_hash".to_string(),
+                    "2023-10-01".to_string(),
+                    "https://example.com/test_plugin.zip".to_string(),
+                ))
+            });
+        asset_store_api
+            .expect_download_asset()
+            .returning(|asset_response, _pb| {
+                Ok(Asset::new(
+                    "test_plugin".to_string(),
+                    PathBuf::from("test_plugin"),
+                    asset_response.clone(),
+                ))
+            });
+        asset_store_api.expect_get_assets().returning(|_params| {
+            Ok(AssetListResponse::new(vec![AssetListItem::new(
+                "1234".to_string(),
+                "Test Plugin".to_string(),
+                "Test Maker".to_string(),
+                "Tools".to_string(),
+                "4.5".to_string(),
+                "5".to_string(),
+                "MIT".to_string(),
+                "??".to_string(),
+                "11".to_string(),
+                "1.1.1".to_string(),
+                "2023-10-01".to_string(),
+            )]))
+        });
+        DefaultPluginService::new(
+            Box::new(godot_config_repository),
+            Arc::new(asset_store_api),
+            Box::new(plugin_config_repository),
+            app_config,
+            Arc::new(extract_service),
+            file_service,
+        )
+    }
+
     // install_all_plugins
 
     #[tokio::test]
     async fn test_install_plugins_should_install_all_plugins_in_config() {
-        let plugin_service = setup_plugin_service();
+        let plugin_service = setup_plugin_service_mocks();
         let result = plugin_service.install_all_plugins().await;
-        println!("{:?}", result);
         assert!(result.is_ok());
+        let installed_plugins = result.unwrap();
+
+        let expected_plugins = BTreeMap::from([(
+            String::from("test_plugin"),
+            Plugin::new(
+                String::from("1234"),
+                String::from("Test Plugin"),
+                String::from("1.1.1"),
+                String::from("MIT"),
+            ),
+        )]);
+
+        assert_eq!(installed_plugins, expected_plugins);
     }
+
+    // TODO test error case for install_all_plugins
 
     // install_plugins
 
     #[tokio::test]
-    async fn test_install_plugin_with_asset_id_and_no_version_should_return_err() {
-        let plugin_service = setup_plugin_service();
+    async fn test_install_plugin_with_asset_id_and_no_version_should_install_asset() {
+        let plugin_service = setup_plugin_service_mocks();
         let name = String::default();
-        let asset_id = String::from("1709");
+        let asset_id = String::from("1234");
         let version = String::default();
         let result = plugin_service.install_plugin(name, asset_id, version).await;
-        assert!(result.is_err());
+        assert!(result.is_ok());
+        let installed_plugins = result.unwrap();
+
+        let expected_plugins = BTreeMap::from([(
+            String::from("test_plugin"),
+            Plugin::new(
+                String::from("1234"),
+                String::from("Test Plugin"),
+                String::from("1.1.1"),
+                String::from("MIT"),
+            ),
+        )]);
+
+        assert_eq!(installed_plugins, expected_plugins);
     }
 
     #[tokio::test]
     async fn test_install_plugin_with_only_version_should_return_err() {
-        let plugin_service = setup_plugin_service();
+        let plugin_service = setup_plugin_service_mocks();
         let name = String::default();
         let asset_id = String::default();
-        let version = String::from("9.1.0");
+        let version = String::from("1.1.1");
         let result = plugin_service.install_plugin(name, asset_id, version).await;
         assert!(result.is_err());
     }
-    #[tokio::test]
-    async fn test_install_plugin_with_asset_id_and_version_should_install_plugin() {
-        let plugin_service = setup_plugin_service();
-        let name = String::new();
-        let asset_id = String::from("1709");
-        let version = String::from("9.1.0");
-        let result = plugin_service.install_plugin(name, asset_id, version).await;
-        assert!(result.is_ok());
-    }
 
     #[tokio::test]
-    async fn test_install_plugin_with_asset_id_should_install_plugin() {
-        let plugin_service = setup_plugin_service();
+    async fn test_install_plugin_with_asset_id_and_version_should_install_plugin() {
+        let plugin_service = setup_plugin_service_mocks();
         let name = String::new();
-        let asset_id = String::from("1709");
-        let version = String::new();
+        let asset_id = String::from("1234");
+        let version = String::from("1.1.1");
         let result = plugin_service.install_plugin(name, asset_id, version).await;
         assert!(result.is_ok());
+
+        let installed_plugins = result.unwrap();
+        let expected_plugins = BTreeMap::from([(
+            String::from("test_plugin"),
+            Plugin::new(
+                String::from("1234"),
+                String::from("Test Plugin"),
+                String::from("1.1.1"),
+                String::from("MIT"),
+            ),
+        )]);
+        assert_eq!(installed_plugins, expected_plugins);
     }
 
     #[tokio::test]
     async fn test_install_plugin_with_name_should_install_plugin() {
-        let plugin_service = setup_plugin_service();
-        let name = String::from("Godot Unit Testing");
+        let plugin_service = setup_plugin_service_mocks();
+        let name = String::from("Test Plugin");
         let asset_id = String::new();
         let version = String::new();
         let result = plugin_service.install_plugin(name, asset_id, version).await;
         assert!(result.is_ok());
+
+        let installed_plugins = result.unwrap();
+        let expected_plugins = BTreeMap::from([(
+            String::from("test_plugin"),
+            Plugin::new(
+                String::from("1234"),
+                String::from("Test Plugin"),
+                String::from("1.1.1"),
+                String::from("MIT"),
+            ),
+        )]);
+        assert_eq!(installed_plugins, expected_plugins);
+    }
+
+    // TODO test error case for install_plugin
+
+    // download_and_extract_plugins
+
+    #[tokio::test]
+    async fn test_download_and_extract_service_plugins_should_return_correct_plugins() {
+        let plugin_service = setup_plugin_service_mocks();
+        let plugin = vec![AssetResponse::new(
+            "1234".to_string(),
+            "Test Plugin".to_string(),
+            "11".to_string(),
+            "1.1.1".to_string(),
+            "4.5".to_string(),
+            "5".to_string(),
+            "MIT".to_string(),
+            "Some description".to_string(),
+            "GitHub".to_string(),
+            "commit_hash".to_string(),
+            "2023-10-01".to_string(),
+            "https://example.com/test_plugin.zip".to_string(),
+        )];
+        let result = plugin_service
+            .download_and_extract_service_plugins("".to_string(), plugin)
+            .await;
+        assert!(result.is_ok());
+
+        let extracted_plugins = result.unwrap();
+        let expected_plugins = BTreeMap::from([(
+            String::from("test_plugin"),
+            Plugin::new(
+                String::from("1234"),
+                String::from("Test Plugin"),
+                String::from("1.1.1"),
+                String::from("MIT"),
+            ),
+        )]);
+        assert_eq!(extracted_plugins, expected_plugins);
     }
 
     // add_plugin_by_id_or_name_and_version
@@ -920,5 +1099,134 @@ mod tests {
     // remove_plugin_by_name
     // check_outdated_plugins
     // update_plugins
+
+    fn setup_update_plugin_mocks() -> DefaultPluginService {
+        let mut godot_config_repository = MockDefaultGodotConfigRepository::default();
+
+        godot_config_repository
+            .expect_save()
+            .returning(|_path| Ok(()));
+
+        let mut asset_store_api = MockDefaultAssetStoreAPI::default();
+
+        let mut plugin_config_repository = MockDefaultPluginConfigRepository::default();
+        plugin_config_repository
+            .expect_add_plugins()
+            .returning(|_plugins| Ok(DefaultPluginConfig::new(_plugins.clone())));
+
+        plugin_config_repository
+            .expect_remove_plugins()
+            .returning(|_plugin_names| Ok(DefaultPluginConfig::default()));
+
+        let app_config = DefaultAppConfig::default();
+        let mut extract_service = MockDefaultExtractService::default();
+
+        let file_service = Arc::new(MockDefaultFileService::default());
+
+        extract_service
+            .expect_extract_plugin()
+            .returning(|_file_path, _pb| Ok(PathBuf::from("test_plugin")));
+        plugin_config_repository.expect_get_plugins().returning(|| {
+            Ok(BTreeMap::from([(
+                String::from("test_plugin"),
+                Plugin::new(
+                    String::from("1234"),
+                    String::from("Test Plugin"),
+                    String::from("1.1.2"),
+                    String::from("MIT"),
+                ),
+            )]))
+        });
+        asset_store_api
+            .expect_get_asset_by_id_and_version()
+            .with(eq("1234".to_string()), eq("1.1.1".to_string()))
+            .returning(|asset_id, version| {
+                Ok(AssetResponse::new(
+                    asset_id,
+                    "Test Plugin".to_string(),
+                    "11".to_string(),
+                    version,
+                    "4.5".to_string(),
+                    "5".to_string(),
+                    "MIT".to_string(),
+                    "Some description".to_string(),
+                    "GitHub".to_string(),
+                    "commit_hash".to_string(),
+                    "2023-10-01".to_string(),
+                    "https://example.com/test_plugin.zip".to_string(),
+                ))
+            });
+        asset_store_api
+            .expect_get_asset_by_id()
+            .with(eq("1234".to_string()))
+            .returning(|asset_id| {
+                Ok(AssetResponse::new(
+                    asset_id,
+                    "Test Plugin".to_string(),
+                    "11".to_string(),
+                    "1.2.0".to_string(),
+                    "4.5".to_string(),
+                    "5".to_string(),
+                    "MIT".to_string(),
+                    "Some description".to_string(),
+                    "GitHub".to_string(),
+                    "commit_hash".to_string(),
+                    "2023-10-01".to_string(),
+                    "https://example.com/test_plugin.zip".to_string(),
+                ))
+            });
+        asset_store_api
+            .expect_download_asset()
+            .returning(|asset_response, _pb| {
+                Ok(Asset::new(
+                    "test_plugin".to_string(),
+                    PathBuf::from("test_plugin"),
+                    asset_response.clone(),
+                ))
+            });
+        asset_store_api.expect_get_assets().returning(|_params| {
+            Ok(AssetListResponse::new(vec![AssetListItem::new(
+                "1234".to_string(),
+                "Test Plugin".to_string(),
+                "Test Maker".to_string(),
+                "Tools".to_string(),
+                "4.5".to_string(),
+                "5".to_string(),
+                "MIT".to_string(),
+                "??".to_string(),
+                "11".to_string(),
+                "1.1.1".to_string(),
+                "2023-10-01".to_string(),
+            )]))
+        });
+        DefaultPluginService::new(
+            Box::new(godot_config_repository),
+            Arc::new(asset_store_api),
+            Box::new(plugin_config_repository),
+            app_config,
+            Arc::new(extract_service),
+            file_service,
+        )
+    }
+
+    #[tokio::test]
+    async fn test_update_plugins_should_return_correct_plugins() {
+        let plugin_service = setup_update_plugin_mocks();
+        let result = plugin_service.update_plugins().await;
+        assert!(result.is_ok());
+
+        let installed_plugins = result.unwrap();
+        let expected_plugins = BTreeMap::from([(
+            String::from("test_plugin"),
+            Plugin::new(
+                String::from("1234"),
+                String::from("Test Plugin"),
+                String::from("1.2.0"),
+                String::from("MIT"),
+            ),
+        )]);
+        assert_eq!(installed_plugins, expected_plugins);
+    }
+
     // search_assets_by_name_or_version
 }

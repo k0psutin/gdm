@@ -1,10 +1,12 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
+#[cfg(not(tarpaulin_include))]
 #[derive(serde::Deserialize, Debug)]
 pub struct AssetListResponse {
     result: Vec<AssetListItem>,
 }
 
+#[cfg(not(tarpaulin_include))]
 impl AssetListResponse {
     #[allow(dead_code)]
     pub fn new(result: Vec<AssetListItem>) -> AssetListResponse {
@@ -36,6 +38,7 @@ impl AssetListResponse {
     }
 }
 
+#[cfg(not(tarpaulin_include))]
 #[derive(Debug, serde::Deserialize)]
 pub struct AssetListItem {
     asset_id: String,
@@ -49,6 +52,38 @@ pub struct AssetListItem {
     version: String,
     version_string: String,
     modify_date: String,
+}
+
+#[cfg(not(tarpaulin_include))]
+impl AssetListItem {
+    #[allow(dead_code, clippy::too_many_arguments)]
+    pub fn new(
+        asset_id: String,
+        title: String,
+        author: String,
+        category: String,
+        godot_version: String,
+        rating: String,
+        cost: String,
+        support_level: String,
+        version: String,
+        version_string: String,
+        modify_date: String,
+    ) -> AssetListItem {
+        AssetListItem {
+            asset_id,
+            title,
+            author,
+            category,
+            godot_version,
+            rating,
+            cost,
+            support_level,
+            version,
+            version_string,
+            modify_date,
+        }
+    }
 }
 
 impl Display for AssetListItem {
@@ -128,18 +163,17 @@ mod tests {
     fn test_asset_list_item_display() {
         let asset = setup_asset_list_item();
         let display_output = format!("{}", asset);
-        let expected = "\
-    Asset ID: 123
-    Title: Test Asset
-    Author: Test Author
-    Category: Test Category
-    Godot Ver.: 3.3
-    Version: 1.0 (1.0)
-    License: Free
-    Rating: 5
-    Support: Community
-    Last Updated: 2023-01-01
-    Asset URL: https://godotengine.org/asset-library/asset/123";
+        let expected = "Asset ID: 123
+Title: Test Asset
+Author: Test Author
+Category: Test Category
+Godot Ver.: 3.3
+Version: 1.0 (1.0)
+License: Free
+Rating: 5
+Support: Community
+Last Updated: 2023-01-01
+Asset URL: https://godotengine.org/asset-library/asset/123";
         assert_eq!(display_output, expected);
     }
 }

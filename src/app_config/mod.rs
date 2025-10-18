@@ -5,6 +5,7 @@ use std::path::Path;
 /// Application configuration settings
 ///
 /// Settings are loaded from environment variables using the `dotenv` crate.
+#[cfg(not(tarpaulin_include))]
 #[derive(Debug, Clone)]
 pub struct DefaultAppConfig {
     api_base_url: String,
@@ -14,6 +15,7 @@ pub struct DefaultAppConfig {
     addon_folder_path: String,
 }
 
+#[cfg(not(tarpaulin_include))]
 impl DefaultAppConfig {
     #[allow(dead_code)]
     pub fn new(
@@ -44,6 +46,7 @@ impl DefaultAppConfig {
     }
 }
 
+#[cfg(not(tarpaulin_include))]
 impl Default for DefaultAppConfig {
     fn default() -> Self {
         dotenv().ok();

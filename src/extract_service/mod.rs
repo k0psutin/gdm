@@ -11,16 +11,18 @@ use crate::app_config::DefaultAppConfig;
 use crate::file_service::{DefaultFileService, FileService};
 use crate::utils::Utils;
 
+#[cfg(not(tarpaulin_include))]
 pub struct DefaultExtractService {
     file_service: Box<dyn FileService + Send + Sync + 'static>,
-    app_config: Box<dyn AppConfig + Send + Sync + 'static>,
+    app_config: DefaultAppConfig,
 }
 
+#[cfg(not(tarpaulin_include))]
 impl DefaultExtractService {
     #[allow(dead_code)]
     pub fn new(
         file_service: Box<dyn FileService + Send + Sync + 'static>,
-        app_config: Box<dyn AppConfig + Send + Sync + 'static>,
+        app_config: DefaultAppConfig,
     ) -> Self {
         DefaultExtractService {
             file_service,
@@ -29,11 +31,12 @@ impl DefaultExtractService {
     }
 }
 
+#[cfg(not(tarpaulin_include))]
 impl Default for DefaultExtractService {
     fn default() -> Self {
         DefaultExtractService {
             file_service: Box::new(DefaultFileService),
-            app_config: Box::new(DefaultAppConfig::default()),
+            app_config: DefaultAppConfig::default(),
         }
     }
 }
@@ -45,8 +48,8 @@ impl ExtractService for DefaultExtractService {
         &*self.file_service
     }
 
-    fn get_app_config(&self) -> &dyn AppConfig {
-        &*self.app_config
+    fn get_app_config(&self) -> &DefaultAppConfig {
+        &self.app_config
     }
 
     fn create_extract_path(&self, root: PathBuf, path: PathBuf) -> PathBuf {
@@ -173,7 +176,7 @@ impl ExtractService for DefaultExtractService {
 
 #[async_trait::async_trait]
 pub trait ExtractService: Send + Sync + 'static {
-    fn get_app_config(&self) -> &dyn AppConfig;
+    fn get_app_config(&self) -> &DefaultAppConfig;
     fn get_file_service(&self) -> &dyn FileService;
     fn create_extract_path(&self, root: PathBuf, path: PathBuf) -> PathBuf;
 

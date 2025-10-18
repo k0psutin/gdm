@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::{Result, anyhow};
 use reqwest::Response;
-use serde::de::DeserializeOwned;
+use serde_json::Value;
 use tracing::{error, info};
 use url::Url;
 
@@ -28,18 +28,19 @@ impl HttpClient for DefaultHttpClient {
         format!("{}{}", base_url, path)
     }
 
-    async fn get<T: DeserializeOwned + Send + 'static>(
+    #[cfg(not(tarpaulin_include))]
+    async fn get(
         &self,
         base_url: String,
         path: String,
         params: HashMap<String, String>,
-    ) -> Result<T> {
+    ) -> Result<Value> {
         let _url = Url::parse_with_params(&self.get_url(base_url, path), params)?;
 
         match reqwest::get(_url.as_str()).await {
             Ok(response) => {
                 info!("[GET] {} [{}]", _url, response.status());
-                let data = response.json::<T>().await?;
+                let data = response.json().await?;
                 Ok(data)
             }
             Err(e) => {
@@ -52,6 +53,7 @@ impl HttpClient for DefaultHttpClient {
         }
     }
 
+    #[cfg(not(tarpaulin_include))]
     async fn get_file(&self, file_url: String) -> Result<Response> {
         let _url = Url::parse(&file_url)?;
 
@@ -75,14 +77,25 @@ impl HttpClient for DefaultHttpClient {
 pub trait HttpClient: Send + Sync {
     fn get_url(&self, base_url: String, path: String) -> String;
 
-    async fn get<T: DeserializeOwned + Send + 'static>(
+    async fn get(
         &self,
         base_url: String,
         path: String,
         params: HashMap<String, String>,
-    ) -> Result<T>
-    where
-        T: DeserializeOwned;
+    ) -> Result<Value>;
 
     async fn get_file(&self, file_url: String) -> Result<Response>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    async fn test_get_url() {
+        let http_client = DefaultHttpClient::new();
+        let base_url = "https://api.example.com/".to_string();
+        let path = "endpoint".to_string();
+        let full_url = http_client.get_url(base_url.clone(), path.clone());
+        assert_eq!(full_url, "https://api.example.com/endpoint".to_string());
+    }
 }

@@ -32,7 +32,7 @@ mod tests {
     fn test_plugin_name_to_addon_folder_path() {
         let plugin_name = Path::new("some_plugin");
         let addon_folder_path =
-            Utils::plugin_name_to_addon_folder_path(plugin_name, Path::new("addons"));
+            Utils::plugin_name_to_addon_folder_path(Path::new("addons"), plugin_name);
         assert_eq!(addon_folder_path, PathBuf::from("addons/some_plugin"));
     }
 
@@ -40,7 +40,7 @@ mod tests {
     fn test_plugin_name_to_addon_folder_path_two_levels() {
         let plugin_name = Path::new("some_folder/some_plugin");
         let addon_folder_path =
-            Utils::plugin_name_to_addon_folder_path(plugin_name, Path::new("addons"));
+            Utils::plugin_name_to_addon_folder_path(Path::new("addons"), plugin_name);
         assert_eq!(
             addon_folder_path,
             PathBuf::from("addons/some_folder/some_plugin")

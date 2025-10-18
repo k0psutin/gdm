@@ -1,150 +1,170 @@
 use crate::plugin_config_repository::plugin::Plugin;
 
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct PluginConfig {
-    plugins: HashMap<String, Plugin>,
+pub struct DefaultPluginConfig {
+    plugins: BTreeMap<String, Plugin>,
 }
 
-impl PluginConfig {
-    pub fn new(plugins: HashMap<String, Plugin>) -> PluginConfig {
-        PluginConfig { plugins }
-    }  
+// TODO Change to hashmap again?
+impl DefaultPluginConfig {
+    pub fn new(plugins: BTreeMap<String, Plugin>) -> DefaultPluginConfig {
+        DefaultPluginConfig { plugins }
+    }
 }
 
-impl Default for PluginConfig {
+impl Default for DefaultPluginConfig {
     fn default() -> Self {
-        PluginConfig::new(HashMap::new())
+        DefaultPluginConfig::new(BTreeMap::new())
     }
 }
 
 #[cfg_attr(test, mockall::automock)]
-impl PluginConfigImpl for PluginConfig {
-    fn get_plugins(&self) -> &HashMap<String, Plugin> {
+impl PluginConfig for DefaultPluginConfig {
+    fn get_plugins(&self) -> &BTreeMap<String, Plugin> {
         &self.plugins
     }
-}
 
-pub trait PluginConfigImpl {
-    fn get_plugins(&self) -> &HashMap<String, Plugin>;
-
-    fn copy(&self, plugins: Option<HashMap<String, Plugin>>, _godot_version: Option<String>) -> PluginConfig {
-        let plugins = match plugins {
-            Some(p) => p,
-            None => self.get_plugins().clone(),
-        };
-
-        PluginConfig { plugins }
+    fn get_plugin_by_asset_id(&self, asset_id: String) -> Option<Plugin> {
+        self.get_plugins()
+            .iter()
+            .find(|(_, p)| p.get_asset_id() == asset_id)
+            .map(|(_, p)| p.clone())
     }
 
-    fn get_plugin_by_asset_id(&self, asset_id: String) -> Option<&Plugin> {
-        let result = self.get_plugins().values().find(|p| p.get_asset_id() == asset_id);
-        match result {
-            Some(plugin) => Some(plugin),
-            None => None,
-        }
-    }
-
-    fn get_plugin_key_by_name(&self, name: &str) -> Option<String> {
-        let plugin_name = self.get_plugins().get_key_value(name);
-        Some(plugin_name)?.map(|(key, _)| key.clone())
+    fn get_plugin_by_name(&self, name: &str) -> Option<Plugin> {
+        self.get_plugins().get(name).cloned()
     }
 
     // TODO create a method that checks if a plugin is already installed by asset id
     // e.g. addons/<plugin> exists and is listed in gdm.json
-    fn check_if_plugin_already_installed_by_asset_id(&self, asset_id: &str) -> Option<&Plugin> {
+    fn check_if_plugin_already_installed_by_asset_id(&self, asset_id: &str) -> Option<Plugin> {
         let plugin = self.get_plugin_by_asset_id(asset_id.to_string());
         match plugin {
             Some(p) => {
                 println!(
                     "Plugin with asset ID {} is already installed: {} (version {})",
-                    asset_id, p.get_title(), p.get_version()
+                    asset_id,
+                    p.get_title(),
+                    p.get_version()
                 );
-                Some(p)
+                Some(p.clone())
             }
             None => None,
         }
     }
 
-    fn remove_plugins(&self, plugins: HashSet<String>) -> PluginConfig {
+    fn remove_plugins(&self, plugins: HashSet<String>) -> DefaultPluginConfig {
         let mut _plugins = self.get_plugins().clone();
-
         for plugin_key in plugins {
             _plugins.remove(&plugin_key);
         }
 
-        self.copy(Some(_plugins), None)
+        DefaultPluginConfig::new(_plugins)
     }
 
-    fn add_plugins(&self, new_plugins: HashMap<String, Plugin>) -> PluginConfig {
-        let mut plugins_copy = self.get_plugins().clone();
-
-        for (key, plugin) in new_plugins {
-            plugins_copy.insert(key, plugin);
+    fn add_plugins(&self, plugins: &BTreeMap<String, Plugin>) -> DefaultPluginConfig {
+        let mut _plugins = self.get_plugins().clone();
+        for (key, plugin) in plugins {
+            _plugins.insert(key.clone(), plugin.clone());
         }
 
-        let mut plugins = plugins_copy.into_iter().collect::<Vec<_>>();
-
-        plugins.sort_by(|a, b| a.0.cmp(&b.0));
-
-        self.copy(Some(HashMap::from_iter(plugins)), None)
+        DefaultPluginConfig::new(_plugins)
     }
+}
+
+pub trait PluginConfig {
+    fn get_plugins(&self) -> &BTreeMap<String, Plugin>;
+    fn get_plugin_by_asset_id(&self, asset_id: String) -> Option<Plugin>;
+    fn get_plugin_by_name(&self, name: &str) -> Option<Plugin>;
+    fn check_if_plugin_already_installed_by_asset_id(&self, asset_id: &str) -> Option<Plugin>;
+    fn remove_plugins(&self, plugins: HashSet<String>) -> DefaultPluginConfig;
+    fn add_plugins(&self, plugins: &BTreeMap<String, Plugin>) -> DefaultPluginConfig;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn setup_test_plugin_config() -> PluginConfig {
-        PluginConfig::default()
+    fn setup_test_plugin_config() -> DefaultPluginConfig {
+        let plugins: BTreeMap<String, Plugin> = BTreeMap::from([
+            (
+                "plugin_1".to_string(),
+                Plugin::new(
+                    "54321".to_string(),
+                    "Awesome Plugin".to_string(),
+                    "1.0.0".to_string(),
+                    "MIT".to_string(),
+                ),
+            ),
+            (
+                "plugin_2".to_string(),
+                Plugin::new(
+                    "12345".to_string(),
+                    "Super Plugin".to_string(),
+                    "2.1.3".to_string(),
+                    "Apache-2.0".to_string(),
+                ),
+            ),
+        ]);
+        DefaultPluginConfig::new(plugins)
     }
 
-    fn setup_test_plugin_config_non_existent_config() -> PluginConfig {
-        PluginConfig::default()
+    fn setup_test_plugin_config_non_existent_config() -> DefaultPluginConfig {
+        DefaultPluginConfig::default()
+    }
+
+    // get_plugins
+
+    #[test]
+    fn test_get_plugins_should_return_empty_plugins() {
+        let plugin_config = setup_test_plugin_config_non_existent_config();
+        assert!(plugin_config.get_plugins().is_empty());
     }
 
     #[test]
-    fn test_should_return_non_empty_plugins_from_plugin_config_file() {
+    fn test_get_plugins_should_return_non_empty_plugins() {
         let plugin_config = setup_test_plugin_config();
         assert!(!plugin_config.get_plugins().is_empty());
     }
 
     #[test]
-    fn test_should_return_empty_plugins_from_non_existent_plugin_config_file() {
-        let plugin_config = setup_test_plugin_config_non_existent_config();
-        assert!(plugin_config.get_plugins().is_empty());
-    }
-
-
-    #[test]
-    fn test_should_return_correct_plugins_from_plugin_config_file() {
+    fn test_get_plugins_should_return_correct_plugins_from_plugin_config_file() {
         let plugin_config = setup_test_plugin_config();
-        let expected = vec![Plugin::new(
-            "54321".to_string(),
-            "Awesome Plugin".to_string(),
-            "1.0.0".to_string(),
-            "MIT".to_string(),
-        ), Plugin::new(
-            "12345".to_string(),
-            "Super Plugin".to_string(),
-            "2.1.3".to_string(),
-            "Apache-2.0".to_string(),
-        )];
+        let expected = BTreeMap::from([
+            (
+                "plugin_1".to_string(),
+                Plugin::new(
+                    "54321".to_string(),
+                    "Awesome Plugin".to_string(),
+                    "1.0.0".to_string(),
+                    "MIT".to_string(),
+                ),
+            ),
+            (
+                "plugin_2".to_string(),
+                Plugin::new(
+                    "12345".to_string(),
+                    "Super Plugin".to_string(),
+                    "2.1.3".to_string(),
+                    "Apache-2.0".to_string(),
+                ),
+            ),
+        ]);
 
-        let result = plugin_config.get_plugins().values().cloned().collect::<Vec<Plugin>>();
+        let result = plugin_config.get_plugins();
         assert_eq!(result.len(), expected.len());
-        assert_eq!(result, expected);
+        assert_eq!(result, &expected);
     }
 
-    // update_plugins
+    // add_plugins
 
     #[test]
     fn test_should_add_new_plugins() {
         let plugin_config = setup_test_plugin_config();
-        let mut new_plugins = HashMap::new();
-        new_plugins.insert(
+        let new_plugins = BTreeMap::from([(
             "plugin_3".to_string(),
             Plugin::new(
                 "67890".to_string(),
@@ -152,39 +172,159 @@ mod tests {
                 "1.0.0".to_string(),
                 "GPL-3.0".to_string(),
             ),
-        );
-        let updated_plugin_config = plugin_config.add_plugins(new_plugins);
-        let expected = serde_json::json!({
-            "plugins": {
-                "plugin_1": {
-                    "asset_id": "54321",
-                    "title": "Awesome Plugin",
-                    "version": "1.0.0",
-                    "license": "MIT"
-                },
-                "plugin_2": {
-                    "asset_id": "12345",
-                    "title": "Super Plugin",
-                    "version": "2.1.3",
-                    "license": "Apache-2.0"
-                },
-                "plugin_3": {
-                    "asset_id": "67890",
-                    "title": "New Plugin",
-                    "version": "1.0.0",
-                    "license": "GPL-3.0"
-                }
-            }
-        });
-        let actual = serde_json::to_value(&updated_plugin_config).unwrap();
+        )]);
+
+        let updated_plugin_config = plugin_config.add_plugins(&new_plugins);
+        let actual = updated_plugin_config.get_plugins().clone();
+
+        let expected = BTreeMap::from([
+            (
+                "plugin_1".to_string(),
+                Plugin::new(
+                    "54321".to_string(),
+                    "Awesome Plugin".to_string(),
+                    "1.0.0".to_string(),
+                    "MIT".to_string(),
+                ),
+            ),
+            (
+                "plugin_2".to_string(),
+                Plugin::new(
+                    "12345".to_string(),
+                    "Super Plugin".to_string(),
+                    "2.1.3".to_string(),
+                    "Apache-2.0".to_string(),
+                ),
+            ),
+            (
+                "plugin_3".to_string(),
+                Plugin::new(
+                    "67890".to_string(),
+                    "New Plugin".to_string(),
+                    "1.0.0".to_string(),
+                    "GPL-3.0".to_string(),
+                ),
+            ),
+        ]);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_should_replace_old_plugins() {
+        let plugin_config = setup_test_plugin_config();
+        let new_plugins = BTreeMap::from([
+            (
+                "plugin_1".to_string(),
+                Plugin::new(
+                    "54321".to_string(),
+                    "Awesome Plugin".to_string(),
+                    "1.8.0".to_string(),
+                    "MIT".to_string(),
+                ),
+            ),
+            (
+                "plugin_2".to_string(),
+                Plugin::new(
+                    "12345".to_string(),
+                    "Super Plugin".to_string(),
+                    "2.1.3".to_string(),
+                    "Apache-2.0".to_string(),
+                ),
+            ),
+        ]);
+
+        let updated_plugin_config = plugin_config.add_plugins(&new_plugins);
+        let actual = updated_plugin_config.get_plugins().clone();
+
+        let expected = BTreeMap::from([
+            (
+                "plugin_1".to_string(),
+                Plugin::new(
+                    "54321".to_string(),
+                    "Awesome Plugin".to_string(),
+                    "1.8.0".to_string(),
+                    "MIT".to_string(),
+                ),
+            ),
+            (
+                "plugin_2".to_string(),
+                Plugin::new(
+                    "12345".to_string(),
+                    "Super Plugin".to_string(),
+                    "2.1.3".to_string(),
+                    "Apache-2.0".to_string(),
+                ),
+            ),
+        ]);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_should_not_add_duplicate_plugins() {
+        let plugin_config = setup_test_plugin_config();
+        let new_plugins = BTreeMap::from([
+            (
+                "plugin_1".to_string(),
+                Plugin::new(
+                    "54321".to_string(),
+                    "Awesome Plugin".to_string(),
+                    "1.8.0".to_string(),
+                    "MIT".to_string(),
+                ),
+            ),
+            (
+                "plugin_1".to_string(),
+                Plugin::new(
+                    "54321".to_string(),
+                    "Awesome Plugin".to_string(),
+                    "1.8.0".to_string(),
+                    "MIT".to_string(),
+                ),
+            ),
+            (
+                "plugin_2".to_string(),
+                Plugin::new(
+                    "12345".to_string(),
+                    "Super Plugin".to_string(),
+                    "2.1.3".to_string(),
+                    "Apache-2.0".to_string(),
+                ),
+            ),
+        ]);
+
+        let updated_plugin_config = plugin_config.add_plugins(&new_plugins);
+        let actual = updated_plugin_config.get_plugins().clone();
+
+        let expected = BTreeMap::from([
+            (
+                "plugin_1".to_string(),
+                Plugin::new(
+                    "54321".to_string(),
+                    "Awesome Plugin".to_string(),
+                    "1.8.0".to_string(),
+                    "MIT".to_string(),
+                ),
+            ),
+            (
+                "plugin_2".to_string(),
+                Plugin::new(
+                    "12345".to_string(),
+                    "Super Plugin".to_string(),
+                    "2.1.3".to_string(),
+                    "Apache-2.0".to_string(),
+                ),
+            ),
+        ]);
+
         assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_should_add_new_plugins_in_correct_order() {
         let plugin_config = setup_test_plugin_config();
-        let mut new_plugins = HashMap::new();
-        new_plugins.insert(
+        let new_plugins = BTreeMap::from([(
             "a_plugin".to_string(),
             Plugin::new(
                 "67890".to_string(),
@@ -192,62 +332,136 @@ mod tests {
                 "1.0.0".to_string(),
                 "GPL-3.0".to_string(),
             ),
-        );
-        let updated_plugin_config = plugin_config.add_plugins(new_plugins);
-        let expected = serde_json::json!({
-            "plugins": {
-                "a_plugin": {
-                    "asset_id": "67890",
-                    "title": "New Plugin",
-                    "version": "1.0.0",
-                    "license": "GPL-3.0"
-                },
-                "plugin_1": {
-                    "asset_id": "54321",
-                    "title": "Awesome Plugin",
-                    "version": "1.0.0",
-                    "license": "MIT"
-                },
-                "plugin_2": {
-                    "asset_id": "12345",
-                    "title": "Super Plugin",
-                    "version": "2.1.3",
-                    "license": "Apache-2.0"
-                },
-            }
-        });
-        let actual = serde_json::to_value(&updated_plugin_config).unwrap();
+        )]);
+        let updated_plugin_config = plugin_config.add_plugins(&new_plugins);
+        let actual = updated_plugin_config.get_plugins().clone();
+
+        let expected = BTreeMap::from([
+            (
+                "a_plugin".to_string(),
+                Plugin::new(
+                    "67890".to_string(),
+                    "New Plugin".to_string(),
+                    "1.0.0".to_string(),
+                    "GPL-3.0".to_string(),
+                ),
+            ),
+            (
+                "plugin_1".to_string(),
+                Plugin::new(
+                    "54321".to_string(),
+                    "Awesome Plugin".to_string(),
+                    "1.0.0".to_string(),
+                    "MIT".to_string(),
+                ),
+            ),
+            (
+                "plugin_2".to_string(),
+                Plugin::new(
+                    "12345".to_string(),
+                    "Super Plugin".to_string(),
+                    "2.1.3".to_string(),
+                    "Apache-2.0".to_string(),
+                ),
+            ),
+        ]);
         assert_eq!(actual, expected);
     }
 
-    // get_plugins
+    // get_plugin_by_name
 
     #[test]
-    fn test_get_plugins_should_return_empty_vec_if_no_plugins_installed() {
+    fn test_get_plugin_key_by_name_should_return_correct_key() {
         let plugin_config = setup_test_plugin_config();
-        let plugins = plugin_config.get_plugins();
-        assert!(plugins.is_empty());
+        let plugin_opt = plugin_config.get_plugin_by_name("plugin_1");
+        assert!(plugin_opt.is_some());
+        let plugin = plugin_opt.unwrap();
+        assert_eq!(plugin.get_asset_id(), "54321".to_string());
+    }
+
+    // remove_installed_plugin
+
+    #[test]
+    fn test_should_remove_plugins() {
+        let plugin_config = setup_test_plugin_config();
+        let plugins_to_remove: HashSet<String> = vec!["plugin_1".to_string()].into_iter().collect();
+        let updated_plugin_config = plugin_config.remove_plugins(plugins_to_remove);
+        let expected = BTreeMap::from([(
+            "plugin_2".to_string(),
+            Plugin::new(
+                "12345".to_string(),
+                "Super Plugin".to_string(),
+                "2.1.3".to_string(),
+                "Apache-2.0".to_string(),
+            ),
+        )]);
+        let actual = updated_plugin_config.get_plugins().clone();
+        assert_eq!(actual, expected);
+    }
+
+    // remove_plugins
+
+    #[test]
+    fn test_should_remove_multiple_plugins() {
+        let plugin_config = setup_test_plugin_config();
+        let plugins_to_remove: HashSet<String> =
+            HashSet::from(["plugin_1".to_string(), "plugin_2".to_string()]);
+        let updated_plugin_config = plugin_config.remove_plugins(plugins_to_remove);
+
+        let expected = BTreeMap::new();
+        let actual = updated_plugin_config.get_plugins().clone();
+
+        assert_eq!(actual, expected);
     }
 
     #[test]
-    fn test_get_plugins_should_return_correct_plugins() {
-       let plugin_config = setup_test_plugin_config();
-        let plugins = plugin_config.get_plugins();
-        assert!(!plugins.is_empty());
-         assert_eq!(plugins.len(), 2);
-        let plugin_1 = plugins.get("plugin_1").unwrap();
-        assert_eq!(plugin_1.get_asset_id(), "54321");
-        assert_eq!(plugin_1.get_title(), "Awesome Plugin");
-        assert_eq!(plugin_1.get_version(), "1.0.0");
-        let plugin_2 = plugins.get("plugin_2").unwrap();
-        assert_eq!(plugin_2.get_asset_id(), "12345");
-        assert_eq!(plugin_2.get_title(), "Super Plugin");
-        assert_eq!(plugin_2.get_version(), "2.1.3");
+    fn test_should_not_panic_on_removing_non_existent_plugins() {
+        let plugin_config = setup_test_plugin_config();
+        let plugins_to_remove: HashSet<String> = HashSet::from(["non_existent_plugin".to_string()]);
+        let updated_plugin_config = plugin_config.remove_plugins(plugins_to_remove);
+
+        assert_eq!(
+            updated_plugin_config.get_plugins().clone(),
+            plugin_config.get_plugins().clone()
+        );
     }
 
-    // get_plugin_key_by_name
-    // add_plugins
-    // remove_installed_plugin
-    // remove_plugins
-    // write_config
+    // get_plugin_by_asset_id
+
+    #[test]
+    fn test_get_plugin_by_asset_id_should_return_correct_plugin() {
+        let plugin_config = setup_test_plugin_config();
+        let plugin = plugin_config.get_plugin_by_asset_id("54321".to_string());
+        let expected_plugin = Plugin::new(
+            "54321".to_string(),
+            "Awesome Plugin".to_string(),
+            "1.0.0".to_string(),
+            "MIT".to_string(),
+        );
+        assert_eq!(plugin, Some(expected_plugin));
+    }
+
+    #[test]
+    fn test_get_plugin_by_asset_id_should_return_none() {
+        let plugin_config = setup_test_plugin_config();
+        let plugin = plugin_config.get_plugin_by_asset_id("4321".to_string());
+        assert_eq!(plugin, None);
+    }
+
+    // check_if_plugin_already_installed_by_asset_id
+
+    #[test]
+    fn test_check_if_plugin_already_installed_by_asset_id_should_return_some() {
+        let plugin_config = setup_test_plugin_config();
+        let is_installed = plugin_config.check_if_plugin_already_installed_by_asset_id("54321");
+        assert!(is_installed.is_some());
+    }
+
+    #[test]
+    fn test_check_if_plugin_already_installed_by_asset_id_should_return_none() {
+        let plugin_config = setup_test_plugin_config();
+        let is_installed =
+            plugin_config.check_if_plugin_already_installed_by_asset_id("non_existent_id");
+        assert!(is_installed.is_none());
+    }
 }

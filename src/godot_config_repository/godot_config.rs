@@ -2,47 +2,37 @@ use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
-pub struct GodotConfig {
+pub struct DefaultGodotConfig {
     config_version: usize,
     godot_version: String,
 }
 
-impl GodotConfig {
-    pub fn new(config_version: usize, godot_version: String) -> GodotConfig {
-        GodotConfig {
+impl DefaultGodotConfig {
+    pub fn new(config_version: usize, godot_version: String) -> DefaultGodotConfig {
+        DefaultGodotConfig {
             config_version,
             godot_version,
         }
     }
 }
 
-impl Default for GodotConfig {
+impl Default for DefaultGodotConfig {
     fn default() -> Self {
-        GodotConfig {
+        DefaultGodotConfig {
             config_version: 5,
             godot_version: "4.5".to_string(),
         }
     }
 }
 
-#[cfg_attr(test, mockall::automock)]
-impl GodotConfigImpl for GodotConfig {
-    fn get_config_godot_version(&self) -> String {
-        self.godot_version.clone()
-    }
-
-    fn get_config_version(&self) -> usize {
+impl DefaultGodotConfig {
+    pub fn get_config_version(&self) -> usize {
         self.config_version
     }
-}
 
-pub trait GodotConfigImpl {
-    fn get_config_godot_version(&self) -> String;
-    fn get_config_version(&self) -> usize;
-
-    fn get_godot_version(&self) -> Result<String> {
-        if !self.get_config_godot_version().is_empty() {
-            return Ok(self.get_config_godot_version());
+    pub fn get_godot_version(&self) -> Result<String> {
+        if !self.godot_version.is_empty() {
+            return Ok(self.godot_version.clone());
         }
         self.get_default_godot_version()
     }
@@ -62,4 +52,56 @@ pub trait GodotConfigImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // get_config_godot_version
+
+    #[test]
+    fn test_get_config_godot_version() {
+        let config = DefaultGodotConfig::new(5, "4.5".to_string());
+        assert_eq!(config.get_godot_version().unwrap(), "4.5");
+    }
+
+    // get_config_version
+
+    #[test]
+    fn test_get_config_version() {
+        let config = DefaultGodotConfig::new(4, "3.6".to_string());
+        assert_eq!(config.get_config_version(), 4);
+    }
+
+    // get_godot_version
+
+    #[test]
+    fn test_get_godot_version_with_non_empty_version() {
+        let config = DefaultGodotConfig::new(5, "4.5".to_string());
+        assert_eq!(config.get_godot_version().unwrap(), "4.5");
+    }
+
+    #[test]
+    fn test_get_godot_version_with_empty_version() {
+        let config = DefaultGodotConfig::new(5, "".to_string());
+        assert_eq!(config.get_godot_version().unwrap(), "4.5");
+    }
+
+    // get_default_godot_version
+
+    #[test]
+    fn test_get_default_godot_version_supported_versions() {
+        let config_v5 = DefaultGodotConfig::new(5, "".to_string());
+        assert_eq!(config_v5.get_default_godot_version().unwrap(), "4.5");
+
+        let config_v4 = DefaultGodotConfig::new(4, "".to_string());
+        assert_eq!(config_v4.get_default_godot_version().unwrap(), "3.6");
+    }
+
+    #[test]
+    fn test_get_default_godot_version_unsupported_version() {
+        let config = DefaultGodotConfig::new(3, "".to_string());
+        let result = config.get_default_godot_version();
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "Unsupported config_version: 3"
+        );
+    }
 }

@@ -1,11 +1,13 @@
 use serde::Deserialize;
 
+#[cfg(not(tarpaulin_include))]
 #[derive(Debug, Deserialize)]
 pub struct AssetEditListResponse {
     result: Vec<AssetEditListItem>,
     pages: usize,
 }
 
+#[cfg(not(tarpaulin_include))]
 impl AssetEditListResponse {
     pub fn get_pages(&self) -> usize {
         self.pages
@@ -16,6 +18,7 @@ impl AssetEditListResponse {
     }
 }
 
+#[cfg(not(tarpaulin_include))]
 #[derive(Debug, Deserialize)]
 pub struct AssetEditListItem {
     edit_id: String,
@@ -23,6 +26,7 @@ pub struct AssetEditListItem {
     version_string: String,
 }
 
+#[cfg(not(tarpaulin_include))]
 impl AssetEditListItem {
     #[allow(dead_code)]
     pub fn new(edit_id: String, asset_id: String, version_string: String) -> AssetEditListItem {

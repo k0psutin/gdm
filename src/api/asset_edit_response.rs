@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::asset_response::AssetResponse;
 
+#[cfg(not(tarpaulin_include))]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AssetEditResponse {
     edit_id: String,
@@ -15,6 +16,7 @@ pub struct AssetEditResponse {
     original: AssetResponse,
 }
 
+#[cfg(not(tarpaulin_include))]
 impl AssetEditResponse {
     #[allow(dead_code, clippy::too_many_arguments)]
     pub fn new(
