@@ -229,14 +229,14 @@ pub trait PluginService {
         }
 
         let plugins = self
-            .download_and_extract_service_plugins("Installing plugin".to_string(), vec![asset])
+            .download_and_extract_plugins("Installing plugin".to_string(), vec![asset])
             .await?;
         self.add_plugins(&plugins)?;
         Ok(plugins)
     }
 
     /// Downloads and extract_services all plugins under /addons folder
-    async fn download_and_extract_service_plugins(
+    async fn download_and_extract_plugins(
         &self,
         main_start_message: String,
         plugins: Vec<AssetResponse>,
@@ -332,7 +332,7 @@ pub trait PluginService {
         let assets: Vec<AssetResponse> = try_join_all(asset).await?;
 
         let installed_plugins = self
-            .download_and_extract_service_plugins("Downloading plugins".to_string(), assets)
+            .download_and_extract_plugins("Downloading plugins".to_string(), assets)
             .await?;
 
         self.add_plugins(&installed_plugins)?;
@@ -431,8 +431,8 @@ pub trait PluginService {
         match installed_plugin {
             Some(plugin_name) => {
                 let plugin_folder_path = Utils::plugin_name_to_addon_folder_path(
-                    Path::new(plugin_name.as_str()),
                     addon_folder,
+                    Path::new(plugin_name.as_str()),
                 );
 
                 // Remove plugin directory if it exists
@@ -563,7 +563,7 @@ pub trait PluginService {
             println!("All plugins are up to date.");
         } else {
             updated_plugins = self
-                .download_and_extract_service_plugins(
+                .download_and_extract_plugins(
                     "Updating plugins".to_string(),
                     plugins_to_update.clone(),
                 )
@@ -1024,7 +1024,7 @@ mod tests {
     // download_and_extract_plugins
 
     #[tokio::test]
-    async fn test_download_and_extract_service_plugins_should_return_correct_plugins() {
+    async fn test_download_and_extract_plugins_should_return_correct_plugins() {
         let plugin_service = setup_plugin_service_mocks();
         let plugin = vec![AssetResponse::new(
             "1234".to_string(),
@@ -1041,7 +1041,7 @@ mod tests {
             "https://example.com/test_plugin.zip".to_string(),
         )];
         let result = plugin_service
-            .download_and_extract_service_plugins("".to_string(), plugin)
+            .download_and_extract_plugins("".to_string(), plugin)
             .await;
         assert!(result.is_ok());
 
