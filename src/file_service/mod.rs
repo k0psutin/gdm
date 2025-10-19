@@ -109,6 +109,10 @@ pub trait FileService: Send + Sync + 'static {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
+    use tokio::io::AsyncWriteExt;
+
     use super::*;
 
     // open
@@ -252,9 +256,9 @@ mod tests {
     #[tokio::test]
     async fn test_write_all_async_should_write_to_file() {
         let file_service = DefaultFileService;
-        let test_file_path = Path::new("test/mocks/test_async_write.txt");
+        let test_file_path = PathBuf::from("test/mocks/test_async_write.txt");
         let mut file = file_service
-            .create_file_async(test_file_path)
+            .create_file_async(&test_file_path)
             .await
             .unwrap();
         let content = Bytes::from("Hello, async world!");
@@ -262,8 +266,10 @@ mod tests {
             .write_all_async(&mut file, &content)
             .await
             .unwrap();
-        let read_content = std::fs::read_to_string(test_file_path).unwrap();
+        file.flush().await.unwrap();
+        let read_content = std::fs::read_to_string(&test_file_path).unwrap();
+        println!("Read content: {}", read_content);
         assert_eq!(read_content, "Hello, async world!");
-        std::fs::remove_file(test_file_path).unwrap();
+        std::fs::remove_file(&test_file_path).unwrap();
     }
 }

@@ -265,7 +265,7 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use std::path::PathBuf;
 
     use crate::{
         extract_service::MockDefaultExtractService, file_service::MockDefaultFileService,
@@ -416,17 +416,17 @@ mod tests {
 
         mock_file_service
             .expect_directory_exists()
-            .with(eq(Path::new("test/mocks/cache")))
+            .with(eq(PathBuf::from("test/mocks/cache")))
             .returning(|_path| true);
 
         mock_file_service
             .expect_file_exists()
-            .with(eq(Path::new("test/mocks/cache/asset.zip")))
+            .with(eq(PathBuf::from("test/mocks/cache/asset.zip")))
             .returning(|_path| false);
 
         mock_file_service
             .expect_create_file_async()
-            .with(eq(Path::new("test/mocks/cache\\asset.zip")))
+            .with(eq(PathBuf::from("test/mocks/cache/asset.zip")))
             .returning(|_path| {
                 // Create a temp file and open it as tokio::fs::File
                 std::fs::create_dir_all("test/mocks/cache").unwrap();
@@ -439,8 +439,8 @@ mod tests {
 
         mock_extract_service
             .expect_get_root_dir_from_archive()
-            .with(eq(Path::new("test/mocks/cache/asset.zip")))
-            .returning(|_path| Ok(Path::new("test/mocks/addons/asset").to_path_buf()));
+            .with(eq(PathBuf::from("test/mocks/cache/asset.zip")))
+            .returning(|_path| Ok(PathBuf::from("test/mocks/addons/asset")));
 
         let api = DefaultAssetStoreAPI::new(
             Arc::new(mock_http_client),

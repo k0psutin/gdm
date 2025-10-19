@@ -1,7 +1,6 @@
 pub mod godot_config;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::path::Path;
 
 use anyhow::{Result, anyhow};
 
