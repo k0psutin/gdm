@@ -262,7 +262,6 @@ mod tests {
             .write_all_async(&mut file, &content)
             .await
             .unwrap();
-        drop(file); // Close the file
         let read_content = std::fs::read_to_string(test_file_path).unwrap();
         assert_eq!(read_content, "Hello, async world!");
         std::fs::remove_file(test_file_path).unwrap();

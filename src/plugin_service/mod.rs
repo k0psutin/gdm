@@ -587,6 +587,7 @@ pub trait PluginService {
                 .get_asset_store_api()
                 .get_asset_by_id(plugin.get_asset_id().clone())
                 .await?;
+            let asset_plugin = Plugin::from(asset.clone());
             debug!(
                 "Comparing plugin {} version {} with latest version {}",
                 plugin.get_title(),
@@ -1100,7 +1101,10 @@ mod tests {
     // check_outdated_plugins
     // update_plugins
 
-    fn setup_update_plugin_mocks() -> DefaultPluginService {
+    fn setup_update_plugin_mocks(
+        current_plugin_version: String,
+        update_plugin_version: String,
+    ) -> DefaultPluginService {
         let mut godot_config_repository = MockDefaultGodotConfigRepository::default();
 
         godot_config_repository
@@ -1126,20 +1130,24 @@ mod tests {
         extract_service
             .expect_extract_plugin()
             .returning(|_file_path, _pb| Ok(PathBuf::from("test_plugin")));
-        plugin_config_repository.expect_get_plugins().returning(|| {
-            Ok(BTreeMap::from([(
-                String::from("test_plugin"),
-                Plugin::new(
-                    String::from("1234"),
-                    String::from("Test Plugin"),
-                    String::from("1.1.2"),
-                    String::from("MIT"),
-                ),
-            )]))
-        });
+
+        let plugin_config_rep_plugin_version = current_plugin_version.clone();
+        plugin_config_repository
+            .expect_get_plugins()
+            .returning(move || {
+                Ok(BTreeMap::from([(
+                    String::from("test_plugin"),
+                    Plugin::new(
+                        String::from("1234"),
+                        String::from("Test Plugin"),
+                        plugin_config_rep_plugin_version.clone(),
+                        String::from("MIT"),
+                    ),
+                )]))
+            });
         asset_store_api
             .expect_get_asset_by_id_and_version()
-            .with(eq("1234".to_string()), eq("1.1.1".to_string()))
+            .with(eq("1234".to_string()), eq(current_plugin_version.clone()))
             .returning(|asset_id, version| {
                 Ok(AssetResponse::new(
                     asset_id,
@@ -1156,15 +1164,16 @@ mod tests {
                     "https://example.com/test_plugin.zip".to_string(),
                 ))
             });
+        let asset_store_plugin_version = update_plugin_version.clone();
         asset_store_api
             .expect_get_asset_by_id()
             .with(eq("1234".to_string()))
-            .returning(|asset_id| {
+            .returning(move |asset_id| {
                 Ok(AssetResponse::new(
                     asset_id,
                     "Test Plugin".to_string(),
                     "11".to_string(),
-                    "1.2.0".to_string(),
+                    asset_store_plugin_version.clone(),
                     "4.5".to_string(),
                     "5".to_string(),
                     "MIT".to_string(),
@@ -1210,13 +1219,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_update_plugins_should_return_correct_plugins() {
-        let plugin_service = setup_update_plugin_mocks();
+    async fn test_update_plugins_should_return_correct_plugins_if_there_is_an_update_1() {
+        let plugin_service = setup_update_plugin_mocks("1.1.1".to_string(), "1.2.0".to_string());
         let result = plugin_service.update_plugins().await;
         assert!(result.is_ok());
 
-        let installed_plugins = result.unwrap();
-        let expected_plugins = BTreeMap::from([(
+        let updated_plugins = result.unwrap();
+        let expected_updated_plugins = BTreeMap::from([(
             String::from("test_plugin"),
             Plugin::new(
                 String::from("1234"),
@@ -1225,7 +1234,37 @@ mod tests {
                 String::from("MIT"),
             ),
         )]);
-        assert_eq!(installed_plugins, expected_plugins);
+        assert_eq!(updated_plugins, expected_updated_plugins);
+    }
+
+    #[tokio::test]
+    async fn test_update_plugins_should_return_correct_plugins_if_there_is_an_update_2() {
+        let plugin_service = setup_update_plugin_mocks("1.1.1".to_string(), "1.1.12".to_string());
+        let result = plugin_service.update_plugins().await;
+        assert!(result.is_ok());
+
+        let updated_plugins = result.unwrap();
+        let expected_updated_plugins = BTreeMap::from([(
+            String::from("test_plugin"),
+            Plugin::new(
+                String::from("1234"),
+                String::from("Test Plugin"),
+                String::from("1.1.12"),
+                String::from("MIT"),
+            ),
+        )]);
+        assert_eq!(updated_plugins, expected_updated_plugins);
+    }
+
+    #[tokio::test]
+    async fn test_update_plugins_should_return_correct_plugins_if_there_is_no_update() {
+        let plugin_service = setup_update_plugin_mocks("1.1.1".to_string(), "1.1.1".to_string());
+        let result = plugin_service.update_plugins().await;
+        assert!(result.is_ok());
+
+        let updated_plugins = result.unwrap();
+        let expected_updated_plugins = BTreeMap::from([]);
+        assert_eq!(updated_plugins, expected_updated_plugins);
     }
 
     // search_assets_by_name_or_version
