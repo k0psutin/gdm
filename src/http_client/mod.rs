@@ -93,9 +93,9 @@ mod tests {
     #[tokio::test]
     async fn test_get_url() {
         let http_client = DefaultHttpClient::new();
-        let base_url = "https://api.example.com/".to_string();
-        let path = "endpoint".to_string();
-        let full_url = http_client.get_url(base_url.clone(), path.clone());
-        assert_eq!(full_url, "https://api.example.com/endpoint".to_string());
+        let base_url = "https://api.example.com/";
+        let path = "endpoint";
+        let full_url = http_client.get_url(base_url.to_string(), path.to_string());
+        assert_eq!(full_url, "https://api.example.com/endpoint");
     }
 }

@@ -5,20 +5,20 @@ use crate::api::asset_response::AssetResponse;
 #[cfg(not(tarpaulin_include))]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AssetEditResponse {
-    edit_id: String,
-    asset_id: String,
-    godot_version: Option<String>,
-    version_string: String,
-    download_commit: Option<String>,
-    status: String,
-    author: String,
-    download_url: String,
-    original: AssetResponse,
+    pub edit_id: String,
+    pub asset_id: String,
+    pub godot_version: Option<String>,
+    pub version_string: String,
+    pub download_commit: Option<String>,
+    pub status: String,
+    pub author: String,
+    pub download_url: String,
+    pub original: AssetResponse,
 }
 
 #[cfg(not(tarpaulin_include))]
 impl AssetEditResponse {
-    #[allow(dead_code, clippy::too_many_arguments)]
+    #[allow(unused, clippy::too_many_arguments)]
     pub fn new(
         edit_id: String,
         asset_id: String,
@@ -41,25 +41,5 @@ impl AssetEditResponse {
             original,
             download_url,
         }
-    }
-    pub fn get_original(&self) -> &AssetResponse {
-        &self.original
-    }
-
-    #[allow(dead_code)]
-    pub fn get_asset_id(&self) -> &str {
-        &self.asset_id
-    }
-
-    pub fn get_version_string(&self) -> &str {
-        &self.version_string
-    }
-
-    pub fn get_download_url(&self) -> &str {
-        &self.download_url
-    }
-
-    pub fn get_download_commit(&self) -> Option<String> {
-        self.download_commit.clone()
     }
 }

@@ -17,19 +17,18 @@ use asset_list_response::AssetListResponse;
 use asset_response::AssetResponse;
 use indicatif::ProgressBar;
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::Arc;
 use url::Url;
 
 pub struct DefaultAssetStoreAPI {
-    http_client: Arc<dyn HttpClient + Send + Sync>,
-    app_config: DefaultAppConfig,
-    extract_service: Box<dyn ExtractService + Send + Sync + 'static>,
-    file_service: Arc<dyn FileService + Send + Sync + 'static>,
+    pub http_client: Arc<dyn HttpClient + Send + Sync>,
+    pub app_config: DefaultAppConfig,
+    pub extract_service: Box<dyn ExtractService + Send + Sync + 'static>,
+    pub file_service: Arc<dyn FileService + Send + Sync + 'static>,
 }
 
 impl DefaultAssetStoreAPI {
-    #[allow(dead_code)]
+    #[allow(unused)]
     pub fn new(
         http_client: Arc<dyn HttpClient + Send + Sync>,
         app_config: DefaultAppConfig,
@@ -42,6 +41,10 @@ impl DefaultAssetStoreAPI {
             extract_service,
             file_service,
         }
+    }
+
+    fn get_base_url(&self) -> String {
+        self.app_config.api_base_url.clone()
     }
 }
 
@@ -57,62 +60,67 @@ impl Default for DefaultAssetStoreAPI {
 }
 
 #[async_trait::async_trait]
+/// Trait defining the API for interacting with an asset store.
+///
+/// Provides methods for accessing services, retrieving assets, downloading files,
+/// and managing asset edits. Implementors must be thread-safe (`Send` + `Sync`).
+///
+/// # Services
+/// - `get_extract_service`: Returns a reference to the extract service.
+/// - `http_client`: Returns an HTTP client for making requests.
+/// - `get_file_service`: Returns a file service for file operations.
+/// - `get_base_url`: Returns the base URL of the asset store.
+/// - `get_cache_folder_path`: Returns the path to the cache folder.
+///
+/// # Asset Retrieval
+/// - `get_asset_by_id`: Fetches an asset by its ID.
+/// - `get_assets`: Fetches a list of assets based on query parameters.
+/// - `get_asset_by_id_and_version`: Fetches a specific version of an asset by ID.
+///
+/// # Asset Edits
+/// - `get_asset_edits_by_asset_id`: Retrieves a paginated list of edits for an asset.
+/// - `get_asset_edit_by_edit_id`: Retrieves a specific asset edit by its edit ID.
+///
+/// # Downloading
+/// - `download_file`: Downloads a file from a given URL.
+/// - `download_asset`: Downloads an asset and reports progress via a progress bar.
 pub trait AssetStoreAPI: Send + Sync {
-    fn get_extract_service(&self) -> &dyn ExtractService;
-    fn get_http_client(&self) -> Arc<dyn HttpClient + Send + Sync>;
-    fn get_file_service(&self) -> Arc<dyn FileService + Send + Sync + 'static>;
-    fn get_base_url(&self) -> String;
-    fn get_cache_folder_path(&self) -> &Path;
+    /// Fetches an asset by its ID.
+    async fn get_asset_by_id(&self, asset_id: &str) -> Result<AssetResponse>;
 
-    async fn get_asset_by_id(&self, asset_id: String) -> Result<AssetResponse>;
-
+    /// Fetches a list of assets based on query parameters.
     async fn get_assets(&self, params: HashMap<String, String>) -> Result<AssetListResponse>;
 
+    /// Fetches a specific version of an asset by ID.
     async fn get_asset_by_id_and_version(
         &self,
-        asset_id: String,
-        version: String,
+        asset_id: &str,
+        version: &str,
     ) -> Result<AssetResponse>;
 
+    /// Retrieves a paginated list of edits for an asset.
     async fn get_asset_edits_by_asset_id(
         &self,
-        asset_id: String,
+        asset_id: &str,
         page: usize,
     ) -> Result<AssetEditListResponse>;
 
-    async fn get_asset_edit_by_edit_id(&self, edit_id: String) -> Result<AssetEditResponse>;
+    /// Retrieves a specific asset edit by its edit ID.
+    async fn get_asset_edit_by_edit_id(&self, edit_id: &str) -> Result<AssetEditResponse>;
 
-    async fn download_file(&self, download_url: String) -> Result<reqwest::Response>;
+    /// Downloads a file from a given URL.
+    async fn download_file(&self, download_url: &str) -> Result<reqwest::Response>;
 
+    /// Downloads an asset and reports progress via a progress bar.
     async fn download_asset(&self, asset: &AssetResponse, pb_task: ProgressBar) -> Result<Asset>;
 }
 
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
 impl AssetStoreAPI for DefaultAssetStoreAPI {
-    fn get_file_service(&self) -> Arc<dyn FileService + Send + Sync + 'static> {
-        Arc::clone(&self.file_service)
-    }
-
-    fn get_extract_service(&self) -> &dyn ExtractService {
-        &*self.extract_service
-    }
-
-    fn get_base_url(&self) -> String {
-        self.app_config.get_api_base_url()
-    }
-
-    fn get_cache_folder_path(&self) -> &Path {
-        self.app_config.get_cache_folder_path()
-    }
-
-    fn get_http_client(&self) -> Arc<dyn HttpClient + Send + Sync> {
-        Arc::clone(&self.http_client)
-    }
-
-    async fn get_asset_by_id(&self, asset_id: String) -> Result<AssetResponse> {
+    async fn get_asset_by_id(&self, asset_id: &str) -> Result<AssetResponse> {
         match self
-            .get_http_client()
+            .http_client
             .get(
                 self.get_base_url(),
                 format!("/asset/{}", asset_id),
@@ -127,7 +135,7 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
 
     async fn get_assets(&self, params: HashMap<String, String>) -> Result<AssetListResponse> {
         match self
-            .get_http_client()
+            .http_client
             .get(self.get_base_url(), String::from("/asset"), params)
             .await
         {
@@ -138,24 +146,20 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
 
     async fn get_asset_by_id_and_version(
         &self,
-        asset_id: String,
-        version: String,
+        asset_id: &str,
+        version: &str,
     ) -> Result<AssetResponse> {
         let mut page = 0;
         loop {
-            let edits_response = self
-                .get_asset_edits_by_asset_id(asset_id.clone(), page)
-                .await?;
-            for edit in edits_response.get_results().iter() {
-                if edit.get_version_string() == version {
-                    let edit_result = self
-                        .get_asset_edit_by_edit_id(edit.get_edit_id().to_string())
-                        .await?;
+            let edits_response = self.get_asset_edits_by_asset_id(asset_id, page).await?;
+            for edit in edits_response.result.iter() {
+                if edit.version_string == version && edit.asset_id == asset_id {
+                    let edit_result = self.get_asset_edit_by_edit_id(&edit.edit_id).await?;
                     let asset_response = AssetResponse::from(edit_result);
                     return Ok(asset_response);
                 }
             }
-            if page == edits_response.get_pages() - 1 {
+            if page == edits_response.pages - 1 {
                 break;
             }
             page += 1;
@@ -169,17 +173,17 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
 
     async fn get_asset_edits_by_asset_id(
         &self,
-        asset_id: String,
+        asset_id: &str,
         page: usize,
     ) -> Result<AssetEditListResponse> {
         let params = HashMap::from([
-            ("asset".to_string(), asset_id),
+            ("asset".to_string(), asset_id.to_string()),
             ("status".to_string(), "new accepted".to_string()),
             ("page".to_string(), page.to_string()),
         ]);
         match self
-            .get_http_client()
-            .get(self.get_base_url(), String::from("/asset/edit"), params)
+            .http_client
+            .get(self.get_base_url(), "/asset/edit".to_string(), params)
             .await
         {
             Ok(data) => Ok(serde_json::from_value(data)?),
@@ -187,9 +191,9 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
         }
     }
 
-    async fn get_asset_edit_by_edit_id(&self, edit_id: String) -> Result<AssetEditResponse> {
+    async fn get_asset_edit_by_edit_id(&self, edit_id: &str) -> Result<AssetEditResponse> {
         match self
-            .get_http_client()
+            .http_client
             .get(
                 self.get_base_url(),
                 format!("/asset/edit/{}", edit_id),
@@ -202,8 +206,8 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
         }
     }
 
-    async fn download_file(&self, download_url: String) -> Result<reqwest::Response> {
-        match self.get_http_client().get_file(download_url).await {
+    async fn download_file(&self, download_url: &str) -> Result<reqwest::Response> {
+        match self.http_client.get_file(download_url.to_string()).await {
             Ok(response) => Ok(response),
             Err(e) => Err(anyhow!("Failed to download file: {}", e)),
         }
@@ -213,11 +217,10 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
     ///
     /// Downloaded files are saved to the cache folder defined in the AppConfig
     async fn download_asset(&self, asset: &AssetResponse, pb_task: ProgressBar) -> Result<Asset> {
-        let cache_folder = self.get_cache_folder_path();
-        let download_url = asset.get_download_url();
-        let file_service = self.get_file_service();
+        let cache_folder = self.app_config.get_cache_folder_path();
+        let download_url = &asset.download_url;
 
-        let url = Url::parse(&download_url)?;
+        let url = Url::parse(download_url)?;
 
         let filename = url
             .path_segments()
@@ -225,32 +228,30 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
             .unwrap_or("temp_file.zip");
         let filepath = cache_folder.join(filename);
 
-        if !file_service.directory_exists(cache_folder) {
-            file_service.create_directory(cache_folder)?;
+        if !self.file_service.directory_exists(cache_folder) {
+            self.file_service.create_directory(cache_folder)?;
         }
 
-        if file_service.file_exists(&filepath) {
-            file_service.remove_file(&filepath)?;
+        if self.file_service.file_exists(&filepath) {
+            self.file_service.remove_file(&filepath)?;
         }
 
         let mut res = self.download_file(download_url).await?;
 
         pb_task.set_length(100);
 
-        let mut file = file_service.create_file_async(&filepath).await?;
+        let mut file = self.file_service.create_file_async(&filepath).await?;
 
         while let Some(chunk) = res.chunk().await? {
             pb_task.inc(chunk.len() as u64);
-            file_service.write_all_async(&mut file, &chunk).await?;
+            self.file_service.write_all_async(&mut file, &chunk).await?;
         }
 
         pb_task.finish_and_clear();
 
         match res.error_for_status() {
             Ok(_) => {
-                let root_folder = self
-                    .get_extract_service()
-                    .get_root_dir_from_archive(&filepath)?;
+                let root_folder = self.extract_service.get_root_dir_from_archive(&filepath)?;
                 Ok(Asset::new(
                     root_folder.display().to_string(),
                     filepath,
@@ -264,6 +265,8 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use crate::{
         extract_service::MockDefaultExtractService, file_service::MockDefaultFileService,
         http_client::MockDefaultHttpClient,
@@ -281,11 +284,11 @@ mod tests {
     #[tokio::test]
     async fn test_get_asset_by_id() {
         let api = setup_test_api();
-        let asset_id = String::from("1709");
-        let result = api.get_asset_by_id(asset_id.clone()).await;
+        let asset_id = "1709";
+        let result = api.get_asset_by_id(asset_id).await;
         assert!(result.is_ok());
         let asset = result.unwrap();
-        assert_eq!(asset.get_asset_id(), asset_id);
+        assert_eq!(asset.asset_id, asset_id);
     }
 
     // get_assets
@@ -300,7 +303,7 @@ mod tests {
         let result = api.get_assets(params).await;
         assert!(result.is_ok());
         let asset_list = result.unwrap();
-        assert!(asset_list.get_results().is_empty());
+        assert!(asset_list.result.is_empty());
     }
 
     #[tokio::test]
@@ -313,10 +316,10 @@ mod tests {
         let result = api.get_assets(params).await;
         assert!(result.is_ok());
         let asset_list = result.unwrap();
-        assert!(!asset_list.get_results().is_empty());
-        assert_eq!(asset_list.get_result_len(), 1);
-        let asset = asset_list.get_asset_list_item_by_index(0).unwrap();
-        assert_eq!(asset.get_asset_id(), "1709");
+        assert!(!asset_list.result.is_empty());
+        assert_eq!(asset_list.result.len(), 1);
+        let asset = asset_list.result.first().unwrap();
+        assert_eq!(asset.asset_id, "1709");
     }
 
     // get_asset_edits_by_asset_id
@@ -324,13 +327,13 @@ mod tests {
     #[tokio::test]
     async fn test_get_asset_edits_by_asset_id_should_return_asset_edit_list_when_page_is_zero() {
         let api = setup_test_api();
-        let asset_id = "1709".to_string();
-        let result = api.get_asset_edits_by_asset_id(asset_id.clone(), 0).await;
+        let asset_id = "1709";
+        let result = api.get_asset_edits_by_asset_id(asset_id, 0).await;
         assert!(result.is_ok());
         let edit_list = result.unwrap();
-        assert!(!edit_list.get_results().is_empty());
-        let edit_list_item = edit_list.get_results().first().unwrap();
-        assert_eq!(edit_list_item.get_asset_id(), asset_id);
+        assert!(!edit_list.result.is_empty());
+        let edit_list_item = edit_list.result.first().unwrap();
+        assert_eq!(edit_list_item.asset_id, asset_id);
     }
 
     // get_asset_edit_by_edit_id
@@ -338,11 +341,11 @@ mod tests {
     #[tokio::test]
     async fn test_get_asset_edit_by_edit_id_should_return_asset_edit() {
         let api = setup_test_api();
-        let edit_id = "18531".to_string();
+        let edit_id = "18531";
         let result = api.get_asset_edit_by_edit_id(edit_id).await;
         assert!(result.is_ok());
         let edit = result.unwrap();
-        assert_eq!(edit.get_asset_id(), "1709");
+        assert_eq!(edit.asset_id, "1709");
     }
 
     // get_asset_by_id_and_version
@@ -350,36 +353,32 @@ mod tests {
     #[tokio::test]
     async fn test_search_asset_by_id_and_version_should_return_newer_version() {
         let api = setup_test_api();
-        let edit_id = "1709".to_string();
-        let version = "9.5.0".to_string();
-        let result = api
-            .get_asset_by_id_and_version(edit_id, version.clone())
-            .await;
+        let edit_id = "1709";
+        let version = "9.5.0";
+        let result = api.get_asset_by_id_and_version(edit_id, version).await;
         assert!(result.is_ok());
         let edit = result.unwrap();
-        assert_eq!(edit.get_asset_id(), "1709");
-        assert_eq!(edit.get_version_string(), version);
+        assert_eq!(edit.asset_id, "1709");
+        assert_eq!(edit.version_string, version);
     }
 
     #[tokio::test]
     async fn test_search_asset_by_id_and_version_should_return_older_version() {
         let api = setup_test_api();
-        let edit_id = "1709".to_string();
-        let version = "9.4.0".to_string();
-        let result = api
-            .get_asset_by_id_and_version(edit_id, version.clone())
-            .await;
+        let edit_id = "1709";
+        let version = "9.4.0";
+        let result = api.get_asset_by_id_and_version(edit_id, version).await;
         assert!(result.is_ok());
         let edit = result.unwrap();
-        assert_eq!(edit.get_asset_id(), "1709");
-        assert_eq!(edit.get_version_string(), version);
+        assert_eq!(edit.asset_id, "1709");
+        assert_eq!(edit.version_string, version);
     }
 
     #[tokio::test]
     async fn test_search_asset_by_id_and_version_should_return_err_if_no_version_found() {
         let api = setup_test_api();
-        let edit_id = "1709".to_string();
-        let version = "0.0.1".to_string();
+        let edit_id = "1709";
+        let version = "0.0.1";
         let result = api.get_asset_by_id_and_version(edit_id, version).await;
         assert!(result.is_err());
     }
@@ -389,7 +388,7 @@ mod tests {
     #[tokio::test]
     async fn test_download_file_should_return_error() {
         let api = setup_test_api();
-        let download_url = String::from("some_uri");
+        let download_url = "some_uri";
         let result = api.download_file(download_url).await;
         assert!(result.is_err());
     }
@@ -397,7 +396,7 @@ mod tests {
     #[tokio::test]
     async fn test_download_file_should_return_response() {
         let api = setup_test_api();
-        let download_url = String::from("https://httpbin.io/bytes/1024");
+        let download_url = "https://httpbin.io/bytes/1024";
         let result = api.download_file(download_url).await;
         assert!(result.is_ok());
     }

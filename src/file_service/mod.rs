@@ -5,7 +5,7 @@ use bytes::Bytes;
 use cache::Cache;
 use std::{fs::File, path::Path};
 
-use crate::file_service::cache::CacheImpl;
+use crate::file_service::cache::DefaultCache;
 
 #[derive(Debug, Default, Clone)]
 pub struct DefaultFileService;
@@ -20,7 +20,7 @@ impl FileService for DefaultFileService {
     }
 
     fn read_file_cached(&self, file_path: &Path) -> Result<String> {
-        let cache = Cache::new();
+        let cache = DefaultCache::new();
         let path = file_path
             .to_path_buf()
             .into_os_string()

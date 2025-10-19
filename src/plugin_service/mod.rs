@@ -23,21 +23,21 @@ use tracing::{debug, error};
 
 #[cfg(not(tarpaulin_include))]
 pub struct DefaultPluginService {
-    godot_config_repository: Box<dyn GodotConfigRepository>,
-    asset_store_api: Arc<dyn AssetStoreAPI + Send + Sync>,
-    plugin_config_repository: Box<dyn PluginConfigRepository>,
-    app_config: DefaultAppConfig,
-    extract_service: Arc<dyn ExtractService + Send + Sync>,
-    file_service: Arc<dyn FileService + Send + Sync>,
+    pub godot_config_repository: Box<dyn GodotConfigRepository>,
+    pub asset_store_api: Arc<dyn AssetStoreAPI + Send + Sync>,
+    pub plugin_config_repository: Box<dyn PluginConfigRepository>,
+    pub app_config: DefaultAppConfig,
+    pub extract_service: Arc<dyn ExtractService + Send + Sync>,
+    pub file_service: Arc<dyn FileService + Send + Sync>,
 }
 
 impl From<AssetResponse> for Plugin {
     fn from(asset_response: AssetResponse) -> Self {
         Plugin::new(
-            asset_response.get_asset_id(),
-            asset_response.get_title(),
-            asset_response.get_version_string(),
-            asset_response.get_license(),
+            asset_response.asset_id,
+            asset_response.title,
+            asset_response.version_string,
+            asset_response.cost, // TODO check if serde_json can map this directly to license
         )
     }
 }
@@ -58,7 +58,7 @@ impl Default for DefaultPluginService {
 
 #[cfg(not(tarpaulin_include))]
 impl DefaultPluginService {
-    #[allow(dead_code)]
+    #[allow(unused)]
     fn new(
         godot_config_repository: Box<dyn GodotConfigRepository>,
         asset_store_api: Arc<dyn AssetStoreAPI + Send + Sync>,
@@ -79,26 +79,32 @@ impl DefaultPluginService {
 }
 
 impl PluginService for DefaultPluginService {
+    #[cfg(not(tarpaulin_include))]
     fn get_plugin_config_repository(&self) -> &dyn PluginConfigRepository {
         &*self.plugin_config_repository
     }
 
+    #[cfg(not(tarpaulin_include))]
     fn get_asset_store_api(&self) -> Arc<dyn AssetStoreAPI + Send + Sync> {
         Arc::clone(&self.asset_store_api)
     }
 
+    #[cfg(not(tarpaulin_include))]
     fn get_godot_config_repository(&self) -> &dyn GodotConfigRepository {
         &*self.godot_config_repository
     }
 
+    #[cfg(not(tarpaulin_include))]
     fn get_app_config(&self) -> &DefaultAppConfig {
         &self.app_config
     }
 
+    #[cfg(not(tarpaulin_include))]
     fn get_extract_service(&self) -> Arc<dyn ExtractService + Send + Sync> {
         Arc::clone(&self.extract_service)
     }
 
+    #[cfg(not(tarpaulin_include))]
     fn get_file_service(&self) -> Arc<dyn FileService + Send + Sync> {
         Arc::clone(&self.file_service)
     }
@@ -128,9 +134,9 @@ pub trait PluginService {
         m: &MultiProgress,
         index: usize,
         total: usize,
-        action: String,
-        title: String,
-        version: String,
+        action: &str,
+        title: &str,
+        version: &str,
     ) -> Result<ProgressBar> {
         let pb_task = m.add(ProgressBar::new(1));
         pb_task.set_style(
@@ -148,9 +154,9 @@ pub trait PluginService {
         m: &MultiProgress,
         index: usize,
         total: usize,
-        action: String,
-        title: String,
-        version: String,
+        action: &str,
+        title: &str,
+        version: &str,
     ) -> Result<ProgressBar> {
         let pb_task = m.add(ProgressBar::new(5000000));
         pb_task.set_style(
@@ -170,9 +176,9 @@ pub trait PluginService {
         m: &MultiProgress,
         index: usize,
         total: usize,
-        action: String,
-        title: String,
-        version: String,
+        action: &str,
+        title: &str,
+        version: &str,
     ) -> Result<ProgressBar> {
         let pb_task = m.add(ProgressBar::new(5000000));
         pb_task.set_style(ProgressStyle::with_template("{spinner:.green} {prefix} {msg} [{elapsed_precise}] [{bar:.cyan/blue}] {pos:>7}/{len:7} ({eta})")
@@ -186,59 +192,45 @@ pub trait PluginService {
     /// Installs a single plugin by its name, asset ID, and version
     async fn install_plugin(
         &self,
-        name: String,
-        asset_id: String,
-        version: String,
+        name: &str,
+        asset_id: &str,
+        version: &str,
     ) -> Result<BTreeMap<String, Plugin>> {
         let asset: AssetResponse;
         if !version.is_empty() && !asset_id.is_empty() {
-            let _asset_id = asset_id.clone();
-            let _version = version.clone();
-
             asset = self
-                .find_plugin_by_asset_id_and_version(_asset_id, _version)
+                .find_plugin_by_asset_id_and_version(asset_id.to_string(), version.to_string())
                 .await?;
         } else if !name.is_empty() || !asset_id.is_empty() {
-            let _name = name.clone();
-            let _asset_id = asset_id.clone();
-            asset = self.find_plugin_by_id_or_name(_asset_id, _name).await?;
+            asset = self.find_plugin_by_id_or_name(asset_id, name).await?;
         } else {
             return Err(anyhow!("No name or asset ID provided"));
         }
 
-        let m = MultiProgress::new();
-        let title = asset.get_title().to_string();
-        let version = asset.get_version_string().to_string();
+        let existing_plugin = self
+            .get_plugin_config_repository()
+            .get_plugin_by_asset_id(&asset.asset_id);
 
-        let pb_download = self.create_download_progress_bar(
-            &m,
-            1,
-            1,
-            String::from("Downloading"),
-            title,
-            version,
-        )?;
-        let downloaded_asset = self
-            .get_asset_store_api()
-            .download_asset(&asset.clone(), pb_download)
+        if let Some(existing_plugin) = existing_plugin {
+            let plugin_to_install = Plugin::from(asset.clone());
+            if plugin_to_install > existing_plugin {
+                println!(
+                    "Plugin '{}' is already installed with version {}. Updating to version {}.",
+                    existing_plugin.title,
+                    existing_plugin.get_version(),
+                    plugin_to_install.get_version()
+                );
+            } else {
+                println!(
+                    "Plugin '{}' is already in dependencies.",
+                    existing_plugin.title
+                );
+            }
+        }
+
+        let plugins = self
+            .download_and_extract_service_plugins("Installing plugin".to_string(), vec![asset])
             .await?;
-        let asset_response = downloaded_asset.get_asset_response();
-        let pb_extract_service = self.create_extract_service_progress_bar(
-            &m,
-            1,
-            1,
-            String::from("ExtractServiceing"),
-            asset_response.get_title().to_string(),
-            asset_response.get_version_string().to_string(),
-        )?;
-
-        let plugin_root_folder = self
-            .get_extract_service()
-            .extract_plugin(downloaded_asset.get_file_path(), pb_extract_service)
-            .await?;
-
-        let plugin_name = plugin_root_folder.display().to_string();
-        let plugins = BTreeMap::from([(plugin_name, Plugin::from(asset))]);
         self.add_plugins(&plugins)?;
         Ok(plugins)
     }
@@ -262,9 +254,9 @@ pub trait PluginService {
                 &pb_multi,
                 index + 1,
                 plugins.len(),
-                String::from("Downloading"),
-                plugin.get_title().to_string(),
-                plugin.get_version_string().to_string(),
+                "Downloading",
+                &plugin.title,
+                &plugin.version_string,
             )?;
             let asset_store_api = self.get_asset_store_api().clone();
             download_tasks
@@ -279,15 +271,15 @@ pub trait PluginService {
         pb_main.set_message("Extracting plugins");
 
         for (index, downloaded_asset) in download_tasks.clone().into_iter().enumerate() {
-            let asset_response = downloaded_asset.get_asset_response().clone();
-            let file_path = downloaded_asset.get_file_path().clone();
+            let asset_response = downloaded_asset.asset_response;
+            let file_path = downloaded_asset.file_path;
             let pb_task = self.create_extract_service_progress_bar(
                 &pb_multi,
                 index + 1,
                 download_tasks.len(),
-                String::from("Extracting"),
-                asset_response.get_title().to_string(),
-                asset_response.get_version_string().to_string(),
+                "Extracting",
+                &asset_response.title,
+                &asset_response.version_string,
             )?;
             let extract_service = self.get_extract_service().clone();
             extract_service_tasks
@@ -301,9 +293,9 @@ pub trait PluginService {
         let installed_plugins = download_tasks
             .into_iter()
             .map(|downloaded_asset| {
-                let asset_response = downloaded_asset.get_asset_response().clone();
+                let asset_response = downloaded_asset.asset_response;
                 let plugin: Plugin = Plugin::from(asset_response.clone());
-                let plugin_name = downloaded_asset.get_root_folder().to_string();
+                let plugin_name = downloaded_asset.root_folder;
                 (plugin_name, plugin)
             })
             .collect::<BTreeMap<String, Plugin>>();
@@ -314,9 +306,9 @@ pub trait PluginService {
                 &pb_multi,
                 index + 1,
                 installed_plugins.len(),
-                String::from("Installed"),
-                plugin.get_title().to_string(),
-                plugin.get_version().to_string(),
+                "Installed",
+                &plugin.title,
+                &plugin.get_version(),
             )?;
             finished_bar.finish();
         }
@@ -331,8 +323,8 @@ pub trait PluginService {
     ) -> Result<BTreeMap<String, Plugin>> {
         let mut asset = Vec::new();
         for plugin in plugins.values() {
-            let asset_id = plugin.get_asset_id().clone();
-            let version = plugin.get_version().clone();
+            let asset_id = plugin.asset_id.to_string();
+            let version = plugin.get_version();
             let asset_request = self.find_plugin_by_asset_id_and_version(asset_id, version);
             asset.push(asset_request);
         }
@@ -340,7 +332,7 @@ pub trait PluginService {
         let assets: Vec<AssetResponse> = try_join_all(asset).await?;
 
         let installed_plugins = self
-            .download_and_extract_service_plugins(String::from("Downloading plugins"), assets)
+            .download_and_extract_service_plugins("Downloading plugins".to_string(), assets)
             .await?;
 
         self.add_plugins(&installed_plugins)?;
@@ -362,7 +354,7 @@ pub trait PluginService {
             return Err(anyhow!("Either name or asset ID must be provided."));
         }
 
-        self.install_plugin(_name, _asset_id, _version).await?;
+        self.install_plugin(&_name, &_asset_id, &_version).await?;
         Ok(())
     }
 
@@ -386,7 +378,7 @@ pub trait PluginService {
             );
             let asset = self
                 .get_asset_store_api()
-                .get_asset_by_id_and_version(asset_id, version)
+                .get_asset_by_id_and_version(&asset_id, &version)
                 .await?;
             Ok(asset)
         } else {
@@ -397,61 +389,30 @@ pub trait PluginService {
         }
     }
 
-    async fn find_plugin_by_id_or_name(
-        &self,
-        asset_id: String,
-        name: String,
-    ) -> Result<AssetResponse> {
+    async fn find_plugin_by_id_or_name(&self, asset_id: &str, name: &str) -> Result<AssetResponse> {
         if !asset_id.is_empty() {
-            let asset = self
-                .get_asset_store_api()
-                .get_asset_by_id(asset_id.clone())
-                .await?;
+            let asset = self.get_asset_store_api().get_asset_by_id(asset_id).await?;
             Ok(asset)
         } else if !name.is_empty() {
             let params = HashMap::from([
-                ("filter".to_string(), name.clone()),
+                ("filter".to_string(), name.to_string()),
                 ("godot_version".to_string(), "4.5".to_string()),
             ]);
             let asset_results = self.get_asset_store_api().get_assets(params).await?;
 
-            if asset_results.get_result_len() != 1 {
+            if asset_results.result.len() != 1 {
                 return Err(anyhow!(
                     "Expected to find exactly one asset matching \"{}\", but found {}. Please refine your search or use --asset-id.",
                     name,
-                    asset_results.get_result_len()
+                    asset_results.result.len()
                 ));
             }
-            let asset = asset_results.get_asset_list_item_by_index(0).unwrap();
-            let id = asset.get_asset_id().to_owned();
+            let asset = asset_results.result.first().unwrap();
             let asset = self
                 .get_asset_store_api()
-                .get_asset_by_id(id.clone())
+                .get_asset_by_id(&asset.asset_id)
                 .await?;
 
-            // self.get_plugin_config()
-            //     .check_if_plugin_already_installed_by_asset_id(asset.get_asset_id());
-            // TODO check if plugin is already installed to addons folder
-            // let existing_plugin = plugin_config.get_plugin_by_asset_id(asset.get_asset_id().to_string());
-
-            // match existing_plugin {
-            //     Some(plugin) => {
-            //         if plugin.version == asset.get_version_string() {
-            //             return Err(anyhow!(
-            //                 "Plugin {} is already installed with the same version {}.",
-            //                 plugin.title,
-            //                 plugin.version
-            //             ));
-            //         }
-            //         println!(
-            //             "Plugin {} is already installed with version {}. Updating to version {}.",
-            //             plugin.title,
-            //             plugin.version,
-            //             asset.get_version_string()
-            //         );
-            //     }
-            //     None => {}
-            // }
             Ok(asset)
         } else {
             error!("No name or asset ID provided: {}, {}", name, asset_id);
@@ -533,11 +494,11 @@ pub trait PluginService {
         for plugin in plugins {
             let asset = self
                 .get_asset_store_api()
-                .get_asset_by_id(plugin.1.get_asset_id().clone())
+                .get_asset_by_id(&plugin.1.asset_id)
                 .await?;
 
             let has_an_update =
-                asset.get_version_string().cmp(&plugin.1.get_version()) == Ordering::Greater;
+                asset.version_string.cmp(&plugin.1.get_version()) == Ordering::Greater;
 
             if has_an_update {
                 updated_plugins.push(asset.clone());
@@ -545,7 +506,7 @@ pub trait PluginService {
 
             let version = format!(
                 "{} {}",
-                asset.get_version_string(),
+                asset.version_string,
                 if has_an_update {
                     "(update available)"
                 } else {
@@ -573,7 +534,6 @@ pub trait PluginService {
     /// Downloads and installs the latest versions of all plugins that have updates available
     /// Updates the plugin configuration file with the new versions
     async fn update_plugins(&self) -> Result<BTreeMap<String, Plugin>> {
-        // TODO Not working
         let plugin_config_repository = self.get_plugin_config_repository();
         let plugins = plugin_config_repository.get_plugins()?;
 
@@ -585,16 +545,16 @@ pub trait PluginService {
         for (_, plugin) in plugins {
             let asset = self
                 .get_asset_store_api()
-                .get_asset_by_id(plugin.get_asset_id().clone())
+                .get_asset_by_id(&plugin.asset_id)
                 .await?;
             let asset_plugin = Plugin::from(asset.clone());
             debug!(
                 "Comparing plugin {} version {} with latest version {}",
-                plugin.get_title(),
+                plugin.title,
                 plugin.get_version(),
-                asset.get_version_string()
+                asset.version_string
             );
-            if asset.get_version_string().cmp(&plugin.get_version()) == Ordering::Greater {
+            if plugin < asset_plugin {
                 plugins_to_update.push(asset);
             }
         }
@@ -604,7 +564,7 @@ pub trait PluginService {
         } else {
             updated_plugins = self
                 .download_and_extract_service_plugins(
-                    String::from("Updating plugins"),
+                    "Updating plugins".to_string(),
                     plugins_to_update.clone(),
                 )
                 .await?;
@@ -616,8 +576,8 @@ pub trait PluginService {
 
     async fn get_asset_list_response_by_name_or_version(
         &self,
-        name: String,
-        version: String,
+        name: &str,
+        version: &str,
     ) -> Result<AssetListResponse> {
         let godot_config_repository = self.get_godot_config_repository();
         let parsed_version = godot_config_repository.get_godot_version_from_project()?;
@@ -635,36 +595,35 @@ pub trait PluginService {
         let version = if version.is_empty() {
             parsed_version
         } else {
-            version
+            version.to_string()
         };
 
         let params = HashMap::from([
-            ("filter".to_string(), name),
-            ("godot_version".to_string(), version),
+            ("filter".to_string(), name.to_string()),
+            ("godot_version".to_string(), version.to_string()),
         ]);
         let asset_results = self.get_asset_store_api().get_assets(params).await?;
         Ok(asset_results)
     }
 
-    async fn search_assets_by_name_or_version(&self, name: String, version: String) -> Result<()> {
+    async fn search_assets_by_name_or_version(&self, name: &str, version: &str) -> Result<()> {
         let asset_list_response = self
-            .get_asset_list_response_by_name_or_version(name.clone(), version.clone())
+            .get_asset_list_response_by_name_or_version(name, version)
             .await?;
 
-        match asset_list_response.get_result_len() {
-            0 => println!("No assets found matching \"{}\"", name.clone()),
-            1 => println!("Found 1 asset matching \"{}\":", name.clone()),
+        match asset_list_response.result.len() {
+            0 => println!("No assets found matching \"{}\"", name),
+            1 => println!("Found 1 asset matching \"{}\":", name),
             n => println!("Found {} assets matching \"{}\":", n, name),
         }
 
         asset_list_response.print_info();
 
-        if asset_list_response.get_result_len() == 1 {
-            let asset = asset_list_response.get_asset_list_item_by_index(0).unwrap();
+        if asset_list_response.result.len() == 1 {
+            let asset = asset_list_response.result.first().unwrap();
             println!(
                 "To install the plugin, use: gdm add \"{}\" or gdm add --asset-id {}",
-                asset.get_title(),
-                asset.get_asset_id()
+                asset.title, asset.asset_id
             );
         } else {
             println!(
@@ -699,8 +658,8 @@ mod tests {
     #[tokio::test]
     async fn test_find_plugin_by_id_or_name_with_id_with_none_parameters_should_return_error() {
         let plugin_service = setup_plugin_service();
-        let asset_id = String::from("");
-        let name = String::from("");
+        let asset_id = "";
+        let name = "";
         let result = plugin_service
             .find_plugin_by_id_or_name(asset_id, name)
             .await;
@@ -710,29 +669,29 @@ mod tests {
     #[tokio::test]
     async fn test_find_plugin_by_id_or_name_with_id_should_return_asset() {
         let plugin_service = setup_plugin_service();
-        let asset_id = String::from("1709");
-        let name = String::from("");
+        let asset_id = "1709";
+        let name = "";
         let result = plugin_service
             .find_plugin_by_id_or_name(asset_id, name)
             .await;
         assert!(result.is_ok());
         let asset = result.unwrap();
-        assert_eq!(asset.get_asset_id(), "1709");
+        assert_eq!(asset.asset_id, "1709");
     }
 
     #[tokio::test]
     async fn test_find_plugin_by_id_or_name_with_name_should_return_asset() {
         let plugin_service = setup_plugin_service();
-        let asset_id = String::from("");
-        let name = String::from("Godot Unit Testing");
+        let asset_id = "";
+        let name = "Godot Unit Testing";
         let result = plugin_service
             .find_plugin_by_id_or_name(asset_id, name)
             .await;
 
         assert!(result.is_ok());
         let asset = result.unwrap();
-        assert_eq!(asset.get_title(), "GUT - Godot Unit Testing (Godot 4)");
-        assert_eq!(asset.get_asset_id(), "1709");
+        assert_eq!(asset.title, "GUT - Godot Unit Testing (Godot 4)");
+        assert_eq!(asset.asset_id, "1709");
     }
 
     // find_plugin_by_asset_id_and_version
@@ -772,9 +731,9 @@ mod tests {
 
         assert!(result.is_ok());
         let asset = result.unwrap();
-        assert_eq!(asset.get_title(), "GUT - Godot Unit Testing (Godot 4)");
-        assert_eq!(asset.get_asset_id(), "1709");
-        assert_eq!(asset.get_version_string(), "9.1.0");
+        assert_eq!(asset.title, "GUT - Godot Unit Testing (Godot 4)");
+        assert_eq!(asset.asset_id, "1709");
+        assert_eq!(asset.version_string, "9.1.0");
     }
 
     // get_asset_list_response_by_name_or_version
@@ -782,38 +741,38 @@ mod tests {
     #[tokio::test]
     async fn test_get_asset_list_response_by_name_or_version_with_no_results_should_return_ok() {
         let plugin_service = setup_plugin_service();
-        let name = "some_non_existent_plugin_name".to_string();
-        let version = "4.5".to_string();
+        let name = "some_non_existent_plugin_name";
+        let version = "4.5";
         let result_list = plugin_service
             .get_asset_list_response_by_name_or_version(name, version)
             .await;
         assert!(result_list.is_ok());
         let result = result_list.unwrap();
-        assert!(result.get_result_len() == 0);
+        assert!(result.result.is_empty());
     }
 
     #[tokio::test]
     async fn test_get_asset_list_response_by_name_or_version_with_exact_name_should_return_one_result()
      {
         let plugin_service = setup_plugin_service();
-        let name = "Godot Unit Testing".to_string();
-        let version = "4.5".to_string();
+        let name = "Godot Unit Testing";
+        let version = "4.5";
         let result = plugin_service
             .get_asset_list_response_by_name_or_version(name, version)
             .await;
         assert!(result.is_ok());
         let assets = result.unwrap();
-        assert!(assets.get_result_len() == 1);
-        let asset = assets.get_asset_list_item_by_index(0).unwrap();
-        assert_eq!(asset.get_title(), "GUT - Godot Unit Testing (Godot 4)");
-        assert_eq!(asset.get_asset_id(), "1709");
+        assert!(assets.result.len() == 1);
+        let asset = assets.result.first().unwrap();
+        assert_eq!(asset.title, "GUT - Godot Unit Testing (Godot 4)");
+        assert_eq!(asset.asset_id, "1709");
     }
 
     #[tokio::test]
     async fn test_get_asset_list_response_by_name_or_version_without_name_should_return_err() {
         let plugin_service = setup_plugin_service();
-        let name = "".to_string();
-        let version = "4.5".to_string();
+        let name = "";
+        let version = "4.5";
         let result = plugin_service
             .get_asset_list_response_by_name_or_version(name, version)
             .await;
@@ -824,8 +783,8 @@ mod tests {
     async fn test_get_asset_list_response_by_name_or_version_without_version_should_return_response()
      {
         let plugin_service = setup_plugin_service();
-        let name = "Godot Unit Testing".to_string();
-        let version = "".to_string();
+        let name = "Godot Unit Testing";
+        let version = "";
         let result = plugin_service
             .get_asset_list_response_by_name_or_version(name, version)
             .await;
@@ -836,8 +795,8 @@ mod tests {
     async fn test_get_asset_list_response_by_name_or_version_without_name_or_version_should_return_err()
      {
         let plugin_service = setup_plugin_service();
-        let name = String::new();
-        let version = String::new();
+        let name = "";
+        let version = "";
         let result = plugin_service
             .get_asset_list_response_by_name_or_version(name, version)
             .await;
@@ -862,6 +821,10 @@ mod tests {
             .expect_remove_plugins()
             .returning(|_plugin_names| Ok(DefaultPluginConfig::default()));
 
+        plugin_config_repository
+            .expect_get_plugin_by_asset_id()
+            .returning(|_asset_id| None);
+
         let app_config = DefaultAppConfig::default();
         let mut extract_service = MockDefaultExtractService::default();
 
@@ -883,13 +846,13 @@ mod tests {
         });
         asset_store_api
             .expect_get_asset_by_id_and_version()
-            .with(eq("1234".to_string()), eq("1.1.1".to_string()))
+            .with(eq("1234"), eq("1.1.1"))
             .returning(|asset_id, version| {
                 Ok(AssetResponse::new(
-                    asset_id,
+                    asset_id.to_string(),
                     "Test Plugin".to_string(),
                     "11".to_string(),
-                    version,
+                    version.to_string(),
                     "4.5".to_string(),
                     "5".to_string(),
                     "MIT".to_string(),
@@ -905,7 +868,7 @@ mod tests {
             .with(eq("1234".to_string()))
             .returning(|asset_id| {
                 Ok(AssetResponse::new(
-                    asset_id,
+                    asset_id.to_string(),
                     "Test Plugin".to_string(),
                     "11".to_string(),
                     "1.1.1".to_string(),
@@ -982,9 +945,9 @@ mod tests {
     #[tokio::test]
     async fn test_install_plugin_with_asset_id_and_no_version_should_install_asset() {
         let plugin_service = setup_plugin_service_mocks();
-        let name = String::default();
-        let asset_id = String::from("1234");
-        let version = String::default();
+        let name = "";
+        let asset_id = "1234";
+        let version = "";
         let result = plugin_service.install_plugin(name, asset_id, version).await;
         assert!(result.is_ok());
         let installed_plugins = result.unwrap();
@@ -1005,9 +968,9 @@ mod tests {
     #[tokio::test]
     async fn test_install_plugin_with_only_version_should_return_err() {
         let plugin_service = setup_plugin_service_mocks();
-        let name = String::default();
-        let asset_id = String::default();
-        let version = String::from("1.1.1");
+        let name = "";
+        let asset_id = "";
+        let version = "1.1.1";
         let result = plugin_service.install_plugin(name, asset_id, version).await;
         assert!(result.is_err());
     }
@@ -1015,9 +978,9 @@ mod tests {
     #[tokio::test]
     async fn test_install_plugin_with_asset_id_and_version_should_install_plugin() {
         let plugin_service = setup_plugin_service_mocks();
-        let name = String::new();
-        let asset_id = String::from("1234");
-        let version = String::from("1.1.1");
+        let name = "";
+        let asset_id = "1234";
+        let version = "1.1.1";
         let result = plugin_service.install_plugin(name, asset_id, version).await;
         assert!(result.is_ok());
 
@@ -1037,9 +1000,9 @@ mod tests {
     #[tokio::test]
     async fn test_install_plugin_with_name_should_install_plugin() {
         let plugin_service = setup_plugin_service_mocks();
-        let name = String::from("Test Plugin");
-        let asset_id = String::new();
-        let version = String::new();
+        let name = "Test Plugin";
+        let asset_id = "";
+        let version = "";
         let result = plugin_service.install_plugin(name, asset_id, version).await;
         assert!(result.is_ok());
 
@@ -1102,8 +1065,8 @@ mod tests {
     // update_plugins
 
     fn setup_update_plugin_mocks(
-        current_plugin_version: String,
-        update_plugin_version: String,
+        current_plugin_version: &str,
+        update_plugin_version: &str,
     ) -> DefaultPluginService {
         let mut godot_config_repository = MockDefaultGodotConfigRepository::default();
 
@@ -1131,29 +1094,30 @@ mod tests {
             .expect_extract_plugin()
             .returning(|_file_path, _pb| Ok(PathBuf::from("test_plugin")));
 
-        let plugin_config_rep_plugin_version = current_plugin_version.clone();
-        plugin_config_repository
-            .expect_get_plugins()
-            .returning(move || {
+        plugin_config_repository.expect_get_plugins().returning({
+            let current_plugin_version = current_plugin_version.to_string();
+            move || {
                 Ok(BTreeMap::from([(
                     String::from("test_plugin"),
                     Plugin::new(
                         String::from("1234"),
                         String::from("Test Plugin"),
-                        plugin_config_rep_plugin_version.clone(),
+                        current_plugin_version.clone(),
                         String::from("MIT"),
                     ),
                 )]))
-            });
+            }
+        });
+        let get_asset_by_id_version = current_plugin_version.to_string();
         asset_store_api
             .expect_get_asset_by_id_and_version()
-            .with(eq("1234".to_string()), eq(current_plugin_version.clone()))
+            .with(eq("1234".to_string()), eq(get_asset_by_id_version.clone()))
             .returning(|asset_id, version| {
                 Ok(AssetResponse::new(
-                    asset_id,
+                    asset_id.to_string(),
                     "Test Plugin".to_string(),
                     "11".to_string(),
-                    version,
+                    version.to_string(),
                     "4.5".to_string(),
                     "5".to_string(),
                     "MIT".to_string(),
@@ -1164,16 +1128,16 @@ mod tests {
                     "https://example.com/test_plugin.zip".to_string(),
                 ))
             });
-        let asset_store_plugin_version = update_plugin_version.clone();
+        let asset_store_plugin_version = update_plugin_version.to_string();
         asset_store_api
             .expect_get_asset_by_id()
             .with(eq("1234".to_string()))
             .returning(move |asset_id| {
                 Ok(AssetResponse::new(
-                    asset_id,
+                    asset_id.to_string(),
                     "Test Plugin".to_string(),
                     "11".to_string(),
-                    asset_store_plugin_version.clone(),
+                    asset_store_plugin_version.to_string(),
                     "4.5".to_string(),
                     "5".to_string(),
                     "MIT".to_string(),
@@ -1220,7 +1184,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_plugins_should_return_correct_plugins_if_there_is_an_update_1() {
-        let plugin_service = setup_update_plugin_mocks("1.1.1".to_string(), "1.2.0".to_string());
+        let plugin_service = setup_update_plugin_mocks("1.1.1", "1.2.0");
         let result = plugin_service.update_plugins().await;
         assert!(result.is_ok());
 
@@ -1239,7 +1203,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_plugins_should_return_correct_plugins_if_there_is_an_update_2() {
-        let plugin_service = setup_update_plugin_mocks("1.1.1".to_string(), "1.1.12".to_string());
+        let plugin_service = setup_update_plugin_mocks("1.1.1", "1.1.12");
         let result = plugin_service.update_plugins().await;
         assert!(result.is_ok());
 
@@ -1258,7 +1222,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_plugins_should_return_correct_plugins_if_there_is_no_update() {
-        let plugin_service = setup_update_plugin_mocks("1.1.1".to_string(), "1.1.1".to_string());
+        let plugin_service = setup_update_plugin_mocks("1.1.1", "1.1.1");
         let result = plugin_service.update_plugins().await;
         assert!(result.is_ok());
 

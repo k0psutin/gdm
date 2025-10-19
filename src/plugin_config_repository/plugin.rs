@@ -6,14 +6,14 @@ use crate::utils::Utils;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Plugin {
-    asset_id: String,
-    title: String,
+    pub asset_id: String,
+    pub title: String,
     #[serde(
         serialize_with = "serialize_version",
         deserialize_with = "deserialize_version"
     )]
     version: Version,
-    license: String,
+    pub license: String,
 }
 
 fn serialize_version<S>(version: &Version, serializer: S) -> Result<S::Ok, S::Error>
@@ -47,21 +47,8 @@ impl Plugin {
         }
     }
 
-    pub fn get_asset_id(&self) -> String {
-        self.asset_id.clone()
-    }
-
-    pub fn get_title(&self) -> String {
-        self.title.clone()
-    }
-
     pub fn get_version(&self) -> String {
         self.version.to_string()
-    }
-
-    #[allow(dead_code)]
-    pub fn get_license(&self) -> String {
-        self.license.clone()
     }
 }
 
@@ -84,10 +71,10 @@ mod tests {
     #[test]
     fn test_plugin_creation() {
         let plugin = setup_test_plugin();
-        assert_eq!(plugin.get_asset_id(), "123");
-        assert_eq!(plugin.get_title(), "Sample Plugin");
+        assert_eq!(plugin.asset_id, "123");
+        assert_eq!(plugin.title, "Sample Plugin");
         assert_eq!(plugin.get_version(), "1.0.0");
-        assert_eq!(plugin.get_license(), "MIT");
+        assert_eq!(plugin.license, "MIT");
     }
 
     #[test]
@@ -107,10 +94,10 @@ mod tests {
             "https://example.com/old.zip".to_string(),
         );
         let plugin = Plugin::from(asset_response.clone());
-        assert_eq!(plugin.get_asset_id(), "456");
-        assert_eq!(plugin.get_title(), "Test Asset");
+        assert_eq!(plugin.asset_id, "456");
+        assert_eq!(plugin.title, "Test Asset");
         assert_eq!(plugin.get_version(), "0.0.1");
-        assert_eq!(plugin.get_license(), "MIT");
+        assert_eq!(plugin.license, "MIT");
     }
 
     #[test]

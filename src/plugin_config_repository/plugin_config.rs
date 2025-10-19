@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, HashSet};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct DefaultPluginConfig {
-    plugins: BTreeMap<String, Plugin>,
+    pub plugins: BTreeMap<String, Plugin>,
 }
 
 // TODO Change to hashmap again?
@@ -23,41 +23,19 @@ impl Default for DefaultPluginConfig {
 
 #[cfg_attr(test, mockall::automock)]
 impl PluginConfig for DefaultPluginConfig {
-    fn get_plugins(&self) -> &BTreeMap<String, Plugin> {
-        &self.plugins
-    }
-
-    fn get_plugin_by_asset_id(&self, asset_id: String) -> Option<Plugin> {
-        self.get_plugins()
+    fn get_plugin_by_asset_id(&self, asset_id: &str) -> Option<Plugin> {
+        self.plugins
             .iter()
-            .find(|(_, p)| p.get_asset_id() == asset_id)
+            .find(|(_, p)| p.asset_id == asset_id)
             .map(|(_, p)| p.clone())
     }
 
     fn get_plugin_by_name(&self, name: &str) -> Option<Plugin> {
-        self.get_plugins().get(name).cloned()
-    }
-
-    // TODO create a method that checks if a plugin is already installed by asset id
-    // e.g. addons/<plugin> exists and is listed in gdm.json
-    fn check_if_plugin_already_installed_by_asset_id(&self, asset_id: &str) -> Option<Plugin> {
-        let plugin = self.get_plugin_by_asset_id(asset_id.to_string());
-        match plugin {
-            Some(p) => {
-                println!(
-                    "Plugin with asset ID {} is already installed: {} (version {})",
-                    asset_id,
-                    p.get_title(),
-                    p.get_version()
-                );
-                Some(p.clone())
-            }
-            None => None,
-        }
+        self.plugins.get(name).cloned()
     }
 
     fn remove_plugins(&self, plugins: HashSet<String>) -> DefaultPluginConfig {
-        let mut _plugins = self.get_plugins().clone();
+        let mut _plugins = self.plugins.clone();
         for plugin_key in plugins {
             _plugins.remove(&plugin_key);
         }
@@ -66,7 +44,7 @@ impl PluginConfig for DefaultPluginConfig {
     }
 
     fn add_plugins(&self, plugins: &BTreeMap<String, Plugin>) -> DefaultPluginConfig {
-        let mut _plugins = self.get_plugins().clone();
+        let mut _plugins = self.plugins.clone();
         for (key, plugin) in plugins {
             _plugins.insert(key.clone(), plugin.clone());
         }
@@ -76,10 +54,8 @@ impl PluginConfig for DefaultPluginConfig {
 }
 
 pub trait PluginConfig {
-    fn get_plugins(&self) -> &BTreeMap<String, Plugin>;
-    fn get_plugin_by_asset_id(&self, asset_id: String) -> Option<Plugin>;
+    fn get_plugin_by_asset_id(&self, asset_id: &str) -> Option<Plugin>;
     fn get_plugin_by_name(&self, name: &str) -> Option<Plugin>;
-    fn check_if_plugin_already_installed_by_asset_id(&self, asset_id: &str) -> Option<Plugin>;
     fn remove_plugins(&self, plugins: HashSet<String>) -> DefaultPluginConfig;
     fn add_plugins(&self, plugins: &BTreeMap<String, Plugin>) -> DefaultPluginConfig;
 }
@@ -121,13 +97,13 @@ mod tests {
     #[test]
     fn test_get_plugins_should_return_empty_plugins() {
         let plugin_config = setup_test_plugin_config_non_existent_config();
-        assert!(plugin_config.get_plugins().is_empty());
+        assert!(plugin_config.plugins.is_empty());
     }
 
     #[test]
     fn test_get_plugins_should_return_non_empty_plugins() {
         let plugin_config = setup_test_plugin_config();
-        assert!(!plugin_config.get_plugins().is_empty());
+        assert!(!plugin_config.plugins.is_empty());
     }
 
     #[test]
@@ -154,9 +130,9 @@ mod tests {
             ),
         ]);
 
-        let result = plugin_config.get_plugins();
+        let result = plugin_config.plugins;
         assert_eq!(result.len(), expected.len());
-        assert_eq!(result, &expected);
+        assert_eq!(result, expected);
     }
 
     // add_plugins
@@ -175,7 +151,7 @@ mod tests {
         )]);
 
         let updated_plugin_config = plugin_config.add_plugins(&new_plugins);
-        let actual = updated_plugin_config.get_plugins().clone();
+        let actual = updated_plugin_config.plugins.clone();
 
         let expected = BTreeMap::from([
             (
@@ -235,7 +211,7 @@ mod tests {
         ]);
 
         let updated_plugin_config = plugin_config.add_plugins(&new_plugins);
-        let actual = updated_plugin_config.get_plugins().clone();
+        let actual = updated_plugin_config.plugins.clone();
 
         let expected = BTreeMap::from([
             (
@@ -295,7 +271,7 @@ mod tests {
         ]);
 
         let updated_plugin_config = plugin_config.add_plugins(&new_plugins);
-        let actual = updated_plugin_config.get_plugins().clone();
+        let actual = updated_plugin_config.plugins.clone();
 
         let expected = BTreeMap::from([
             (
@@ -334,7 +310,7 @@ mod tests {
             ),
         )]);
         let updated_plugin_config = plugin_config.add_plugins(&new_plugins);
-        let actual = updated_plugin_config.get_plugins().clone();
+        let actual = updated_plugin_config.plugins.clone();
 
         let expected = BTreeMap::from([
             (
@@ -376,7 +352,7 @@ mod tests {
         let plugin_opt = plugin_config.get_plugin_by_name("plugin_1");
         assert!(plugin_opt.is_some());
         let plugin = plugin_opt.unwrap();
-        assert_eq!(plugin.get_asset_id(), "54321".to_string());
+        assert_eq!(plugin.asset_id, "54321".to_string());
     }
 
     // remove_installed_plugin
@@ -395,7 +371,7 @@ mod tests {
                 "Apache-2.0".to_string(),
             ),
         )]);
-        let actual = updated_plugin_config.get_plugins().clone();
+        let actual = updated_plugin_config.plugins.clone();
         assert_eq!(actual, expected);
     }
 
@@ -409,7 +385,7 @@ mod tests {
         let updated_plugin_config = plugin_config.remove_plugins(plugins_to_remove);
 
         let expected = BTreeMap::new();
-        let actual = updated_plugin_config.get_plugins().clone();
+        let actual = updated_plugin_config.plugins.clone();
 
         assert_eq!(actual, expected);
     }
@@ -421,8 +397,8 @@ mod tests {
         let updated_plugin_config = plugin_config.remove_plugins(plugins_to_remove);
 
         assert_eq!(
-            updated_plugin_config.get_plugins().clone(),
-            plugin_config.get_plugins().clone()
+            updated_plugin_config.plugins.clone(),
+            plugin_config.plugins.clone()
         );
     }
 
@@ -431,7 +407,7 @@ mod tests {
     #[test]
     fn test_get_plugin_by_asset_id_should_return_correct_plugin() {
         let plugin_config = setup_test_plugin_config();
-        let plugin = plugin_config.get_plugin_by_asset_id("54321".to_string());
+        let plugin = plugin_config.get_plugin_by_asset_id("54321");
         let expected_plugin = Plugin::new(
             "54321".to_string(),
             "Awesome Plugin".to_string(),
@@ -444,24 +420,7 @@ mod tests {
     #[test]
     fn test_get_plugin_by_asset_id_should_return_none() {
         let plugin_config = setup_test_plugin_config();
-        let plugin = plugin_config.get_plugin_by_asset_id("4321".to_string());
+        let plugin = plugin_config.get_plugin_by_asset_id("4321");
         assert_eq!(plugin, None);
-    }
-
-    // check_if_plugin_already_installed_by_asset_id
-
-    #[test]
-    fn test_check_if_plugin_already_installed_by_asset_id_should_return_some() {
-        let plugin_config = setup_test_plugin_config();
-        let is_installed = plugin_config.check_if_plugin_already_installed_by_asset_id("54321");
-        assert!(is_installed.is_some());
-    }
-
-    #[test]
-    fn test_check_if_plugin_already_installed_by_asset_id_should_return_none() {
-        let plugin_config = setup_test_plugin_config();
-        let is_installed =
-            plugin_config.check_if_plugin_already_installed_by_asset_id("non_existent_id");
-        assert!(is_installed.is_none());
     }
 }

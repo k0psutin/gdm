@@ -8,16 +8,21 @@ use std::path::Path;
 #[cfg(not(tarpaulin_include))]
 #[derive(Debug, Clone)]
 pub struct DefaultAppConfig {
-    api_base_url: String,
+    /// API_BASE_URL environment variable
+    pub api_base_url: String,
+    /// CONFIG_FILE_PATH environment variable
     config_file_path: String,
+    /// CACHE_FOLDER_PATH environment variable
     cache_folder_path: String,
+    /// GODOT_PROJECT_FILE_PATH environment variable
     godot_project_file_path: String,
+    /// ADDON_FOLDER_PATH environment variable
     addon_folder_path: String,
 }
 
 #[cfg(not(tarpaulin_include))]
 impl DefaultAppConfig {
-    #[allow(dead_code)]
+    #[allow(unused)]
     pub fn new(
         api_base_url: Option<String>,
         config_file_path: Option<String>,
@@ -72,10 +77,6 @@ impl AppConfig for DefaultAppConfig {
         Path::new(&self.godot_project_file_path)
     }
 
-    fn get_api_base_url(&self) -> String {
-        self.api_base_url.clone()
-    }
-
     fn get_config_file_path(&self) -> &Path {
         Path::new(&self.config_file_path)
     }
@@ -90,7 +91,7 @@ impl AppConfig for DefaultAppConfig {
 }
 
 impl dyn AppConfig {
-    #[allow(dead_code)]
+    #[allow(unused)]
     fn default() -> Box<Self> {
         dotenv().ok();
 
@@ -111,7 +112,6 @@ impl dyn AppConfig {
 
 pub trait AppConfig: Send + Sync + 'static {
     fn get_godot_project_file_path(&self) -> &Path;
-    fn get_api_base_url(&self) -> String;
     fn get_config_file_path(&self) -> &Path;
     fn get_cache_folder_path(&self) -> &Path;
     fn get_addon_folder_path(&self) -> &Path;

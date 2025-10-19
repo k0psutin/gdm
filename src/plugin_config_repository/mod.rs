@@ -11,8 +11,8 @@ use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
 pub struct DefaultPluginConfigRepository {
-    app_config: DefaultAppConfig,
-    file_service: Arc<dyn FileService + Send + Sync + 'static>,
+    pub app_config: DefaultAppConfig,
+    pub file_service: Arc<dyn FileService + Send + Sync + 'static>,
 }
 
 impl Default for DefaultPluginConfigRepository {
@@ -25,7 +25,7 @@ impl Default for DefaultPluginConfigRepository {
 }
 
 impl DefaultPluginConfigRepository {
-    #[allow(dead_code)]
+    #[allow(unused)]
     pub fn new(
         app_config: DefaultAppConfig,
         file_service: Arc<dyn FileService + Send + Sync + 'static>,
@@ -39,14 +39,6 @@ impl DefaultPluginConfigRepository {
 
 #[cfg_attr(test, mockall::automock)]
 impl PluginConfigRepository for DefaultPluginConfigRepository {
-    fn get_file_service(&self) -> Arc<dyn FileService + Send + Sync + 'static> {
-        Arc::clone(&self.file_service)
-    }
-
-    fn get_app_config(&self) -> &DefaultAppConfig {
-        &self.app_config
-    }
-
     fn add_plugins(&self, plugins: &BTreeMap<String, Plugin>) -> Result<DefaultPluginConfig> {
         let plugin_config = self.load()?;
         let updated_plugin_config = plugin_config.add_plugins(plugins);
@@ -70,9 +62,9 @@ impl PluginConfigRepository for DefaultPluginConfigRepository {
         }
     }
 
-    fn check_if_plugin_already_installed_by_asset_id(&self, asset_id: &str) -> Option<Plugin> {
+    fn get_plugin_by_asset_id(&self, asset_id: &str) -> Option<Plugin> {
         let plugin_config = self.load().ok()?;
-        plugin_config.check_if_plugin_already_installed_by_asset_id(asset_id)
+        plugin_config.get_plugin_by_asset_id(asset_id)
     }
 
     /// Returns a sorted list of plugins in a tuple of (key, Plugin)
@@ -80,17 +72,16 @@ impl PluginConfigRepository for DefaultPluginConfigRepository {
     /// The list is sorted by the plugin key in ascending order
     fn get_plugins(&self) -> Result<BTreeMap<String, Plugin>> {
         let plugin_config = self.load()?;
-        Ok(plugin_config.get_plugins().clone())
+        Ok(plugin_config.plugins.clone())
     }
 
     fn load(&self) -> Result<DefaultPluginConfig> {
-        let config_file_path = self.get_app_config().get_config_file_path();
-        let file_service = self.get_file_service();
+        let config_file_path = self.app_config.get_config_file_path();
 
-        if !file_service.file_exists(config_file_path) {
+        if !self.file_service.file_exists(config_file_path) {
             return Ok(DefaultPluginConfig::default());
         }
-        let content = file_service.read_file_cached(config_file_path)?;
+        let content = self.file_service.read_file_cached(config_file_path)?;
         let config: DefaultPluginConfig = serde_json::from_str(&content).with_context(|| {
             format!(
                 "Failed to parse plugin config file: {}",
@@ -101,7 +92,7 @@ impl PluginConfigRepository for DefaultPluginConfigRepository {
     }
 
     fn save(&self, config: &DefaultPluginConfig) -> Result<String> {
-        let config_file_path = self.get_app_config().get_config_file_path();
+        let config_file_path = self.app_config.get_config_file_path();
 
         let content = serde_json::to_string_pretty(config).with_context(|| {
             format!(
@@ -110,8 +101,7 @@ impl PluginConfigRepository for DefaultPluginConfigRepository {
             )
         })?;
 
-        self.get_file_service()
-            .write_file(config_file_path, &content)?;
+        self.file_service.write_file(config_file_path, &content)?;
 
         Ok(content)
     }
@@ -119,9 +109,7 @@ impl PluginConfigRepository for DefaultPluginConfigRepository {
 
 pub trait PluginConfigRepository {
     fn add_plugins(&self, plugins: &BTreeMap<String, Plugin>) -> Result<DefaultPluginConfig>;
-    fn check_if_plugin_already_installed_by_asset_id(&self, asset_id: &str) -> Option<Plugin>;
-    fn get_app_config(&self) -> &DefaultAppConfig;
-    fn get_file_service(&self) -> Arc<dyn FileService + Send + Sync + 'static>;
+    fn get_plugin_by_asset_id(&self, asset_id: &str) -> Option<Plugin>;
     fn get_plugin_key_by_name(&self, name: &str) -> Option<String>;
     fn get_plugins(&self) -> Result<BTreeMap<String, Plugin>>;
     fn load(&self) -> Result<DefaultPluginConfig>;
@@ -156,7 +144,7 @@ mod tests {
         let result = plugin_config_repository.load();
         assert!(result.is_ok());
         let config = result.unwrap();
-        assert_eq!(config.get_plugins().len(), 0);
+        assert_eq!(config.plugins.len(), 0);
     }
 
     #[test]
@@ -174,7 +162,7 @@ mod tests {
         let result = plugin_config_repository.load();
         assert!(result.is_ok());
         let config = result.unwrap();
-        assert_eq!(config.get_plugins().len(), 2);
+        assert_eq!(config.plugins.len(), 2);
 
         let mock_plugins = BTreeMap::from([
             (
@@ -322,46 +310,7 @@ mod tests {
             ),
         ]);
 
-        assert_eq!(updated_config.get_plugins(), &expected_plugins);
-    }
-
-    // check_if_plugin_already_installed_by_asset_id
-
-    #[test]
-    fn test_check_if_plugin_already_installed_by_asset_id_should_return_plugin_if_exists() {
-        let app_config = DefaultAppConfig::new(
-            None,
-            Some(String::from("test/mocks/gdm.json")),
-            None,
-            None,
-            None,
-        );
-        let plugin_config_repository =
-            DefaultPluginConfigRepository::new(app_config, Arc::new(DefaultFileService));
-        let asset_id = "54321";
-        let plugin =
-            plugin_config_repository.check_if_plugin_already_installed_by_asset_id(asset_id);
-        assert!(plugin.is_some());
-        let plugin = plugin.unwrap();
-        assert_eq!(plugin.get_asset_id(), asset_id);
-        assert_eq!(plugin.get_title(), "Awesome Plugin");
-    }
-
-    #[test]
-    fn test_check_if_plugin_already_installed_by_asset_id_should_return_none_if_not_exists() {
-        let app_config = DefaultAppConfig::new(
-            None,
-            Some(String::from("test/mocks/gdm.json")),
-            None,
-            None,
-            None,
-        );
-        let plugin_config_repository =
-            DefaultPluginConfigRepository::new(app_config, Arc::new(DefaultFileService));
-        let asset_id = "99999";
-        let plugin =
-            plugin_config_repository.check_if_plugin_already_installed_by_asset_id(asset_id);
-        assert!(plugin.is_none());
+        assert_eq!(updated_config.plugins, expected_plugins);
     }
 
     // get_plugin_key_by_name
@@ -421,7 +370,7 @@ mod tests {
             ),
         )]);
 
-        assert_eq!(updated_config.get_plugins(), &expected_plugins);
+        assert_eq!(updated_config.plugins, expected_plugins);
     }
 
     #[test]
@@ -456,7 +405,7 @@ mod tests {
             ),
         ]);
 
-        assert_eq!(updated_config.get_plugins(), &expected_plugins);
+        assert_eq!(updated_config.plugins, expected_plugins);
     }
 
     #[test]
@@ -472,7 +421,7 @@ mod tests {
 
         let expected_plugins = BTreeMap::new();
 
-        assert_eq!(updated_config.get_plugins(), &expected_plugins);
+        assert_eq!(updated_config.plugins, expected_plugins);
     }
 
     // save

@@ -19,6 +19,9 @@ use crate::commands::{
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
+
+    #[command(flatten)]
+    pub verbosity: clap_verbosity_flag::Verbosity,
 }
 
 #[derive(Subcommand)]

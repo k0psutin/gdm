@@ -21,8 +21,8 @@ pub async fn handle(args: &SearchArgs) -> Result<()> {
     let plugin_service = DefaultPluginService::default();
     plugin_service
         .search_assets_by_name_or_version(
-            args.name.clone(),
-            args.godot_version.clone().unwrap_or_default(),
+            &args.name,
+            args.godot_version.as_ref().unwrap_or(&"".into()),
         )
         .await?;
 

@@ -3,34 +3,22 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 #[cfg(not(tarpaulin_include))]
 #[derive(serde::Deserialize, Debug)]
 pub struct AssetListResponse {
-    result: Vec<AssetListItem>,
+    pub result: Vec<AssetListItem>,
 }
 
 #[cfg(not(tarpaulin_include))]
 impl AssetListResponse {
-    #[allow(dead_code)]
+    #[allow(unused)]
     pub fn new(result: Vec<AssetListItem>) -> AssetListResponse {
         AssetListResponse { result }
     }
 
-    pub fn get_result_len(&self) -> usize {
-        self.result.len()
-    }
-
-    pub fn get_results(&self) -> &Vec<AssetListItem> {
-        &self.result
-    }
-
-    pub fn get_asset_list_item_by_index(&self, index: usize) -> Option<&AssetListItem> {
-        self.result.get(index)
-    }
-
     pub fn print_info(&self) {
-        if self.get_results().is_empty() {
+        if self.result.is_empty() {
             return;
         }
 
-        for asset in self.get_results() {
+        for asset in &self.result {
             println!();
             println!("{}", asset);
             println!();
@@ -41,22 +29,22 @@ impl AssetListResponse {
 #[cfg(not(tarpaulin_include))]
 #[derive(Debug, serde::Deserialize)]
 pub struct AssetListItem {
-    asset_id: String,
-    title: String,
-    author: String,
-    category: String,
-    godot_version: String,
-    rating: String,
-    cost: String,
-    support_level: String,
-    version: String,
-    version_string: String,
-    modify_date: String,
+    pub asset_id: String,
+    pub title: String,
+    pub author: String,
+    pub category: String,
+    pub godot_version: String,
+    pub rating: String,
+    pub cost: String,
+    pub support_level: String,
+    pub version: String,
+    pub version_string: String,
+    pub modify_date: String,
 }
 
 #[cfg(not(tarpaulin_include))]
 impl AssetListItem {
-    #[allow(dead_code, clippy::too_many_arguments)]
+    #[allow(unused, clippy::too_many_arguments)]
     pub fn new(
         asset_id: String,
         title: String,
@@ -117,16 +105,6 @@ Asset URL: https://godotengine.org/asset-library/asset/{}",
     }
 }
 
-impl AssetListItem {
-    pub fn get_title(&self) -> &str {
-        &self.title
-    }
-
-    pub fn get_asset_id(&self) -> &str {
-        &self.asset_id
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -150,13 +128,13 @@ mod tests {
     #[test]
     fn test_should_return_asset_id() {
         let asset = setup_asset_list_item();
-        assert_eq!(asset.get_asset_id(), "123");
+        assert_eq!(asset.asset_id, "123");
     }
 
     #[test]
     fn test_should_return_title() {
         let asset = setup_asset_list_item();
-        assert_eq!(asset.get_title(), "Test Asset");
+        assert_eq!(asset.title, "Test Asset");
     }
 
     #[test]

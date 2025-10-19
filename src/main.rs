@@ -12,19 +12,13 @@ mod utils;
 use crate::commands::Cli;
 use anyhow::Result;
 use clap::Parser;
-use dotenv::dotenv;
-use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    dotenv().ok();
-
-    tracing_subscriber::registry()
-        .with(fmt::layer())
-        .with(EnvFilter::from_default_env())
-        .init();
-
     let cli = Cli::parse();
+    tracing_subscriber::fmt()
+        .with_max_level(cli.verbosity)
+        .init();
 
     let result = commands::handle(&cli.command).await;
 
