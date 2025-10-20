@@ -13,13 +13,12 @@ use crate::utils::Utils;
 use anyhow::{Context, Result, anyhow};
 use futures::future::try_join_all;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinSet;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 #[cfg(not(tarpaulin_include))]
 pub struct DefaultPluginService {
@@ -29,17 +28,6 @@ pub struct DefaultPluginService {
     pub app_config: DefaultAppConfig,
     pub extract_service: Arc<dyn ExtractService + Send + Sync>,
     pub file_service: Arc<dyn FileService + Send + Sync>,
-}
-
-impl From<AssetResponse> for Plugin {
-    fn from(asset_response: AssetResponse) -> Self {
-        Plugin::new(
-            asset_response.asset_id,
-            asset_response.title,
-            asset_response.version_string,
-            asset_response.cost, // TODO check if serde_json can map this directly to license
-        )
-    }
 }
 
 #[cfg(not(tarpaulin_include))]
@@ -120,13 +108,18 @@ pub trait PluginService {
     fn get_extract_service(&self) -> Arc<dyn ExtractService + Send + Sync>;
 
     async fn install_all_plugins(&self) -> Result<BTreeMap<String, Plugin>> {
-        let plugins = self.get_plugin_config_repository().get_plugins()?;
-        self.install_plugins(&plugins).await?;
+        let assets: Vec<AssetResponse> = self.fetch_installed_assets().await?;
+
+        let installed_plugins = self
+            .download_and_extract_plugins("Downloading plugins".to_string(), assets)
+            .await?;
+
+        self.add_plugins(&installed_plugins)?;
 
         println!();
         println!("done.");
 
-        Ok(plugins)
+        Ok(installed_plugins)
     }
 
     fn create_finished_install_bar(
@@ -316,30 +309,6 @@ pub trait PluginService {
         Ok(installed_plugins)
     }
 
-    /// Install all plugins from the given list of Plugins
-    async fn install_plugins(
-        &self,
-        plugins: &BTreeMap<String, Plugin>,
-    ) -> Result<BTreeMap<String, Plugin>> {
-        let mut asset = Vec::new();
-        for plugin in plugins.values() {
-            let asset_id = plugin.asset_id.to_string();
-            let version = plugin.get_version();
-            let asset_request = self.find_plugin_by_asset_id_and_version(asset_id, version);
-            asset.push(asset_request);
-        }
-
-        let assets: Vec<AssetResponse> = try_join_all(asset).await?;
-
-        let installed_plugins = self
-            .download_and_extract_plugins("Downloading plugins".to_string(), assets)
-            .await?;
-
-        self.add_plugins(&installed_plugins)?;
-
-        Ok(installed_plugins)
-    }
-
     async fn add_plugin_by_id_or_name_and_version(
         &self,
         asset_id: Option<String>,
@@ -476,37 +445,82 @@ pub trait PluginService {
         }
     }
 
+    async fn fetch_installed_assets(&self) -> Result<Vec<AssetResponse>> {
+        let plugin_config_repository = self.get_plugin_config_repository();
+
+        let plugins = plugin_config_repository.get_plugins()?;
+
+        let mut assets = Vec::new();
+
+        for plugin in plugins.values() {
+            let asset_id = plugin.asset_id.to_string();
+            let version = plugin.get_version();
+            let asset_request = self.find_plugin_by_asset_id_and_version(asset_id, version);
+            assets.push(asset_request);
+        }
+
+        let fetched_assets: Vec<AssetResponse> = try_join_all(assets)
+            .await
+            .with_context(|| "Failed to fetch latest plugins from Asset Store API")?;
+
+        Ok(fetched_assets)
+    }
+
+    async fn fetch_latest_assets(&self) -> Result<Vec<AssetResponse>> {
+        let plugin_config_repository = self.get_plugin_config_repository();
+
+        let plugins = plugin_config_repository.get_plugins()?;
+
+        let mut assets = Vec::new();
+
+        for plugin in plugins.values() {
+            let asset_id = plugin.asset_id.as_str();
+            let asset_request = self.find_plugin_by_id_or_name(asset_id, "");
+            assets.push(asset_request);
+        }
+
+        let fetched_assets: Vec<AssetResponse> = try_join_all(assets)
+            .await
+            .with_context(|| "Failed to fetch installed plugins from Asset Store API")?;
+
+        Ok(fetched_assets)
+    }
+
     /// Check for outdated plugins by comparing installed versions with the latest versions from the Asset Store
     /// Prints a list of outdated plugins with their current and latest versions, e.g.:
     /// Plugin                  Current    Latest
     /// some_plugin             1.5.0      1.6.0 (update available)
     async fn check_outdated_plugins(&self) -> Result<()> {
-        let plugin_config_repository = self.get_plugin_config_repository();
+        let installed_plugins = self.fetch_latest_assets().await?;
+        let plugins = self.get_plugin_config_repository().get_plugins()?;
 
         println!("Checking for outdated plugins");
         println!();
 
-        let plugins = plugin_config_repository.get_plugins()?;
+        let mut plugins_to_update = Vec::new();
 
         println!("{0: <40} {1: <20} {2: <20}", "Plugin", "Current", "Latest");
-        let mut updated_plugins = Vec::new();
+        for asset in installed_plugins {
+            let current_plugin = plugins.values().find(|p| p.asset_id == asset.asset_id);
+            if current_plugin.is_none() {
+                warn!(
+                    "Installed plugin with asset ID {} not found in plugin config repository",
+                    asset.asset_id
+                );
+                continue;
+            }
 
-        for plugin in plugins {
-            let asset = self
-                .get_asset_store_api()
-                .get_asset_by_id(&plugin.1.asset_id)
-                .await?;
-
-            let has_an_update =
-                asset.version_string.cmp(&plugin.1.get_version()) == Ordering::Greater;
+            let curr = current_plugin.unwrap();
+            let other = Plugin::from(asset);
+            let has_an_update = &other > curr;
 
             if has_an_update {
-                updated_plugins.push(asset.clone());
+                plugins_to_update.push(other.clone());
             }
 
             let version = format!(
                 "{} {}",
-                asset.version_string,
+                other.get_version(),
                 if has_an_update {
                     "(update available)"
                 } else {
@@ -515,14 +529,14 @@ pub trait PluginService {
             );
             println!(
                 "{0: <40} {1: <20} {2: <20}",
-                plugin.0,
-                plugin.1.get_version(),
+                curr.title,
+                curr.get_version(),
                 version
             );
         }
         println!();
 
-        if updated_plugins.is_empty() {
+        if plugins_to_update.is_empty() {
             println!("All plugins are up to date.");
         } else {
             println!("To update a plugins, use: gdm update");
@@ -534,43 +548,40 @@ pub trait PluginService {
     /// Downloads and installs the latest versions of all plugins that have updates available
     /// Updates the plugin configuration file with the new versions
     async fn update_plugins(&self) -> Result<BTreeMap<String, Plugin>> {
-        let plugin_config_repository = self.get_plugin_config_repository();
-        let plugins = plugin_config_repository.get_plugins()?;
-
-        debug!("Checking for plugin updates for {:?} plugins", plugins);
+        let installed_plugins = self.fetch_latest_assets().await?;
+        let plugins = self.get_plugin_config_repository().get_plugins()?;
 
         let mut plugins_to_update = Vec::new();
-        let mut updated_plugins = BTreeMap::new();
 
-        for (_, plugin) in plugins {
-            let asset = self
-                .get_asset_store_api()
-                .get_asset_by_id(&plugin.asset_id)
-                .await?;
-            let asset_plugin = Plugin::from(asset.clone());
-            debug!(
-                "Comparing plugin {} version {} with latest version {}",
-                plugin.title,
-                plugin.get_version(),
-                asset.version_string
-            );
-            if plugin < asset_plugin {
+        for asset in installed_plugins {
+            let current_plugin = plugins.values().find(|p| p.asset_id == asset.asset_id);
+            if current_plugin.is_none() {
+                warn!(
+                    "Installed plugin with asset ID {} not found in plugin config repository",
+                    asset.asset_id
+                );
+                continue;
+            }
+            let curr = current_plugin.unwrap();
+            let other = Plugin::from(asset.clone());
+            let has_an_update = &other > curr;
+
+            if has_an_update {
                 plugins_to_update.push(asset);
             }
         }
 
         if plugins_to_update.is_empty() {
             println!("All plugins are up to date.");
-        } else {
-            updated_plugins = self
-                .download_and_extract_plugins(
-                    "Updating plugins".to_string(),
-                    plugins_to_update.clone(),
-                )
-                .await?;
-            plugin_config_repository.add_plugins(&updated_plugins)?;
-            println!("Plugins updated successfully.");
+            return Ok(BTreeMap::new());
         }
+
+        let updated_plugins = self
+            .download_and_extract_plugins("Updating plugins".to_string(), plugins_to_update.clone())
+            .await?;
+        self.get_plugin_config_repository()
+            .add_plugins(&updated_plugins)?;
+        println!("Plugins updated successfully.");
         Ok(updated_plugins)
     }
 

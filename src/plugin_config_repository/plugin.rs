@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use semver::Version;
 
-use crate::utils::Utils;
+use crate::{api::asset_response::AssetResponse, utils::Utils};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Plugin {
@@ -34,6 +34,17 @@ where
 impl PartialOrd for Plugin {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.version.cmp(&other.version))
+    }
+}
+
+impl From<AssetResponse> for Plugin {
+    fn from(asset_response: AssetResponse) -> Self {
+        Plugin::new(
+            asset_response.asset_id,
+            asset_response.title,
+            asset_response.version_string,
+            asset_response.cost, // TODO check if serde_json can map this directly to license
+        )
     }
 }
 
