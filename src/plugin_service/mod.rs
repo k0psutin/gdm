@@ -1,3 +1,5 @@
+mod command;
+
 use crate::api::asset::Asset;
 use crate::api::asset_list_response::AssetListResponse;
 use crate::api::asset_response::AssetResponse;
@@ -67,46 +69,6 @@ impl DefaultPluginService {
 }
 
 impl PluginService for DefaultPluginService {
-    #[cfg(not(tarpaulin_include))]
-    fn get_plugin_config_repository(&self) -> &dyn PluginConfigRepository {
-        &*self.plugin_config_repository
-    }
-
-    #[cfg(not(tarpaulin_include))]
-    fn get_asset_store_api(&self) -> Arc<dyn AssetStoreAPI + Send + Sync> {
-        Arc::clone(&self.asset_store_api)
-    }
-
-    #[cfg(not(tarpaulin_include))]
-    fn get_godot_config_repository(&self) -> &dyn GodotConfigRepository {
-        &*self.godot_config_repository
-    }
-
-    #[cfg(not(tarpaulin_include))]
-    fn get_app_config(&self) -> &DefaultAppConfig {
-        &self.app_config
-    }
-
-    #[cfg(not(tarpaulin_include))]
-    fn get_extract_service(&self) -> Arc<dyn ExtractService + Send + Sync> {
-        Arc::clone(&self.extract_service)
-    }
-
-    #[cfg(not(tarpaulin_include))]
-    fn get_file_service(&self) -> Arc<dyn FileService + Send + Sync> {
-        Arc::clone(&self.file_service)
-    }
-}
-
-pub trait PluginService {
-    fn get_app_config(&self) -> &DefaultAppConfig;
-    fn get_godot_config_repository(&self) -> &dyn GodotConfigRepository;
-    fn get_plugin_config_repository(&self) -> &dyn PluginConfigRepository;
-
-    fn get_file_service(&self) -> Arc<dyn FileService + Send + Sync>;
-    fn get_asset_store_api(&self) -> Arc<dyn AssetStoreAPI + Send + Sync>;
-    fn get_extract_service(&self) -> Arc<dyn ExtractService + Send + Sync>;
-
     async fn install_all_plugins(&self) -> Result<BTreeMap<String, Plugin>> {
         let assets: Vec<AssetResponse> = self.fetch_installed_assets().await?;
 
@@ -201,7 +163,7 @@ pub trait PluginService {
         }
 
         let existing_plugin = self
-            .get_plugin_config_repository()
+            .plugin_config_repository
             .get_plugin_by_asset_id(&asset.asset_id);
 
         if let Some(existing_plugin) = existing_plugin {
@@ -251,12 +213,13 @@ pub trait PluginService {
                 &plugin.title,
                 &plugin.version_string,
             )?;
-            let asset_store_api = self.get_asset_store_api().clone();
+            let asset_store_api = self.asset_store_api.clone();
             download_tasks
                 .spawn(async move { asset_store_api.download_asset(&plugin, pb_task).await });
         }
 
-        let result = download_tasks.join_all().await;
+        let result: Vec<std::result::Result<Asset, anyhow::Error>> =
+            download_tasks.join_all().await;
         let download_tasks = result.into_iter().collect::<Result<Vec<Asset>>>()?;
 
         let mut extract_service_tasks = JoinSet::new();
@@ -274,7 +237,7 @@ pub trait PluginService {
                 &asset_response.title,
                 &asset_response.version_string,
             )?;
-            let extract_service = self.get_extract_service().clone();
+            let extract_service = self.extract_service.clone();
             extract_service_tasks
                 .spawn(async move { extract_service.extract_plugin(&file_path, pb_task).await });
         }
@@ -328,10 +291,8 @@ pub trait PluginService {
     }
 
     fn add_plugins(&self, plugins: &BTreeMap<String, Plugin>) -> Result<()> {
-        let godot_config_repository = self.get_godot_config_repository();
-        let plugin_config_repository = self.get_plugin_config_repository();
-        let plugin_config = plugin_config_repository.add_plugins(plugins)?;
-        godot_config_repository.save(plugin_config)?;
+        let plugin_config = self.plugin_config_repository.add_plugins(plugins)?;
+        self.godot_config_repository.save(plugin_config)?;
         Ok(())
     }
 
@@ -346,7 +307,7 @@ pub trait PluginService {
                 asset_id, version
             );
             let asset = self
-                .get_asset_store_api()
+                .asset_store_api
                 .get_asset_by_id_and_version(&asset_id, &version)
                 .await?;
             Ok(asset)
@@ -360,14 +321,14 @@ pub trait PluginService {
 
     async fn find_plugin_by_id_or_name(&self, asset_id: &str, name: &str) -> Result<AssetResponse> {
         if !asset_id.is_empty() {
-            let asset = self.get_asset_store_api().get_asset_by_id(asset_id).await?;
+            let asset = self.asset_store_api.get_asset_by_id(asset_id).await?;
             Ok(asset)
         } else if !name.is_empty() {
             let params = HashMap::from([
                 ("filter".to_string(), name.to_string()),
                 ("godot_version".to_string(), "4.5".to_string()),
             ]);
-            let asset_results = self.get_asset_store_api().get_assets(params).await?;
+            let asset_results = self.asset_store_api.get_assets(params).await?;
 
             if asset_results.result.len() != 1 {
                 return Err(anyhow!(
@@ -378,7 +339,7 @@ pub trait PluginService {
             }
             let asset = asset_results.result.first().unwrap();
             let asset = self
-                .get_asset_store_api()
+                .asset_store_api
                 .get_asset_by_id(&asset.asset_id)
                 .await?;
 
@@ -391,11 +352,8 @@ pub trait PluginService {
     }
 
     async fn remove_plugin_by_name(&self, name: &str) -> Result<()> {
-        let godot_config_repository = self.get_godot_config_repository();
-        let plugin_config_repository = self.get_plugin_config_repository();
-
-        let installed_plugin = plugin_config_repository.get_plugin_key_by_name(name);
-        let addon_folder = self.get_app_config().get_addon_folder_path();
+        let installed_plugin = self.plugin_config_repository.get_plugin_key_by_name(name);
+        let addon_folder = self.app_config.get_addon_folder_path();
 
         match installed_plugin {
             Some(plugin_name) => {
@@ -405,19 +363,19 @@ pub trait PluginService {
                 );
 
                 // Remove plugin directory if it exists
-                if self.get_file_service().file_exists(&plugin_folder_path) {
+                if self.file_service.file_exists(&plugin_folder_path) {
                     println!(
                         "Removing plugin folder: {}",
                         plugin_folder_path.clone().display()
                     );
-                    self.get_file_service()
-                        .remove_dir_all(&plugin_folder_path)?
+                    self.file_service.remove_dir_all(&plugin_folder_path)?
                 } else {
                     println!("Plugin folder does not exist, trying to remove from gdm config");
                 }
 
                 // Remove plugin from plugin config
-                let plugin_config = plugin_config_repository
+                let plugin_config = self
+                    .plugin_config_repository
                     .remove_plugins(HashSet::from([plugin_name.clone()]))
                     .with_context(|| {
                         format!(
@@ -427,7 +385,7 @@ pub trait PluginService {
                     })?;
 
                 // Remove plugin from godot project config
-                godot_config_repository
+                self.godot_config_repository
                     .save(plugin_config)
                     .with_context(|| {
                         format!(
@@ -446,9 +404,7 @@ pub trait PluginService {
     }
 
     async fn fetch_installed_assets(&self) -> Result<Vec<AssetResponse>> {
-        let plugin_config_repository = self.get_plugin_config_repository();
-
-        let plugins = plugin_config_repository.get_plugins()?;
+        let plugins = self.plugin_config_repository.get_plugins()?;
 
         let mut assets = Vec::new();
 
@@ -467,9 +423,7 @@ pub trait PluginService {
     }
 
     async fn fetch_latest_assets(&self) -> Result<Vec<AssetResponse>> {
-        let plugin_config_repository = self.get_plugin_config_repository();
-
-        let plugins = plugin_config_repository.get_plugins()?;
+        let plugins = self.plugin_config_repository.get_plugins()?;
 
         let mut assets = Vec::new();
 
@@ -492,7 +446,7 @@ pub trait PluginService {
     /// some_plugin             1.5.0      1.6.0 (update available)
     async fn check_outdated_plugins(&self) -> Result<()> {
         let installed_plugins = self.fetch_latest_assets().await?;
-        let plugins = self.get_plugin_config_repository().get_plugins()?;
+        let plugins = self.plugin_config_repository.get_plugins()?;
 
         println!("Checking for outdated plugins");
         println!();
@@ -549,7 +503,7 @@ pub trait PluginService {
     /// Updates the plugin configuration file with the new versions
     async fn update_plugins(&self) -> Result<BTreeMap<String, Plugin>> {
         let installed_plugins = self.fetch_latest_assets().await?;
-        let plugins = self.get_plugin_config_repository().get_plugins()?;
+        let plugins = self.plugin_config_repository.get_plugins()?;
 
         let mut plugins_to_update = Vec::new();
 
@@ -579,7 +533,7 @@ pub trait PluginService {
         let updated_plugins = self
             .download_and_extract_plugins("Updating plugins".to_string(), plugins_to_update.clone())
             .await?;
-        self.get_plugin_config_repository()
+        self.plugin_config_repository
             .add_plugins(&updated_plugins)?;
         println!("Plugins updated successfully.");
         Ok(updated_plugins)
@@ -590,8 +544,9 @@ pub trait PluginService {
         name: &str,
         version: &str,
     ) -> Result<AssetListResponse> {
-        let godot_config_repository = self.get_godot_config_repository();
-        let parsed_version = godot_config_repository.get_godot_version_from_project()?;
+        let parsed_version = self
+            .godot_config_repository
+            .get_godot_version_from_project()?;
 
         if name.is_empty() {
             return Err(anyhow!("No name provided"));
@@ -613,7 +568,7 @@ pub trait PluginService {
             ("filter".to_string(), name.to_string()),
             ("godot_version".to_string(), version.to_string()),
         ]);
-        let asset_results = self.get_asset_store_api().get_assets(params).await?;
+        let asset_results = self.asset_store_api.get_assets(params).await?;
         Ok(asset_results)
     }
 
@@ -643,6 +598,76 @@ pub trait PluginService {
         }
         Ok(())
     }
+}
+
+pub trait PluginService {
+    async fn install_all_plugins(&self) -> Result<BTreeMap<String, Plugin>>;
+    async fn install_plugin(
+        &self,
+        name: &str,
+        asset_id: &str,
+        version: &str,
+    ) -> Result<BTreeMap<String, Plugin>>;
+    async fn download_and_extract_plugins(
+        &self,
+        main_start_message: String,
+        plugins: Vec<AssetResponse>,
+    ) -> Result<BTreeMap<String, Plugin>>;
+    async fn add_plugin_by_id_or_name_and_version(
+        &self,
+        asset_id: Option<String>,
+        name: Option<String>,
+        version: Option<String>,
+    ) -> Result<()>;
+    fn add_plugins(&self, plugins: &BTreeMap<String, Plugin>) -> Result<()>;
+    async fn find_plugin_by_asset_id_and_version(
+        &self,
+        asset_id: String,
+        version: String,
+    ) -> Result<AssetResponse>;
+    async fn find_plugin_by_id_or_name(&self, asset_id: &str, name: &str) -> Result<AssetResponse>;
+
+    async fn remove_plugin_by_name(&self, name: &str) -> Result<()>;
+
+    async fn fetch_installed_assets(&self) -> Result<Vec<AssetResponse>>;
+    async fn fetch_latest_assets(&self) -> Result<Vec<AssetResponse>>;
+    async fn check_outdated_plugins(&self) -> Result<()>;
+    async fn update_plugins(&self) -> Result<BTreeMap<String, Plugin>>;
+
+    async fn get_asset_list_response_by_name_or_version(
+        &self,
+        name: &str,
+        version: &str,
+    ) -> Result<AssetListResponse>;
+    async fn search_assets_by_name_or_version(&self, name: &str, version: &str) -> Result<()>;
+
+    fn create_finished_install_bar(
+        &self,
+        m: &MultiProgress,
+        index: usize,
+        total: usize,
+        action: &str,
+        title: &str,
+        version: &str,
+    ) -> Result<ProgressBar>;
+    fn create_download_progress_bar(
+        &self,
+        m: &MultiProgress,
+        index: usize,
+        total: usize,
+        action: &str,
+        title: &str,
+        version: &str,
+    ) -> Result<ProgressBar>;
+    fn create_extract_service_progress_bar(
+        &self,
+        m: &MultiProgress,
+        index: usize,
+        total: usize,
+        action: &str,
+        title: &str,
+        version: &str,
+    ) -> Result<ProgressBar>;
 }
 
 #[cfg(test)]
