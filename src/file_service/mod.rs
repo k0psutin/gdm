@@ -124,7 +124,7 @@ mod tests {
     #[test]
     fn test_read_file_cached_should_cache_file() {
         let file_service = DefaultFileService;
-        let test_file_path = Path::new("test/mocks/test_2.txt");
+        let test_file_path = Path::new("tests/mocks/test_2.txt");
         std::fs::write(test_file_path, "Hello, world!").unwrap();
         let content_first_read = file_service.read_file_cached(test_file_path).unwrap();
         assert_eq!(content_first_read, "Hello, world!");

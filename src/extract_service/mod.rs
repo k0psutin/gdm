@@ -194,7 +194,7 @@ mod tests {
     #[serial]
     fn test_get_root_directory_name_from_archive_with_addons_folder() {
         let extract = DefaultExtractService::default();
-        let file = fs::File::open("test/mocks/zip_files/test_with_addons_folder.zip").unwrap();
+        let file = fs::File::open("tests/mocks/zip_files/test_with_addons_folder.zip").unwrap();
         let mut archive = zip::ZipArchive::new(file).unwrap();
         let root_dir = extract.get_root_directory_name_from_archive(&mut archive);
         assert_eq!(root_dir.unwrap(), PathBuf::from("some_plugin"));
@@ -204,7 +204,7 @@ mod tests {
     #[serial]
     fn test_get_root_directory_name_from_archive_without_addons_folder() {
         let extract = DefaultExtractService::default();
-        let file = fs::File::open("test/mocks/zip_files/test_without_addons_folder.zip").unwrap();
+        let file = fs::File::open("tests/mocks/zip_files/test_without_addons_folder.zip").unwrap();
         let mut archive = zip::ZipArchive::new(file).unwrap();
         let root_dir = extract.get_root_directory_name_from_archive(&mut archive);
         assert_eq!(root_dir.unwrap(), PathBuf::from("some_plugin"));
@@ -214,7 +214,7 @@ mod tests {
     #[serial]
     fn test_get_root_directory_name_from_archive_without_root_should_return_error() {
         let extract = DefaultExtractService::default();
-        let file = fs::File::open("test/mocks/zip_files/test_without_root_folder.zip").unwrap();
+        let file = fs::File::open("tests/mocks/zip_files/test_without_root_folder.zip").unwrap();
         let mut archive = zip::ZipArchive::new(file).unwrap();
         let result = extract.get_root_directory_name_from_archive(&mut archive);
         assert!(result.is_err());
@@ -228,12 +228,12 @@ mod tests {
         let extract = DefaultExtractService::default();
         let pb_task = ProgressBar::new(5000000);
         let result = extract.extract_zip_file(
-            Path::new("test/mocks/zip_files/test_with_addons_folder.zip"),
-            Path::new("test/addons"),
+            Path::new("tests/mocks/zip_files/test_with_addons_folder.zip"),
+            Path::new("tests/addons"),
             pb_task,
         );
         assert!(result.is_ok());
-        fs::remove_dir_all("test/addons").unwrap();
+        fs::remove_dir_all("tests/addons").unwrap();
     }
 
     // create_extract_path
@@ -261,10 +261,10 @@ mod tests {
         let path = ["zip_filename", "some_plugin", "file.txt"]
             .iter()
             .collect::<PathBuf>();
-        let extract_path = extract.create_extract_path(PathBuf::from("test/addons"), path);
+        let extract_path = extract.create_extract_path(PathBuf::from("tests/addons"), path);
         assert_eq!(
             extract_path,
-            ["test", "addons", "some_plugin", "file.txt"]
+            ["tests", "addons", "some_plugin", "file.txt"]
                 .iter()
                 .collect::<PathBuf>()
         );
@@ -348,20 +348,20 @@ mod tests {
             Box::new(mock_file_service),
             DefaultAppConfig::new(
                 None,
-                Some("test/config/config.toml".to_string()),
-                Some("test/cache".to_string()),
-                Some("test/project/project.godot".to_string()),
-                Some("test/addons".to_string()),
+                Some("tests/config/config.toml".to_string()),
+                Some("tests/cache".to_string()),
+                Some("tests/project/project.godot".to_string()),
+                Some("tests/addons".to_string()),
             ),
         );
         let pb_task = ProgressBar::no_length();
         let result = extract
             .extract_plugin(
-                Path::new("test/mocks/zip_files/test_with_addons_folder.zip"),
+                Path::new("tests/mocks/zip_files/test_with_addons_folder.zip"),
                 pb_task,
             )
             .await;
         assert!(result.is_ok());
-        fs::remove_dir_all("test/addons").unwrap();
+        fs::remove_dir_all("tests/addons").unwrap();
     }
 }

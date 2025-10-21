@@ -270,15 +270,15 @@ mod tests {
             None,
             None,
             Some(String::from(
-                "test/mocks/project_with_plugins_and_version.godot",
+                "tests/mocks/project_with_plugins_and_version.godot",
             )),
-            Some(String::from("test/mocks/addons")),
+            Some(String::from("tests/mocks/addons")),
         );
 
         let mock_file_service = MockDefaultFileService::default();
         let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
         let result = repository.plugin_root_folder_to_resource_path("my_plugin".to_string());
-        assert_eq!("res://test/mocks/addons/my_plugin/plugin.cfg", result);
+        assert_eq!("res://tests/mocks/addons/my_plugin/plugin.cfg", result);
     }
 
     // plugins_to_packed_string_array
@@ -290,9 +290,9 @@ mod tests {
             None,
             None,
             Some(String::from(
-                "test/mocks/project_with_plugins_and_version.godot",
+                "tests/mocks/project_with_plugins_and_version.godot",
             )),
-            Some(String::from("test/mocks/addons")),
+            Some(String::from("tests/mocks/addons")),
         );
 
         let mock_file_service = MockDefaultFileService::default();
@@ -304,7 +304,7 @@ mod tests {
         assert_eq!(
             result,
             String::from(
-                "PackedStringArray(\"res://test/mocks/addons/another_plugin/plugin.cfg\", \"res://test/mocks/addons/my_plugin/plugin.cfg\")"
+                "PackedStringArray(\"res://tests/mocks/addons/another_plugin/plugin.cfg\", \"res://tests/mocks/addons/my_plugin/plugin.cfg\")"
             )
         );
     }
@@ -318,9 +318,9 @@ mod tests {
             None,
             None,
             Some(String::from(
-                "test/mocks/project_with_plugins_and_version.godot",
+                "tests/mocks/project_with_plugins_and_version.godot",
             )),
-            Some(String::from("test/mocks/addons")),
+            Some(String::from("tests/mocks/addons")),
         );
 
         let repository =
@@ -334,13 +334,13 @@ mod tests {
 
     #[test]
     fn test_read_godot_project_file_with_config_version_4_and_no_plugins() {
-        let project_file_path_string = String::from("test/mocks/project_with_old_config.godot");
+        let project_file_path_string = String::from("tests/mocks/project_with_old_config.godot");
         let app_config = DefaultAppConfig::new(
             None,
             None,
             None,
             Some(project_file_path_string.clone()),
-            Some(String::from("test/mocks/addons")),
+            Some(String::from("tests/mocks/addons")),
         );
 
         let repository =
@@ -361,7 +361,7 @@ mod tests {
             None,
             None,
             Some(String::from("non_existent_file.godot")),
-            Some(String::from("test/mocks/addons")),
+            Some(String::from("tests/mocks/addons")),
         );
         let repository =
             DefaultGodotConfigRepository::new(Box::new(DefaultFileService), app_config);
@@ -376,9 +376,9 @@ mod tests {
             None,
             None,
             Some(String::from(
-                "test/mocks/project_with_plugins_and_version.godot",
+                "tests/mocks/project_with_plugins_and_version.godot",
             )),
-            Some(String::from("test/mocks/addons")),
+            Some(String::from("tests/mocks/addons")),
         );
         let repository =
             DefaultGodotConfigRepository::new(Box::new(DefaultFileService), app_config);
@@ -395,7 +395,7 @@ mod tests {
             None,
             None,
             Some(String::from("non_existent_file.godot")),
-            Some(String::from("test/mocks/addons")),
+            Some(String::from("tests/mocks/addons")),
         );
         let repository =
             DefaultGodotConfigRepository::new(Box::new(DefaultFileService), app_config);
@@ -410,9 +410,9 @@ mod tests {
             None,
             None,
             Some(String::from(
-                "test/mocks/project_with_plugins_and_version.godot",
+                "tests/mocks/project_with_plugins_and_version.godot",
             )),
-            Some(String::from("test/mocks/addons")),
+            Some(String::from("tests/mocks/addons")),
         );
         let repository =
             DefaultGodotConfigRepository::new(Box::new(DefaultFileService), app_config);
@@ -431,7 +431,7 @@ mod tests {
             None,
             None,
             None,
-            Some(String::from("test/mocks/project.godot")),
+            Some(String::from("tests/mocks/project.godot")),
             Some(String::from("addons")),
         );
 
@@ -482,7 +482,7 @@ mod tests {
             None,
             None,
             None,
-            Some(String::from("test/mocks/project.godot")),
+            Some(String::from("tests/mocks/project.godot")),
             Some(String::from("addons")),
         );
 
@@ -536,7 +536,7 @@ mod tests {
             None,
             None,
             None,
-            Some(String::from("test/mocks/project.godot")),
+            Some(String::from("tests/mocks/project.godot")),
             Some(String::from("addons")),
         );
 
@@ -576,7 +576,7 @@ mod tests {
             None,
             None,
             None,
-            Some(String::from("test/mocks/project.godot")),
+            Some(String::from("tests/mocks/project.godot")),
             Some(String::from("addons")),
         );
 
@@ -611,7 +611,7 @@ mod tests {
             None,
             None,
             None,
-            Some(String::from("test/mocks/project.godot")),
+            Some(String::from("tests/mocks/project.godot")),
             Some(String::from("addons")),
         );
 
@@ -620,7 +620,7 @@ mod tests {
         mock_file_service
             .expect_write_file()
             .withf(|path: &Path, content: &str| {
-                path.to_str().unwrap() == "test/mocks/project.godot"
+                path.to_str().unwrap() == "tests/mocks/project.godot"
                     && content == "line1\nline2\nline3"
             })
             .times(1)
@@ -643,7 +643,7 @@ mod tests {
             None,
             None,
             None,
-            Some(String::from("test/mocks/project.godot")),
+            Some(String::from("tests/mocks/project.godot")),
             Some(String::from("addons")),
         );
 
@@ -669,7 +669,7 @@ mod tests {
             None,
             None,
             None,
-            Some(String::from("test/mocks/project.godot")),
+            Some(String::from("tests/mocks/project.godot")),
             Some(String::from("addons")),
         );
 
@@ -699,7 +699,7 @@ mod tests {
             None,
             None,
             None,
-            Some(String::from("test/mocks/project.godot")),
+            Some(String::from("tests/mocks/project.godot")),
             Some(String::from("addons")),
         );
 
@@ -717,7 +717,7 @@ mod tests {
         mock_file_service
             .expect_write_file()
             .withf(|path: &Path, content: &str| {
-                path.to_str().unwrap() == "test/mocks/project.godot"
+                path.to_str().unwrap() == "tests/mocks/project.godot"
                     && content.contains("[editor_plugins]")
                     && content.contains("enabled=PackedStringArray")
             })
@@ -750,7 +750,7 @@ mod tests {
             None,
             None,
             None,
-            Some(String::from("test/mocks/project.godot")),
+            Some(String::from("tests/mocks/project.godot")),
             Some(String::from("addons")),
         );
 

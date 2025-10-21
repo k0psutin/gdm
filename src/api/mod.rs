@@ -376,21 +376,21 @@ mod tests {
 
         mock_file_service
             .expect_directory_exists()
-            .with(eq(PathBuf::from("test/mocks/cache")))
+            .with(eq(PathBuf::from("tests/mocks/cache")))
             .returning(|_path| true);
 
         mock_file_service
             .expect_file_exists()
-            .with(eq(PathBuf::from("test/mocks/cache/asset.zip")))
+            .with(eq(PathBuf::from("tests/mocks/cache/asset.zip")))
             .returning(|_path| false);
 
         mock_file_service
             .expect_create_file_async()
-            .with(eq(PathBuf::from("test/mocks/cache/asset.zip")))
+            .with(eq(PathBuf::from("tests/mocks/cache/asset.zip")))
             .returning(|_path| {
                 // Create a temp file and open it as tokio::fs::File
-                std::fs::create_dir_all("test/mocks/cache").unwrap();
-                let file = std::fs::File::create("test/mocks/cache/asset.zip").unwrap();
+                std::fs::create_dir_all("tests/mocks/cache").unwrap();
+                let file = std::fs::File::create("tests/mocks/cache/asset.zip").unwrap();
                 Ok(tokio::fs::File::from_std(file))
             });
         mock_file_service
@@ -399,19 +399,19 @@ mod tests {
 
         mock_extract_service
             .expect_get_root_dir_from_archive()
-            .with(eq(PathBuf::from("test/mocks/cache/asset.zip")))
-            .returning(|_path| Ok(PathBuf::from("test/mocks/addons/asset")));
+            .with(eq(PathBuf::from("tests/mocks/cache/asset.zip")))
+            .returning(|_path| Ok(PathBuf::from("tests/mocks/addons/asset")));
 
         let api = DefaultAssetStoreAPI::new(
             Arc::new(mock_http_client),
             DefaultAppConfig::new(
                 Some(String::from("http://mock")),
-                Some(String::from("test/mocks/gdm.json")),
-                Some(String::from("test/mocks/cache")),
+                Some(String::from("tests/mocks/gdm.json")),
+                Some(String::from("tests/mocks/cache")),
                 Some(String::from(
-                    "test/mocks/project_with_plugins_and_version.godot",
+                    "tests/mocks/project_with_plugins_and_version.godot",
                 )),
-                Some(String::from("test/mocks/addons")),
+                Some(String::from("tests/mocks/addons")),
             ),
             Box::new(mock_extract_service),
             Arc::new(mock_file_service),
@@ -435,6 +435,6 @@ mod tests {
         let pb_task = ProgressBar::no_length();
         let result = api.download_asset(&mock_asset, pb_task).await;
         assert!(result.is_ok());
-        std::fs::remove_dir_all("test/mocks/cache").unwrap();
+        std::fs::remove_dir_all("tests/mocks/cache").unwrap();
     }
 }

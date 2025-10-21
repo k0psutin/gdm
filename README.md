@@ -71,6 +71,8 @@ You can place the `gdm` binary directly inside your Godot project directory and 
 
 Run `gdm <command> [options]` in your Godot project directory.
 
+![gdm intro](./vhs/gdm_intro.gif)
+
 ### Commands
 
 #### `add`
@@ -80,6 +82,8 @@ Add a plugin dependency to your project.
 ```sh
 gdm add <plugin-name>
 ```
+
+![gdm add](./vhs/gdm_add.gif)
 
 You can optionally specify the `--asset-id` and `--version` flags:
 
@@ -100,6 +104,8 @@ Install all plugin dependencies listed in your project.
 gdm install
 ```
 
+![gdm install](./vhs/gdm_install.gif)
+
 #### `update`
 
 Update all plugins to their latest versions.
@@ -107,6 +113,8 @@ Update all plugins to their latest versions.
 ```sh
 gdm update
 ```
+
+![gdm update](./vhs/gdm_update.gif)
 
 #### `outdated`
 
@@ -116,15 +124,7 @@ List plugins that have newer versions available.
 gdm outdated
 ```
 
-**Example output:**
-
-```
-Checking for outdated plugins
-
-Plugin                Current   Latest
-gut                   9.1.0     9.5.0 (update available)
-interactive-grid      1.0.0     1.0.0
-```
+![gdm outdated](./vhs/gdm_outdated.gif)
 
 #### `search`
 
@@ -133,6 +133,8 @@ Search for plugins by plugin title.
 ```sh
 gdm search <asset-name>
 ```
+
+![gdm search](./vhs/gdm_search.gif)
 
 You can optionally specify the `--godot-version` flag to filter results by Godot version:
 
@@ -148,33 +150,13 @@ By default, the CLI tries to determine the Godot version used in your project fr
 
 Remove a plugin dependency from your project.
 
+> **Note:** The `<plugin-name>` must match the name of the plugin as it appears in your `gdm.json` file.
+
 ```sh
 gdm remove <plugin-name>
 ```
 
-> **Note:** The `<plugin-name>` must match the name of the plugin as it appears in your `gdm.json` file.
-
-## Example Workflow
-
-```sh
-# Add a plugin
-gdm add "Godot Unit Testing"
-
-# Install all plugins
-gdm install
-
-# Check for outdated plugins
-gdm outdated
-
-# Update plugins
-gdm update
-
-# Search for a plugin
-gdm search dialogue
-
-# Remove a plugin
-gdm remove godot-dialogue-manager
-```
+![gdm remove](./vhs/gdm_remove.gif)
 
 ## License
 

@@ -134,7 +134,7 @@ mod tests {
         let plugin_config_repository = DefaultPluginConfigRepository::new(
             DefaultAppConfig::new(
                 None,
-                Some(String::from("test/mocks/non_existent_file.json")),
+                Some(String::from("tests/mocks/non_existent_file.json")),
                 None,
                 None,
                 None,
@@ -152,7 +152,7 @@ mod tests {
         let plugin_config_repository = DefaultPluginConfigRepository::new(
             DefaultAppConfig::new(
                 None,
-                Some(String::from("test/mocks/gdm.json")),
+                Some(String::from("tests/mocks/gdm.json")),
                 None,
                 None,
                 None,
@@ -195,7 +195,7 @@ mod tests {
     fn test_get_plugins_should_return_correct_plugins() {
         let app_config = DefaultAppConfig::new(
             None,
-            Some(String::from("test/mocks/gdm.json")),
+            Some(String::from("tests/mocks/gdm.json")),
             None,
             None,
             None,
@@ -235,7 +235,7 @@ mod tests {
 
     fn setup_mock_plugin_config_repository_for_add_and_remove_plugins()
     -> DefaultPluginConfigRepository {
-        const TEST_FILE_PATH_STR: &str = "test/mocks/gdm.json";
+        const TEST_FILE_PATH_STR: &str = "tests/mocks/gdm.json";
         let test_file_path = Path::new(TEST_FILE_PATH_STR);
 
         let mut mock_file_service = MockDefaultFileService::new();
@@ -319,7 +319,7 @@ mod tests {
     fn test_get_plugin_key_by_name_should_return_key_if_plugin_exists() {
         let app_config = DefaultAppConfig::new(
             None,
-            Some(String::from("test/mocks/gdm.json")),
+            Some(String::from("tests/mocks/gdm.json")),
             None,
             None,
             None,
@@ -335,7 +335,7 @@ mod tests {
     fn test_get_plugin_key_by_name_should_return_none_if_plugin_does_not_exist() {
         let app_config = DefaultAppConfig::new(
             None,
-            Some(String::from("test/mocks/gdm.json")),
+            Some(String::from("tests/mocks/gdm.json")),
             None,
             None,
             None,
