@@ -24,12 +24,6 @@ mod tests {
         DefaultPluginService::default()
     }
 
-    /// Creates a mock plugin service with customizable version parameters
-    ///
-    /// # Arguments
-    /// * `asset_id` - The asset ID to use in mocks
-    /// * `plugin_name` - The plugin name/title
-    /// * `installed_version` - Optional version of currently installed plugin (None if not installed)
     fn setup_plugin_service_with_versions(
         asset_id: &str,
         plugin_name: &str,

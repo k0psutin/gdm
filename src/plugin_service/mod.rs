@@ -83,7 +83,8 @@ impl PluginService for DefaultPluginService {
         Ok(plugins)
     }
 
-    /// Installs a single plugin by its name, asset ID, and version
+    // TODO Fix --version flag for name, so we could use gdm add "plugin_name" --version "x.y.z"
+    /// Installs a single plugin by its name or asset ID, and version
     async fn install_plugin(
         &self,
         name: &str,

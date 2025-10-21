@@ -71,7 +71,7 @@ You can place the `gdm` binary directly inside your Godot project directory and 
 
 Run `gdm <command> [options]` in your Godot project directory.
 
-![gdm intro](./vhs/gdm_intro.gif)
+![gdm intro](./docs/gifs/gdm_intro.gif)
 
 ### Commands
 
@@ -83,7 +83,7 @@ Add a plugin dependency to your project.
 gdm add '<asset-name>'
 ```
 
-![gdm add](./vhs/gdm_add.gif)
+![gdm add](./docs/gifs/gdm_add.gif)
 
 You can optionally specify the `--asset-id` and `--version` flags:
 
@@ -104,7 +104,7 @@ Install all plugin dependencies listed in your project.
 gdm install
 ```
 
-![gdm install](./vhs/gdm_install.gif)
+![gdm install](./docs/gifs/gdm_install.gif)
 
 #### `update`
 
@@ -114,7 +114,7 @@ Update all plugins to their latest versions.
 gdm update
 ```
 
-![gdm update](./vhs/gdm_update.gif)
+![gdm update](./docs/gifs/gdm_update.gif)
 
 #### `outdated`
 
@@ -124,7 +124,7 @@ List plugins that have newer versions available.
 gdm outdated
 ```
 
-![gdm outdated](./vhs/gdm_outdated.gif)
+![gdm outdated](./docs/gifs/gdm_outdated.gif)
 
 #### `search`
 
@@ -134,7 +134,7 @@ Search for plugins by plugin title.
 gdm search '<asset-name>'
 ```
 
-![gdm search](./vhs/gdm_search.gif)
+![gdm search](./docs/gifs/gdm_search.gif)
 
 You can optionally specify the `--godot-version` flag to filter results by Godot version:
 
@@ -156,7 +156,7 @@ Remove a plugin dependency from your project.
 gdm remove '<plugin-name>'
 ```
 
-![gdm remove](./vhs/gdm_remove.gif)
+![gdm remove](./docs/gifs/gdm_remove.gif)
 
 ## License
 
