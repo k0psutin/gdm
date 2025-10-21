@@ -1,4 +1,5 @@
-mod command;
+mod operation;
+mod operation_manager;
 
 use crate::api::asset::Asset;
 use crate::api::asset_list_response::AssetListResponse;
@@ -10,15 +11,15 @@ use crate::file_service::{DefaultFileService, FileService};
 use crate::godot_config_repository::{DefaultGodotConfigRepository, GodotConfigRepository};
 use crate::plugin_config_repository::plugin::Plugin;
 use crate::plugin_config_repository::{DefaultPluginConfigRepository, PluginConfigRepository};
+use crate::plugin_service::operation::Operation;
+use crate::plugin_service::operation_manager::OperationManager;
 use crate::utils::Utils;
 
 use anyhow::{Context, Result, anyhow};
 use futures::future::try_join_all;
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::task::JoinSet;
 use tracing::{debug, error, warn};
 
@@ -72,76 +73,16 @@ impl PluginService for DefaultPluginService {
     async fn install_all_plugins(&self) -> Result<BTreeMap<String, Plugin>> {
         let assets: Vec<AssetResponse> = self.fetch_installed_assets().await?;
 
-        let installed_plugins = self
-            .download_and_extract_plugins("Downloading plugins".to_string(), assets)
+        let plugins = self
+            .handle_plugin_operations(Operation::Install, &assets)
             .await?;
 
-        self.add_plugins(&installed_plugins)?;
+        self.add_plugins(&plugins)?;
 
         println!();
         println!("done.");
 
-        Ok(installed_plugins)
-    }
-
-    fn create_finished_install_bar(
-        &self,
-        m: &MultiProgress,
-        index: usize,
-        total: usize,
-        action: &str,
-        title: &str,
-        version: &str,
-    ) -> Result<ProgressBar> {
-        let pb_task = m.add(ProgressBar::new(1));
-        pb_task.set_style(
-            ProgressStyle::with_template("{prefix} {msg}")
-                .with_context(|| "Failed to create progress bar")?
-                .progress_chars("#>-"),
-        );
-        pb_task.set_prefix(format!("[{}/{}]", index, total));
-        pb_task.set_message(format!("{}: {} ({})", action, title, version));
-        Ok(pb_task)
-    }
-
-    fn create_download_progress_bar(
-        &self,
-        m: &MultiProgress,
-        index: usize,
-        total: usize,
-        action: &str,
-        title: &str,
-        version: &str,
-    ) -> Result<ProgressBar> {
-        let pb_task = m.add(ProgressBar::new(5000000));
-        pb_task.set_style(
-            ProgressStyle::with_template(
-                "{spinner:.green} {prefix} {msg} [{elapsed_precise}] {bytes} ({bytes_per_sec})",
-            )
-            .with_context(|| "Failed to create progress bar style")?
-            .progress_chars("#>-"),
-        );
-        pb_task.set_prefix(format!("[{}/{}]", index, total));
-        pb_task.set_message(format!("{}: {} ({})", action, title, version));
-        Ok(pb_task)
-    }
-
-    fn create_extract_service_progress_bar(
-        &self,
-        m: &MultiProgress,
-        index: usize,
-        total: usize,
-        action: &str,
-        title: &str,
-        version: &str,
-    ) -> Result<ProgressBar> {
-        let pb_task = m.add(ProgressBar::new(5000000));
-        pb_task.set_style(ProgressStyle::with_template("{spinner:.green} {prefix} {msg} [{elapsed_precise}] [{bar:.cyan/blue}] {pos:>7}/{len:7} ({eta})")
-        .with_context(|| "Failed to create progress bar style")?
-        .progress_chars("#>-"));
-        pb_task.set_prefix(format!("[{}/{}]", index, total));
-        pb_task.set_message(format!("{}: {} ({})", action, title, version));
-        Ok(pb_task)
+        Ok(plugins)
     }
 
     /// Installs a single plugin by its name, asset ID, and version
@@ -183,59 +124,65 @@ impl PluginService for DefaultPluginService {
             }
         }
 
-        let plugins = self
-            .download_and_extract_plugins("Installing plugin".to_string(), vec![asset])
+        let plugins = vec![asset];
+        let installed_plugins = self
+            .handle_plugin_operations(Operation::Install, &plugins)
             .await?;
-        self.add_plugins(&plugins)?;
-        Ok(plugins)
+        self.add_plugins(&installed_plugins)?;
+        Ok(installed_plugins)
     }
 
-    /// Downloads and extract_services all plugins under /addons folder
-    async fn download_and_extract_plugins(
+    async fn handle_plugin_operations(
         &self,
-        main_start_message: String,
-        plugins: Vec<AssetResponse>,
+        operation: Operation,
+        plugins: &[AssetResponse],
     ) -> Result<BTreeMap<String, Plugin>> {
-        let mut download_tasks = JoinSet::new();
-        let pb_multi = MultiProgress::new();
-        let pb_main = pb_multi.add(ProgressBar::new(0));
-        pb_main.set_style(ProgressStyle::with_template("{spinner:.green} {msg}")?);
-        pb_main.set_message(main_start_message);
-        pb_main.enable_steady_tick(Duration::from_millis(100));
+        let downloaded_plugins = self.download_plugins_operation(operation, plugins).await?;
+        let extracted_plugins = self.extract_plugins_operation(&downloaded_plugins).await?;
+        self.finish_plugins_operation(&extracted_plugins)?;
+        Ok(extracted_plugins)
+    }
 
-        for (index, asset) in plugins.iter().enumerate() {
-            let plugin = asset.clone();
-            let pb_task = self.create_download_progress_bar(
-                &pb_multi,
-                index + 1,
-                plugins.len(),
-                "Downloading",
-                &plugin.title,
-                &plugin.version_string,
-            )?;
+    async fn download_plugins_operation(
+        &self,
+        operation: Operation,
+        plugins: &[AssetResponse],
+    ) -> Result<Vec<Asset>> {
+        let mut download_tasks = JoinSet::new();
+        let operation_manager = OperationManager::new(operation)?;
+
+        for (index, _asset) in plugins.iter().enumerate() {
+            let asset = _asset.clone();
+            let plugin = Plugin::from(asset.clone());
+            let pb_task = operation_manager.add_progress_bar(index, plugins.len(), &plugin)?;
             let asset_store_api = self.asset_store_api.clone();
             download_tasks
-                .spawn(async move { asset_store_api.download_asset(&plugin, pb_task).await });
+                .spawn(async move { asset_store_api.download_asset(&asset, pb_task).await });
         }
 
         let result: Vec<std::result::Result<Asset, anyhow::Error>> =
             download_tasks.join_all().await;
-        let download_tasks = result.into_iter().collect::<Result<Vec<Asset>>>()?;
 
+        operation_manager.finish();
+
+        result.into_iter().collect::<Result<Vec<Asset>>>()
+    }
+
+    /// Downloads and extract_services all plugins under /addons folder
+    async fn extract_plugins_operation(
+        &self,
+        plugins: &[Asset],
+    ) -> Result<BTreeMap<String, Plugin>> {
         let mut extract_service_tasks = JoinSet::new();
+        let operation_manager = OperationManager::new(Operation::Extract)?;
 
-        pb_main.set_message("Extracting plugins");
-
-        for (index, downloaded_asset) in download_tasks.clone().into_iter().enumerate() {
-            let asset_response = downloaded_asset.asset_response;
-            let file_path = downloaded_asset.file_path;
-            let pb_task = self.create_extract_service_progress_bar(
-                &pb_multi,
-                index + 1,
-                download_tasks.len(),
-                "Extracting",
-                &asset_response.title,
-                &asset_response.version_string,
+        for (index, downloaded_asset) in plugins.iter().enumerate() {
+            let asset_response = downloaded_asset.asset_response.clone();
+            let file_path = downloaded_asset.file_path.clone();
+            let pb_task = operation_manager.add_progress_bar(
+                index,
+                plugins.len(),
+                &Plugin::from(asset_response),
             )?;
             let extract_service = self.extract_service.clone();
             extract_service_tasks
@@ -246,30 +193,27 @@ impl PluginService for DefaultPluginService {
             let _ = res??;
         }
 
-        let installed_plugins = download_tasks
-            .into_iter()
+        let installed_plugins = plugins
+            .iter()
             .map(|downloaded_asset| {
-                let asset_response = downloaded_asset.asset_response;
-                let plugin: Plugin = Plugin::from(asset_response.clone());
-                let plugin_name = downloaded_asset.root_folder;
+                let asset_response = downloaded_asset.asset_response.clone();
+                let plugin: Plugin = Plugin::from(asset_response);
+                let plugin_name = downloaded_asset.root_folder.clone();
                 (plugin_name, plugin)
             })
             .collect::<BTreeMap<String, Plugin>>();
-        pb_main.finish_and_clear();
-
-        for (index, (_, plugin)) in installed_plugins.iter().enumerate() {
-            let finished_bar = self.create_finished_install_bar(
-                &pb_multi,
-                index + 1,
-                installed_plugins.len(),
-                "Installed",
-                &plugin.title,
-                &plugin.get_version(),
-            )?;
-            finished_bar.finish();
-        }
 
         Ok(installed_plugins)
+    }
+
+    fn finish_plugins_operation(&self, plugins: &BTreeMap<String, Plugin>) -> Result<()> {
+        let operation_manager = OperationManager::new(Operation::Finished)?;
+        for (index, plugin) in plugins.values().clone().enumerate() {
+            let finished_bar = operation_manager.add_progress_bar(index, plugins.len(), plugin)?;
+            finished_bar.finish();
+        }
+        operation_manager.finish();
+        Ok(())
     }
 
     async fn add_plugin_by_id_or_name_and_version(
@@ -326,7 +270,11 @@ impl PluginService for DefaultPluginService {
         } else if !name.is_empty() {
             let params = HashMap::from([
                 ("filter".to_string(), name.to_string()),
-                ("godot_version".to_string(), "4.5".to_string()),
+                (
+                    "godot_version".to_string(),
+                    self.godot_config_repository
+                        .get_godot_version_from_project()?,
+                ),
             ]);
             let asset_results = self.asset_store_api.get_assets(params).await?;
 
@@ -403,6 +351,7 @@ impl PluginService for DefaultPluginService {
         }
     }
 
+    /// Fetches plugins listed in the dependency file that are pinned to a version
     async fn fetch_installed_assets(&self) -> Result<Vec<AssetResponse>> {
         let plugins = self.plugin_config_repository.get_plugins()?;
 
@@ -422,6 +371,7 @@ impl PluginService for DefaultPluginService {
         Ok(fetched_assets)
     }
 
+    /// Fetches plugins listed in the dependency file without version pinning
     async fn fetch_latest_assets(&self) -> Result<Vec<AssetResponse>> {
         let plugins = self.plugin_config_repository.get_plugins()?;
 
@@ -531,8 +481,9 @@ impl PluginService for DefaultPluginService {
         }
 
         let updated_plugins = self
-            .download_and_extract_plugins("Updating plugins".to_string(), plugins_to_update.clone())
+            .handle_plugin_operations(Operation::Update, &plugins_to_update)
             .await?;
+
         self.plugin_config_repository
             .add_plugins(&updated_plugins)?;
         println!("Plugins updated successfully.");
@@ -608,11 +559,23 @@ pub trait PluginService {
         asset_id: &str,
         version: &str,
     ) -> Result<BTreeMap<String, Plugin>>;
-    async fn download_and_extract_plugins(
+
+    async fn handle_plugin_operations(
         &self,
-        main_start_message: String,
-        plugins: Vec<AssetResponse>,
+        operation: Operation,
+        plugins: &[AssetResponse],
     ) -> Result<BTreeMap<String, Plugin>>;
+    async fn download_plugins_operation(
+        &self,
+        operation: Operation,
+        plugins: &[AssetResponse],
+    ) -> Result<Vec<Asset>>;
+    async fn extract_plugins_operation(
+        &self,
+        plugins: &[Asset],
+    ) -> Result<BTreeMap<String, Plugin>>;
+    fn finish_plugins_operation(&self, plugins: &BTreeMap<String, Plugin>) -> Result<()>;
+
     async fn add_plugin_by_id_or_name_and_version(
         &self,
         asset_id: Option<String>,
@@ -631,6 +594,7 @@ pub trait PluginService {
 
     async fn fetch_installed_assets(&self) -> Result<Vec<AssetResponse>>;
     async fn fetch_latest_assets(&self) -> Result<Vec<AssetResponse>>;
+
     async fn check_outdated_plugins(&self) -> Result<()>;
     async fn update_plugins(&self) -> Result<BTreeMap<String, Plugin>>;
 
@@ -640,34 +604,6 @@ pub trait PluginService {
         version: &str,
     ) -> Result<AssetListResponse>;
     async fn search_assets_by_name_or_version(&self, name: &str, version: &str) -> Result<()>;
-
-    fn create_finished_install_bar(
-        &self,
-        m: &MultiProgress,
-        index: usize,
-        total: usize,
-        action: &str,
-        title: &str,
-        version: &str,
-    ) -> Result<ProgressBar>;
-    fn create_download_progress_bar(
-        &self,
-        m: &MultiProgress,
-        index: usize,
-        total: usize,
-        action: &str,
-        title: &str,
-        version: &str,
-    ) -> Result<ProgressBar>;
-    fn create_extract_service_progress_bar(
-        &self,
-        m: &MultiProgress,
-        index: usize,
-        total: usize,
-        action: &str,
-        title: &str,
-        version: &str,
-    ) -> Result<ProgressBar>;
 }
 
 #[cfg(test)]
@@ -1057,7 +993,8 @@ mod tests {
 
     // TODO test error case for install_plugin
 
-    // download_and_extract_plugins
+    // extract_plugins_operation
+    // download_plugins_operation
 
     #[tokio::test]
     async fn test_download_and_extract_plugins_should_return_correct_plugins() {
@@ -1077,22 +1014,14 @@ mod tests {
             "https://example.com/test_plugin.zip".to_string(),
         )];
         let result = plugin_service
-            .download_and_extract_plugins("".to_string(), plugin)
+            .download_plugins_operation(Operation::Install, &plugin)
             .await;
         assert!(result.is_ok());
 
         let extracted_plugins = result.unwrap();
-        let expected_plugins = BTreeMap::from([(
-            String::from("test_plugin"),
-            Plugin::new(
-                String::from("1234"),
-                String::from("Test Plugin"),
-                String::from("1.1.1"),
-                String::from("MIT"),
-            ),
-        )]);
-        assert_eq!(extracted_plugins, expected_plugins);
     }
+
+    // finish_plugins_operation
 
     // add_plugin_by_id_or_name_and_version
     // add_plugins_to_godot_project

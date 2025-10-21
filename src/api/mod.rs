@@ -43,8 +43,8 @@ impl DefaultAssetStoreAPI {
         }
     }
 
-    fn get_base_url(&self) -> String {
-        self.app_config.api_base_url.clone()
+    fn get_url(&self, path: &str) -> String {
+        format!("{}{}", self.app_config.api_base_url, path)
     }
 }
 
@@ -108,9 +108,6 @@ pub trait AssetStoreAPI: Send + Sync {
     /// Retrieves a specific asset edit by its edit ID.
     async fn get_asset_edit_by_edit_id(&self, edit_id: &str) -> Result<AssetEditResponse>;
 
-    /// Downloads a file from a given URL.
-    async fn download_file(&self, download_url: &str) -> Result<reqwest::Response>;
-
     /// Downloads an asset and reports progress via a progress bar.
     async fn download_asset(&self, asset: &AssetResponse, pb_task: ProgressBar) -> Result<Asset>;
 }
@@ -121,11 +118,7 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
     async fn get_asset_by_id(&self, asset_id: &str) -> Result<AssetResponse> {
         match self
             .http_client
-            .get(
-                self.get_base_url(),
-                format!("/asset/{}", asset_id),
-                [].into(),
-            )
+            .get(self.get_url(&format!("/asset/{}", asset_id)), [].into())
             .await
         {
             Ok(data) => Ok(serde_json::from_value(data)?),
@@ -134,11 +127,7 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
     }
 
     async fn get_assets(&self, params: HashMap<String, String>) -> Result<AssetListResponse> {
-        match self
-            .http_client
-            .get(self.get_base_url(), String::from("/asset"), params)
-            .await
-        {
+        match self.http_client.get(self.get_url("/asset"), params).await {
             Ok(data) => Ok(serde_json::from_value(data)?),
             Err(e) => Err(anyhow!("Failed to get assets: {}", e)),
         }
@@ -183,7 +172,7 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
         ]);
         match self
             .http_client
-            .get(self.get_base_url(), "/asset/edit".to_string(), params)
+            .get(self.get_url("/asset/edit"), params)
             .await
         {
             Ok(data) => Ok(serde_json::from_value(data)?),
@@ -194,22 +183,11 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
     async fn get_asset_edit_by_edit_id(&self, edit_id: &str) -> Result<AssetEditResponse> {
         match self
             .http_client
-            .get(
-                self.get_base_url(),
-                format!("/asset/edit/{}", edit_id),
-                [].into(),
-            )
+            .get(self.get_url(&format!("/asset/edit/{}", edit_id)), [].into())
             .await
         {
             Ok(data) => Ok(serde_json::from_value(data)?),
             Err(e) => Err(anyhow!("Failed to get assets: {}", e)),
-        }
-    }
-
-    async fn download_file(&self, download_url: &str) -> Result<reqwest::Response> {
-        match self.http_client.get_file(download_url.to_string()).await {
-            Ok(response) => Ok(response),
-            Err(e) => Err(anyhow!("Failed to download file: {}", e)),
         }
     }
 
@@ -236,7 +214,7 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
             self.file_service.remove_file(&filepath)?;
         }
 
-        let mut res = self.download_file(download_url).await?;
+        let mut res = self.http_client.get_file(download_url.to_string()).await?;
 
         pb_task.set_length(100);
 
@@ -381,24 +359,6 @@ mod tests {
         let version = "0.0.1";
         let result = api.get_asset_by_id_and_version(edit_id, version).await;
         assert!(result.is_err());
-    }
-
-    // download_file
-
-    #[tokio::test]
-    async fn test_download_file_should_return_error() {
-        let api = setup_test_api();
-        let download_url = "some_uri";
-        let result = api.download_file(download_url).await;
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_download_file_should_return_response() {
-        let api = setup_test_api();
-        let download_url = "https://httpbin.io/bytes/1024";
-        let result = api.download_file(download_url).await;
-        assert!(result.is_ok());
     }
 
     // download_asset

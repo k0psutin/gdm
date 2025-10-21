@@ -24,18 +24,9 @@ impl Default for DefaultHttpClient {
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
 impl HttpClient for DefaultHttpClient {
-    fn get_url(&self, base_url: String, path: String) -> String {
-        format!("{}{}", base_url, path)
-    }
-
     #[cfg(not(tarpaulin_include))]
-    async fn get(
-        &self,
-        base_url: String,
-        path: String,
-        params: HashMap<String, String>,
-    ) -> Result<Value> {
-        let _url = Url::parse_with_params(&self.get_url(base_url, path), params)?;
+    async fn get(&self, url: String, params: HashMap<String, String>) -> Result<Value> {
+        let _url = Url::parse_with_params(&url, params)?;
 
         match reqwest::get(_url.as_str()).await {
             Ok(response) => {
@@ -54,8 +45,8 @@ impl HttpClient for DefaultHttpClient {
     }
 
     #[cfg(not(tarpaulin_include))]
-    async fn get_file(&self, file_url: String) -> Result<Response> {
-        let _url = Url::parse(&file_url)?;
+    async fn get_file(&self, url: String) -> Result<Response> {
+        let _url = Url::parse(&url)?;
 
         match reqwest::get(_url.as_str()).await {
             Ok(response) => {
@@ -75,27 +66,7 @@ impl HttpClient for DefaultHttpClient {
 
 #[async_trait::async_trait]
 pub trait HttpClient: Send + Sync {
-    fn get_url(&self, base_url: String, path: String) -> String;
+    async fn get(&self, url: String, params: HashMap<String, String>) -> Result<Value>;
 
-    async fn get(
-        &self,
-        base_url: String,
-        path: String,
-        params: HashMap<String, String>,
-    ) -> Result<Value>;
-
-    async fn get_file(&self, file_url: String) -> Result<Response>;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[tokio::test]
-    async fn test_get_url() {
-        let http_client = DefaultHttpClient::new();
-        let base_url = "https://api.example.com/";
-        let path = "endpoint";
-        let full_url = http_client.get_url(base_url.to_string(), path.to_string());
-        assert_eq!(full_url, "https://api.example.com/endpoint");
-    }
+    async fn get_file(&self, url: String) -> Result<Response>;
 }
