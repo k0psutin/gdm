@@ -34,12 +34,19 @@ impl Cache for DefaultCache {
             .unwrap()
             .insert(key.to_string(), value.to_string());
     }
+
+    #[cfg(test)]
+    fn clear(&self) {
+        self.cache.lock().unwrap().clear();
+    }
 }
 
 pub trait Cache {
     fn has_key(&self, key: &str) -> bool;
     fn get(&self, key: &str) -> Option<String>;
     fn insert(&self, key: &str, value: &str);
+    #[cfg(test)]
+    fn clear(&self);
 }
 
 #[cfg(test)]
@@ -51,6 +58,7 @@ mod tests {
     #[serial]
     fn test_cache_insert_and_get() {
         let cache = DefaultCache::new();
+        cache.clear(); // Clear the singleton cache before test
         cache.insert("key1", "value1");
         assert_eq!(cache.get("key1"), Some("value1".to_string()));
         assert!(cache.has_key("key1"));
@@ -61,6 +69,7 @@ mod tests {
     #[serial]
     fn test_cache_get_should_return_none_for_missing_key() {
         let cache = DefaultCache::new();
+        cache.clear(); // Clear the singleton cache before test
         assert_eq!(cache.get("key1"), None);
     }
 
@@ -68,6 +77,7 @@ mod tests {
     #[serial]
     fn test_cache_insert_overwrites_existing_key() {
         let cache = DefaultCache::new();
+        cache.clear(); // Clear the singleton cache before test
         cache.insert("key1", "value1");
         cache.insert("key1", "value2");
         assert_eq!(cache.get("key1"), Some("value2".to_string()));

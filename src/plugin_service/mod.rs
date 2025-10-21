@@ -111,11 +111,17 @@ impl PluginService for DefaultPluginService {
 
         if let Some(existing_plugin) = existing_plugin {
             let plugin_to_install = Plugin::from(asset.clone());
-            if plugin_to_install > existing_plugin {
+            if plugin_to_install != existing_plugin {
+                let update_action = if plugin_to_install > existing_plugin {
+                    "Updating"
+                } else {
+                    "Downgrading"
+                };
                 println!(
-                    "Plugin '{}' is already installed with version {}. Updating to version {}.",
+                    "Plugin '{}' is already installed with version {}. {} to version {}.",
                     existing_plugin.title,
                     existing_plugin.get_version(),
+                    update_action,
                     plugin_to_install.get_version()
                 );
             } else {

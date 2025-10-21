@@ -24,6 +24,101 @@ mod tests {
         DefaultPluginService::default()
     }
 
+    /// Creates a mock plugin service with customizable version parameters
+    ///
+    /// # Arguments
+    /// * `asset_id` - The asset ID to use in mocks
+    /// * `plugin_name` - The plugin name/title
+    /// * `installed_version` - Optional version of currently installed plugin (None if not installed)
+    fn setup_plugin_service_with_versions(
+        asset_id: &str,
+        plugin_name: &str,
+        installed_version: Option<&str>,
+    ) -> DefaultPluginService {
+        let mut godot_config_repository = MockDefaultGodotConfigRepository::default();
+        let mut asset_store_api = MockDefaultAssetStoreAPI::default();
+        let mut plugin_config_repository = MockDefaultPluginConfigRepository::default();
+        let mut extract_service = MockDefaultExtractService::default();
+        let file_service = Arc::new(MockDefaultFileService::default());
+
+        // Setup godot config repository
+        godot_config_repository.expect_save().returning(|_| Ok(()));
+
+        godot_config_repository
+            .expect_get_godot_version_from_project()
+            .returning(|| Ok("4.5".to_string()));
+
+        // Setup plugin config repository
+        let asset_id_clone = asset_id.to_string();
+        let installed_version_clone = installed_version.map(|v| v.to_string());
+        let plugin_name_clone = plugin_name.to_string();
+
+        plugin_config_repository
+            .expect_get_plugin_by_asset_id()
+            .returning(move |_| {
+                installed_version_clone.as_ref().map(|version| {
+                    Plugin::new(
+                        asset_id_clone.clone(),
+                        plugin_name_clone.clone(),
+                        version.clone(),
+                        String::from("MIT"),
+                    )
+                })
+            });
+
+        plugin_config_repository
+            .expect_add_plugins()
+            .returning(|_| Ok(DefaultPluginConfig::default()));
+
+        // Setup asset store API
+        let asset_id_for_api = asset_id.to_string();
+        let plugin_name_for_api = plugin_name.to_string();
+
+        asset_store_api
+            .expect_get_asset_by_id_and_version()
+            .returning(move |_, version| {
+                Ok(AssetResponse::new(
+                    asset_id_for_api.clone(),
+                    plugin_name_for_api.clone(),
+                    "11".to_string(),
+                    version.to_string(),
+                    "4.5".to_string(),
+                    "5".to_string(),
+                    "MIT".to_string(),
+                    "Some description".to_string(),
+                    "GitHub".to_string(),
+                    "commit_hash".to_string(),
+                    "2023-10-01".to_string(),
+                    format!("https://example.com/{}.zip", asset_id_for_api),
+                ))
+            });
+
+        asset_store_api
+            .expect_download_asset()
+            .returning(|asset_response, _pb| {
+                Ok(Asset::new(
+                    "test_plugin".to_string(),
+                    PathBuf::from("test_plugin"),
+                    asset_response.clone(),
+                ))
+            });
+
+        // Setup extract service
+        extract_service
+            .expect_extract_plugin()
+            .returning(|_file_path, _pb| Ok(PathBuf::from("test_plugin")));
+
+        let app_config = DefaultAppConfig::default();
+        DefaultPluginService::new(
+            Box::new(godot_config_repository),
+            Arc::new(asset_store_api),
+            Box::new(plugin_config_repository),
+            app_config,
+            Arc::new(extract_service),
+            file_service,
+        )
+    }
+
     // find_plugin_by_id_or_name
 
     #[tokio::test]
@@ -424,6 +519,88 @@ mod tests {
         let version = "0.0.1";
         let result = plugin_service.install_plugin(name, asset_id, version).await;
         assert!(result.is_err());
+    }
+
+    // Version comparison tests for install_plugin
+
+    #[tokio::test]
+    async fn test_install_plugin_when_newer_version_already_installed_should_downgrade() {
+        let plugin_service = setup_plugin_service_with_versions(
+            "1234",
+            "Test Plugin",
+            Some("2.0.0"), // Already installed version (newer)
+        );
+
+        let result = plugin_service.install_plugin("", "1234", "1.5.0").await;
+        assert!(result.is_ok());
+
+        let installed_plugins = result.unwrap();
+        let plugin = installed_plugins.get("test_plugin").unwrap();
+        assert_eq!(plugin.get_version(), "1.5.0");
+    }
+
+    #[tokio::test]
+    async fn test_install_plugin_when_older_version_already_installed_should_upgrade() {
+        let plugin_service = setup_plugin_service_with_versions(
+            "1234",
+            "Test Plugin",
+            Some("1.0.0"), // Already installed version (older)
+        );
+
+        let result = plugin_service.install_plugin("", "1234", "2.0.0").await;
+        assert!(result.is_ok());
+
+        let installed_plugins = result.unwrap();
+        let plugin = installed_plugins.get("test_plugin").unwrap();
+        assert_eq!(plugin.get_version(), "2.0.0");
+    }
+
+    #[tokio::test]
+    async fn test_install_plugin_when_same_version_already_installed_should_succeed() {
+        let plugin_service = setup_plugin_service_with_versions(
+            "1234",
+            "Test Plugin",
+            Some("1.5.0"), // Already installed version
+        );
+
+        let result = plugin_service.install_plugin("", "1234", "1.5.0").await;
+        assert!(result.is_ok());
+
+        let installed_plugins = result.unwrap();
+        let plugin = installed_plugins.get("test_plugin").unwrap();
+        assert_eq!(plugin.get_version(), "1.5.0");
+    }
+
+    #[tokio::test]
+    async fn test_install_plugin_when_not_installed_should_install_requested_version() {
+        let plugin_service = setup_plugin_service_with_versions(
+            "1234",
+            "Test Plugin",
+            None, // Not installed
+        );
+
+        let result = plugin_service.install_plugin("", "1234", "1.2.3").await;
+        assert!(result.is_ok());
+
+        let installed_plugins = result.unwrap();
+        let plugin = installed_plugins.get("test_plugin").unwrap();
+        assert_eq!(plugin.get_version(), "1.2.3");
+    }
+
+    #[tokio::test]
+    async fn test_install_plugin_version_comparison_with_prerelease_versions() {
+        let plugin_service = setup_plugin_service_with_versions(
+            "1234",
+            "Test Plugin",
+            Some("1.0.0-beta"), // Already installed prerelease version
+        );
+
+        let result = plugin_service.install_plugin("", "1234", "1.0.0").await;
+        assert!(result.is_ok());
+
+        let installed_plugins = result.unwrap();
+        let plugin = installed_plugins.get("test_plugin").unwrap();
+        assert_eq!(plugin.get_version(), "1.0.0");
     }
 
     // download_plugins_operation

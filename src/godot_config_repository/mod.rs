@@ -421,6 +421,353 @@ mod tests {
     }
 
     // update_project_file
+
+    #[test]
+    fn test_update_project_file_should_add_editor_plugins_section_when_missing() {
+        use crate::plugin_config_repository::plugin::Plugin;
+        use std::collections::BTreeMap;
+
+        let app_config = DefaultAppConfig::new(
+            None,
+            None,
+            None,
+            Some(String::from("test/mocks/project.godot")),
+            Some(String::from("addons")),
+        );
+
+        let mut mock_file_service = MockDefaultFileService::default();
+        mock_file_service.expect_read_file_cached().returning(|_| {
+            Ok(String::from(
+                "config_version=5\n\
+                    [application]\n\
+                    config/name=\"Test\"\n\
+                    [rendering]\n\
+                    renderer/rendering_method=\"gl_compatibility\"\n",
+            ))
+        });
+
+        let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
+
+        let mut plugins = BTreeMap::new();
+        plugins.insert(
+            "test_plugin".to_string(),
+            Plugin::new(
+                "1".to_string(),
+                "Test Plugin".to_string(),
+                "1.0.0".to_string(),
+                "MIT".to_string(),
+            ),
+        );
+        let plugin_config = DefaultPluginConfig::new(plugins);
+
+        let result = repository.update_project_file(plugin_config);
+        assert!(result.is_ok());
+        let lines = result.unwrap();
+
+        // Check that [editor_plugins] section was added
+        assert!(lines.iter().any(|line| line == "[editor_plugins]"));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.starts_with("enabled=PackedStringArray"))
+        );
+    }
+
+    #[test]
+    fn test_update_project_file_should_update_existing_editor_plugins_section() {
+        use crate::plugin_config_repository::plugin::Plugin;
+        use std::collections::BTreeMap;
+
+        let app_config = DefaultAppConfig::new(
+            None,
+            None,
+            None,
+            Some(String::from("test/mocks/project.godot")),
+            Some(String::from("addons")),
+        );
+
+        let mut mock_file_service = MockDefaultFileService::default();
+        mock_file_service.expect_read_file_cached().returning(|_| {
+            Ok(String::from(
+                "config_version=5\n\
+                    [application]\n\
+                    config/name=\"Test\"\n\
+                    [editor_plugins]\n\
+                    \n\
+                    enabled=PackedStringArray(\"res://addons/old_plugin/plugin.cfg\")\n\
+                    \n\
+                    [rendering]\n\
+                    renderer/rendering_method=\"gl_compatibility\"\n",
+            ))
+        });
+
+        let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
+
+        let mut plugins = BTreeMap::new();
+        plugins.insert(
+            "new_plugin".to_string(),
+            Plugin::new(
+                "1".to_string(),
+                "New Plugin".to_string(),
+                "1.0.0".to_string(),
+                "MIT".to_string(),
+            ),
+        );
+        let plugin_config = DefaultPluginConfig::new(plugins);
+
+        let result = repository.update_project_file(plugin_config);
+        assert!(result.is_ok());
+        let lines = result.unwrap();
+
+        // Check that enabled line was updated
+        let enabled_line = lines
+            .iter()
+            .find(|line| line.starts_with("enabled="))
+            .unwrap();
+        assert!(enabled_line.contains("new_plugin"));
+        assert!(!enabled_line.contains("old_plugin"));
+    }
+
+    #[test]
+    fn test_update_project_file_should_remove_editor_plugins_section_when_no_plugins() {
+        use std::collections::BTreeMap;
+
+        let app_config = DefaultAppConfig::new(
+            None,
+            None,
+            None,
+            Some(String::from("test/mocks/project.godot")),
+            Some(String::from("addons")),
+        );
+
+        let mut mock_file_service = MockDefaultFileService::default();
+        mock_file_service.expect_read_file_cached().returning(|_| {
+            Ok(String::from(
+                "config_version=5\n\
+                    [application]\n\
+                    config/name=\"Test\"\n\
+                    [editor_plugins]\n\
+                    \n\
+                    enabled=PackedStringArray(\"res://addons/test_plugin/plugin.cfg\")\n\
+                    \n\
+                    [rendering]\n\
+                    renderer/rendering_method=\"gl_compatibility\"\n",
+            ))
+        });
+
+        let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
+
+        let plugin_config = DefaultPluginConfig::new(BTreeMap::new());
+
+        let result = repository.update_project_file(plugin_config);
+        assert!(result.is_ok());
+        let lines = result.unwrap();
+
+        // Check that [editor_plugins] section was removed
+        assert!(!lines.iter().any(|line| line == "[editor_plugins]"));
+        assert!(!lines.iter().any(|line| line.starts_with("enabled=")));
+    }
+
+    #[test]
+    fn test_update_project_file_should_add_empty_line_at_end_if_missing() {
+        use std::collections::BTreeMap;
+
+        let app_config = DefaultAppConfig::new(
+            None,
+            None,
+            None,
+            Some(String::from("test/mocks/project.godot")),
+            Some(String::from("addons")),
+        );
+
+        let mut mock_file_service = MockDefaultFileService::default();
+        mock_file_service.expect_read_file_cached().returning(|_| {
+            Ok(String::from(
+                "config_version=5\n\
+                    [application]\n\
+                    config/name=\"Test\"",
+            ))
+        });
+
+        let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
+
+        let plugin_config = DefaultPluginConfig::new(BTreeMap::new());
+
+        let result = repository.update_project_file(plugin_config);
+        assert!(result.is_ok());
+        let lines = result.unwrap();
+
+        // Check that empty line was added
+        assert_eq!(lines.last().unwrap(), "");
+    }
+
     // save_project_file
+
+    #[test]
+    fn test_save_project_file_should_write_lines_to_file() {
+        use std::path::Path;
+
+        let app_config = DefaultAppConfig::new(
+            None,
+            None,
+            None,
+            Some(String::from("test/mocks/project.godot")),
+            Some(String::from("addons")),
+        );
+
+        let mut mock_file_service = MockDefaultFileService::default();
+        mock_file_service.expect_file_exists().returning(|_| true);
+        mock_file_service
+            .expect_write_file()
+            .withf(|path: &Path, content: &str| {
+                path.to_str().unwrap() == "test/mocks/project.godot"
+                    && content == "line1\nline2\nline3"
+            })
+            .times(1)
+            .returning(|_, _| Ok(()));
+
+        let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
+
+        let lines = vec![
+            "line1".to_string(),
+            "line2".to_string(),
+            "line3".to_string(),
+        ];
+        let result = repository.save_project_file(lines);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_save_project_file_should_return_error_when_file_not_found() {
+        let app_config = DefaultAppConfig::new(
+            None,
+            None,
+            None,
+            Some(String::from("test/mocks/project.godot")),
+            Some(String::from("addons")),
+        );
+
+        let mut mock_file_service = MockDefaultFileService::default();
+        mock_file_service.expect_file_exists().returning(|_| false);
+
+        let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
+
+        let lines = vec!["line1".to_string()];
+        let result = repository.save_project_file(lines);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Godot project file not found")
+        );
+    }
+
+    #[test]
+    fn test_save_project_file_should_return_error_when_no_content() {
+        let app_config = DefaultAppConfig::new(
+            None,
+            None,
+            None,
+            Some(String::from("test/mocks/project.godot")),
+            Some(String::from("addons")),
+        );
+
+        let mock_file_service = MockDefaultFileService::default();
+        let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
+
+        let lines = vec![];
+        let result = repository.save_project_file(lines);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("No content to write")
+        );
+    }
+
     // save
+
+    #[test]
+    fn test_save_should_update_and_save_project_file() {
+        use crate::plugin_config_repository::plugin::Plugin;
+        use std::collections::BTreeMap;
+        use std::path::Path;
+
+        let app_config = DefaultAppConfig::new(
+            None,
+            None,
+            None,
+            Some(String::from("test/mocks/project.godot")),
+            Some(String::from("addons")),
+        );
+
+        let mut mock_file_service = MockDefaultFileService::default();
+        mock_file_service.expect_file_exists().returning(|_| true);
+        mock_file_service.expect_read_file_cached().returning(|_| {
+            Ok(String::from(
+                "config_version=5\n\
+                    [application]\n\
+                    config/name=\"Test\"\n\
+                    [rendering]\n\
+                    renderer/rendering_method=\"gl_compatibility\"\n",
+            ))
+        });
+        mock_file_service
+            .expect_write_file()
+            .withf(|path: &Path, content: &str| {
+                path.to_str().unwrap() == "test/mocks/project.godot"
+                    && content.contains("[editor_plugins]")
+                    && content.contains("enabled=PackedStringArray")
+            })
+            .times(1)
+            .returning(|_, _| Ok(()));
+
+        let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
+
+        let mut plugins = BTreeMap::new();
+        plugins.insert(
+            "test_plugin".to_string(),
+            Plugin::new(
+                "1".to_string(),
+                "Test Plugin".to_string(),
+                "1.0.0".to_string(),
+                "MIT".to_string(),
+            ),
+        );
+        let plugin_config = DefaultPluginConfig::new(plugins);
+
+        let result = repository.save(plugin_config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_save_should_return_error_when_file_not_found() {
+        use std::collections::BTreeMap;
+
+        let app_config = DefaultAppConfig::new(
+            None,
+            None,
+            None,
+            Some(String::from("test/mocks/project.godot")),
+            Some(String::from("addons")),
+        );
+
+        let mut mock_file_service = MockDefaultFileService::default();
+        mock_file_service.expect_file_exists().returning(|_| false);
+
+        let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
+
+        let plugin_config = DefaultPluginConfig::new(BTreeMap::new());
+
+        let result = repository.save(plugin_config);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Godot project file not found")
+        );
+    }
 }
