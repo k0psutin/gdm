@@ -782,6 +782,10 @@ mod tests {
             .expect_save()
             .returning(|_path| Ok(()));
 
+        godot_config_repository
+            .expect_get_godot_version_from_project()
+            .returning(|| Ok("4.5".to_string()));
+
         let mut asset_store_api = MockDefaultAssetStoreAPI::default();
 
         let mut plugin_config_repository = MockDefaultPluginConfigRepository::default();
@@ -991,9 +995,38 @@ mod tests {
         assert_eq!(installed_plugins, expected_plugins);
     }
 
-    // TODO test error case for install_plugin
+    // Error cases for install_plugin
 
-    // extract_plugins_operation
+    #[tokio::test]
+    async fn test_install_plugin_with_invalid_asset_id_should_return_err() {
+        let plugin_service = setup_plugin_service();
+        let name = "";
+        let asset_id = "99999";
+        let version = "";
+        let result = plugin_service.install_plugin(name, asset_id, version).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_install_plugin_with_invalid_name_should_return_err() {
+        let plugin_service = setup_plugin_service();
+        let name = "NonExistentPluginThatDoesNotExist12345";
+        let asset_id = "";
+        let version = "";
+        let result = plugin_service.install_plugin(name, asset_id, version).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_install_plugin_with_nonexistent_version_should_return_err() {
+        let plugin_service = setup_plugin_service();
+        let name = "";
+        let asset_id = "1709";
+        let version = "0.0.1";
+        let result = plugin_service.install_plugin(name, asset_id, version).await;
+        assert!(result.is_err());
+    }
+
     // download_plugins_operation
 
     #[tokio::test]
@@ -1018,15 +1051,54 @@ mod tests {
             .await;
         assert!(result.is_ok());
 
-        let extracted_plugins = result.unwrap();
+        let downloaded_assets = result.unwrap();
+        assert_eq!(downloaded_assets.len(), 1);
+
+        let asset = &downloaded_assets[0];
+        assert_eq!(asset.root_folder, "test_plugin");
+        assert_eq!(asset.file_path, PathBuf::from("test_plugin"));
+        assert_eq!(asset.asset_response.asset_id, "1234");
+        assert_eq!(asset.asset_response.title, "Test Plugin");
+        assert_eq!(asset.asset_response.version_string, "1.1.1");
     }
 
-    // finish_plugins_operation
+    // extract_plugins_operation
 
-    // add_plugin_by_id_or_name_and_version
-    // add_plugins_to_godot_project
-    // remove_plugin_by_name
-    // check_outdated_plugins
+    #[tokio::test]
+    async fn test_extract_plugins_operation_should_return_correct_plugins() {
+        let plugin_service = setup_plugin_service_mocks();
+        let assets = vec![Asset::new(
+            "test_plugin".to_string(),
+            PathBuf::from("test_plugin.zip"),
+            AssetResponse::new(
+                "1234".to_string(),
+                "Test Plugin".to_string(),
+                "11".to_string(),
+                "1.1.1".to_string(),
+                "4.5".to_string(),
+                "5".to_string(),
+                "MIT".to_string(),
+                "Some description".to_string(),
+                "GitHub".to_string(),
+                "commit_hash".to_string(),
+                "2023-10-01".to_string(),
+                "https://example.com/test_plugin.zip".to_string(),
+            ),
+        )];
+
+        let result = plugin_service.extract_plugins_operation(&assets).await;
+        assert!(result.is_ok());
+
+        let extracted_plugins = result.unwrap();
+        assert_eq!(extracted_plugins.len(), 1);
+
+        let plugin = extracted_plugins.get("test_plugin").unwrap();
+        assert_eq!(plugin.asset_id, "1234");
+        assert_eq!(plugin.title, "Test Plugin");
+        assert_eq!(plugin.get_version(), "1.1.1");
+        assert_eq!(plugin.license, "MIT");
+    }
+
     // update_plugins
 
     fn setup_update_plugin_mocks(
@@ -1197,4 +1269,225 @@ mod tests {
     }
 
     // search_assets_by_name_or_version
+
+    #[tokio::test]
+    async fn test_search_assets_by_name_or_version_with_name_should_display_results() {
+        let plugin_service = setup_plugin_service();
+        let result = plugin_service
+            .search_assets_by_name_or_version("Godot Unit Testing", "")
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_search_assets_by_name_or_version_with_no_results_should_display_empty() {
+        let plugin_service = setup_plugin_service();
+        let result = plugin_service
+            .search_assets_by_name_or_version("NonExistentPlugin12345", "")
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_search_assets_by_name_or_version_with_empty_params_should_return_err() {
+        let plugin_service = setup_plugin_service();
+        let result = plugin_service
+            .search_assets_by_name_or_version("", "")
+            .await;
+        assert!(result.is_err());
+    }
+
+    // remove_plugin_by_name
+
+    #[tokio::test]
+    async fn test_remove_plugin_by_name_should_remove_plugin() {
+        let mut godot_config_repository = MockDefaultGodotConfigRepository::default();
+        godot_config_repository
+            .expect_save()
+            .returning(|_path| Ok(()));
+
+        let mut plugin_config_repository = MockDefaultPluginConfigRepository::default();
+        plugin_config_repository
+            .expect_get_plugin_key_by_name()
+            .with(eq("test_plugin"))
+            .returning(|_name| Some("test_plugin".to_string()));
+        plugin_config_repository
+            .expect_remove_plugins()
+            .returning(|_names| Ok(DefaultPluginConfig::default()));
+
+        let mut file_service = MockDefaultFileService::default();
+        file_service.expect_file_exists().returning(|_path| true);
+        file_service
+            .expect_remove_dir_all()
+            .returning(|_path| Ok(()));
+
+        let plugin_service = DefaultPluginService::new(
+            Box::new(godot_config_repository),
+            Arc::new(MockDefaultAssetStoreAPI::default()),
+            Box::new(plugin_config_repository),
+            DefaultAppConfig::default(),
+            Arc::new(MockDefaultExtractService::default()),
+            Arc::new(file_service),
+        );
+
+        let result = plugin_service.remove_plugin_by_name("test_plugin").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_remove_plugin_by_name_with_nonexistent_plugin_should_return_ok() {
+        let godot_config_repository = MockDefaultGodotConfigRepository::default();
+
+        let mut plugin_config_repository = MockDefaultPluginConfigRepository::default();
+        plugin_config_repository
+            .expect_get_plugin_key_by_name()
+            .with(eq("nonexistent"))
+            .returning(|_name| None);
+
+        let plugin_service = DefaultPluginService::new(
+            Box::new(godot_config_repository),
+            Arc::new(MockDefaultAssetStoreAPI::default()),
+            Box::new(plugin_config_repository),
+            DefaultAppConfig::default(),
+            Arc::new(MockDefaultExtractService::default()),
+            Arc::new(MockDefaultFileService::default()),
+        );
+
+        let result = plugin_service.remove_plugin_by_name("nonexistent").await;
+        assert!(result.is_ok());
+    }
+
+    // add_plugin_by_id_or_name_and_version
+
+    #[tokio::test]
+    async fn test_add_plugin_by_id_or_name_and_version_with_asset_id_should_add_plugin() {
+        let plugin_service = setup_plugin_service_mocks();
+        let result = plugin_service
+            .add_plugin_by_id_or_name_and_version(Some("1234".to_string()), None, None)
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_add_plugin_by_id_or_name_and_version_with_no_params_should_return_err() {
+        let plugin_service = setup_plugin_service();
+        let result = plugin_service
+            .add_plugin_by_id_or_name_and_version(None, None, None)
+            .await;
+        assert!(result.is_err());
+    }
+
+    // fetch_installed_assets
+
+    #[tokio::test]
+    async fn test_fetch_installed_assets_should_return_assets() {
+        let plugin_service = setup_plugin_service_mocks();
+        let result = plugin_service.fetch_installed_assets().await;
+        assert!(result.is_ok());
+        let assets = result.unwrap();
+        assert_eq!(assets.len(), 1);
+        assert_eq!(assets[0].asset_id, "1234");
+    }
+
+    // fetch_latest_assets
+
+    #[tokio::test]
+    async fn test_fetch_latest_assets_should_return_assets() {
+        let plugin_service = setup_plugin_service_mocks();
+        let result = plugin_service.fetch_latest_assets().await;
+        assert!(result.is_ok());
+        let assets = result.unwrap();
+        assert_eq!(assets.len(), 1);
+        assert_eq!(assets[0].asset_id, "1234");
+    }
+
+    // check_outdated_plugins
+
+    #[tokio::test]
+    async fn test_check_outdated_plugins_with_outdated_plugin_should_display_message() {
+        let plugin_service = setup_update_plugin_mocks("1.0.0", "1.1.0");
+        let result = plugin_service.check_outdated_plugins().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_check_outdated_plugins_with_no_outdated_plugins_should_display_message() {
+        let plugin_service = setup_update_plugin_mocks("1.1.0", "1.1.0");
+        let result = plugin_service.check_outdated_plugins().await;
+        assert!(result.is_ok());
+    }
+
+    // add_plugins
+
+    #[test]
+    fn test_add_plugins_should_add_to_config() {
+        let mut godot_config_repository = MockDefaultGodotConfigRepository::default();
+        godot_config_repository
+            .expect_save()
+            .returning(|_path| Ok(()));
+
+        let mut plugin_config_repository = MockDefaultPluginConfigRepository::default();
+        plugin_config_repository
+            .expect_add_plugins()
+            .returning(|plugins| Ok(DefaultPluginConfig::new(plugins.clone())));
+
+        let plugin_service = DefaultPluginService::new(
+            Box::new(godot_config_repository),
+            Arc::new(MockDefaultAssetStoreAPI::default()),
+            Box::new(plugin_config_repository),
+            DefaultAppConfig::default(),
+            Arc::new(MockDefaultExtractService::default()),
+            Arc::new(MockDefaultFileService::default()),
+        );
+
+        let plugins = BTreeMap::from([(
+            "test_plugin".to_string(),
+            Plugin::new(
+                "1234".to_string(),
+                "Test Plugin".to_string(),
+                "1.0.0".to_string(),
+                "MIT".to_string(),
+            ),
+        )]);
+
+        let result = plugin_service.add_plugins(&plugins);
+        assert!(result.is_ok());
+    }
+
+    // finish_plugins_operation
+
+    #[test]
+    fn test_finish_plugins_operation_should_complete_successfully() {
+        let mut godot_config_repository = MockDefaultGodotConfigRepository::default();
+        godot_config_repository
+            .expect_save()
+            .returning(|_path| Ok(()));
+
+        let mut plugin_config_repository = MockDefaultPluginConfigRepository::default();
+        plugin_config_repository
+            .expect_add_plugins()
+            .returning(|plugins| Ok(DefaultPluginConfig::new(plugins.clone())));
+
+        let plugin_service = DefaultPluginService::new(
+            Box::new(godot_config_repository),
+            Arc::new(MockDefaultAssetStoreAPI::default()),
+            Box::new(plugin_config_repository),
+            DefaultAppConfig::default(),
+            Arc::new(MockDefaultExtractService::default()),
+            Arc::new(MockDefaultFileService::default()),
+        );
+
+        let plugins = BTreeMap::from([(
+            "test_plugin".to_string(),
+            Plugin::new(
+                "1234".to_string(),
+                "Test Plugin".to_string(),
+                "1.0.0".to_string(),
+                "MIT".to_string(),
+            ),
+        )]);
+
+        let result = plugin_service.finish_plugins_operation(&plugins);
+        assert!(result.is_ok());
+    }
 }
