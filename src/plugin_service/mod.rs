@@ -447,7 +447,7 @@ impl PluginService for DefaultPluginService {
         if plugins_to_update.is_empty() {
             println!("All plugins are up to date.");
         } else {
-            println!("To update a plugins, use: gdm update");
+            println!("To update plugins, use: gdm update");
         }
         Ok(())
     }

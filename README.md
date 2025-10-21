@@ -9,8 +9,8 @@ The `gdm` CLI uses a `.gdm` directory in your project as a cache for downloaded 
 Since `.gdm` is managed automatically (assets are downloaded and removed as needed), you should add `.gdm` to your `.gitignore` file to avoid committing cached or temporary files to version control.
 
 **Example `.gitignore` entry:**
-```
-.gdm/
+```bash
+.gdm
 ```
 
 ## Important: Managing Plugins with `gdm`
@@ -46,7 +46,7 @@ This makes `gdm` available from any terminal window.
 
 ##### Linux
 
-```sh
+```bash
 tar -xzf gdm-x86_64-linux-gnu.tar.gz
 sudo mv gdm /usr/local/bin/
 ```
@@ -57,7 +57,7 @@ Extract the `.zip` file and move `gdm.exe` to a folder in your `PATH` (e.g., `C:
 
 ##### macOS
 
-```sh
+```bash
 tar -xzf gdm-x86_64-apple-darwin.tar.gz
 sudo mv gdm /usr/local/bin/
 ```
@@ -79,16 +79,16 @@ Run `gdm <command> [options]` in your Godot project directory.
 
 Add a plugin dependency to your project.
 
-```sh
-gdm add <plugin-name>
+```bash
+gdm add '<asset-name>'
 ```
 
 ![gdm add](./vhs/gdm_add.gif)
 
 You can optionally specify the `--asset-id` and `--version` flags:
 
-```sh
-gdm add <plugin-name> [--asset-id <godot-asset-id>] [--version <version>]
+```bash
+gdm add '<asset-name>' [--asset-id <godot-asset-id>] [--version <version>]
 ```
 
 - `--asset-id`: Specify the Godot Asset ID for the plugin.
@@ -100,7 +100,7 @@ gdm add <plugin-name> [--asset-id <godot-asset-id>] [--version <version>]
 
 Install all plugin dependencies listed in your project.
 
-```sh
+```bash
 gdm install
 ```
 
@@ -110,7 +110,7 @@ gdm install
 
 Update all plugins to their latest versions.
 
-```sh
+```bash
 gdm update
 ```
 
@@ -120,7 +120,7 @@ gdm update
 
 List plugins that have newer versions available.
 
-```sh
+```bash
 gdm outdated
 ```
 
@@ -130,16 +130,16 @@ gdm outdated
 
 Search for plugins by plugin title.
 
-```sh
-gdm search <asset-name>
+```bash
+gdm search '<asset-name>'
 ```
 
 ![gdm search](./vhs/gdm_search.gif)
 
 You can optionally specify the `--godot-version` flag to filter results by Godot version:
 
-```sh
-gdm search <asset-name> --godot-version <version>
+```bash
+gdm search '<asset-name>' --godot-version '<version>'
 ```
 
 - `--godot-version`: Only show plugins compatible with the specified Godot version.
@@ -152,8 +152,8 @@ Remove a plugin dependency from your project.
 
 > **Note:** The `<plugin-name>` must match the name of the plugin as it appears in your `gdm.json` file.
 
-```sh
-gdm remove <plugin-name>
+```bash
+gdm remove '<plugin-name>'
 ```
 
 ![gdm remove](./vhs/gdm_remove.gif)
