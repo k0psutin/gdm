@@ -80,10 +80,6 @@ impl PluginService for DefaultPluginService {
             .await?;
 
         self.add_plugins(&plugins)?;
-
-        println!();
-        println!("done.");
-
         Ok(plugins)
     }
 

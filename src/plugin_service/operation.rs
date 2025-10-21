@@ -58,7 +58,7 @@ impl Operation {
     ) -> Result<ProgressBar> {
         let pb = m.add(ProgressBar::new(self.default_progress_bar_length()));
         pb.set_style(self.progress_bar_style()?);
-        pb.set_prefix(format!("[{}/{}]", index, total));
+        pb.set_prefix(format!("[{}/{}]", index + 1, total));
         pb.set_message(format!(
             "{}: {} ({})",
             self.action_verb(),

@@ -16,7 +16,7 @@ impl OperationManager {
         let main_progress = multi_progress.add(ProgressBar::no_length());
 
         main_progress.set_style(
-            ProgressStyle::with_template("{spinner:.green} {msg}")
+            ProgressStyle::with_template("{msg}")
                 .map_err(|e| anyhow::anyhow!("Failed to create main progress style: {}", e))?,
         );
         main_progress.set_message(Self::get_main_message_by_operation(&operation));
@@ -38,7 +38,10 @@ impl OperationManager {
     }
 
     pub fn finish(&self) {
-        self.main_progress.finish_and_clear();
+        match self.operation {
+            Operation::Finished => self.main_progress.finish(),
+            _ => self.main_progress.finish_and_clear(),
+        }
     }
 
     pub fn add_progress_bar(
