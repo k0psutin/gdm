@@ -45,8 +45,10 @@ pub trait Cache {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn test_cache_insert_and_get() {
         let cache = DefaultCache::new();
         cache.insert("key1", "value1");
@@ -56,12 +58,14 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_cache_get_should_return_none_for_missing_key() {
         let cache = DefaultCache::new();
         assert_eq!(cache.get("key1"), None);
     }
 
     #[test]
+    #[serial]
     fn test_cache_insert_overwrites_existing_key() {
         let cache = DefaultCache::new();
         cache.insert("key1", "value1");

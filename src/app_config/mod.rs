@@ -92,6 +92,7 @@ impl AppConfig for DefaultAppConfig {
 
 impl dyn AppConfig {
     #[allow(unused)]
+    #[cfg(not(tarpaulin_include))]
     fn default() -> Box<Self> {
         dotenv().ok();
 
