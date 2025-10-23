@@ -13,7 +13,6 @@ pub struct DefaultFileService;
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
 impl FileService for DefaultFileService {
-    #[cfg(not(tarpaulin_include))]
     fn open(&self, file_path: &Path) -> Result<File> {
         let file = File::open(file_path)
             .with_context(|| format!("Failed to open file: {}", file_path.display()))?;
@@ -36,26 +35,22 @@ impl FileService for DefaultFileService {
         Ok(content)
     }
 
-    #[cfg(not(tarpaulin_include))]
     fn file_exists(&self, file_path: &Path) -> bool {
         file_path.try_exists().unwrap_or(false)
     }
 
-    #[cfg(not(tarpaulin_include))]
     fn write_file(&self, file_path: &Path, content: &str) -> Result<()> {
         std::fs::write(file_path, content)
             .with_context(|| format!("Failed to write file: {}", file_path.display()))?;
         Ok(())
     }
 
-    #[cfg(not(tarpaulin_include))]
     fn create_file(&self, file_path: &Path) -> Result<File> {
         let file = std::fs::File::create(file_path)
             .with_context(|| format!("Failed to create file: {}", file_path.display()))?;
         Ok(file)
     }
 
-    #[cfg(not(tarpaulin_include))]
     async fn create_file_async(&self, file_path: &Path) -> Result<tokio::fs::File> {
         let file = tokio::fs::File::create(file_path)
             .await
@@ -63,7 +58,6 @@ impl FileService for DefaultFileService {
         Ok(file)
     }
 
-    #[cfg(not(tarpaulin_include))]
     async fn write_all_async(&self, file: &mut tokio::fs::File, chunk: &Bytes) -> Result<()> {
         tokio::io::AsyncWriteExt::write_all(&mut *file, chunk)
             .await
@@ -71,14 +65,12 @@ impl FileService for DefaultFileService {
         Ok(())
     }
 
-    #[cfg(not(tarpaulin_include))]
     fn create_directory(&self, dir_path: &Path) -> Result<()> {
         std::fs::create_dir_all(dir_path)
             .with_context(|| format!("Failed to create directory: {}", dir_path.display()))?;
         Ok(())
     }
 
-    #[cfg(not(tarpaulin_include))]
     fn remove_dir_all(&self, dir_path: &Path) -> Result<()> {
         if self.directory_exists(dir_path) {
             std::fs::remove_dir_all(dir_path)
@@ -87,12 +79,10 @@ impl FileService for DefaultFileService {
         Ok(())
     }
 
-    #[cfg(not(tarpaulin_include))]
     fn directory_exists(&self, dir_path: &Path) -> bool {
         dir_path.is_dir()
     }
 
-    #[cfg(not(tarpaulin_include))]
     fn remove_file(&self, file_path: &Path) -> Result<()> {
         if self.file_exists(file_path) {
             std::fs::remove_file(file_path)

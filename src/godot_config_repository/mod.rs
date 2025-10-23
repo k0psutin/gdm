@@ -155,6 +155,15 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
                 ];
                 contents.splice(i..i, new_lines);
                 return Ok(contents);
+            } else if i == contents.len() - 1 {
+                let new_lines = vec![
+                    "[editor_plugins]".to_string(),
+                    "".to_string(),
+                    format!("enabled={}", self.plugins_to_packed_string_array(_plugins)),
+                    "".to_string(),
+                ];
+                contents.extend(new_lines);
+                return Ok(contents);
             }
         }
 
@@ -219,6 +228,19 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
         Ok(DefaultGodotConfig::new(config_version, godot_version))
     }
 
+    fn validate_project_file(&self) -> Result<()> {
+        let exists = self
+            .file_service
+            .file_exists(self.app_config.get_godot_project_file_path());
+        if !exists {
+            return Err(anyhow!(
+                "Godot project file not found: {}",
+                self.app_config.get_godot_project_file_path().display()
+            ));
+        }
+        Ok(())
+    }
+
     fn load_project_file(&self) -> Result<Vec<String>> {
         let file = self
             .file_service
@@ -247,6 +269,7 @@ pub trait GodotConfigRepository {
     fn get_godot_version_from_project(&self) -> Result<String>;
     fn plugin_root_folder_to_resource_path(&self, plugin_path: String) -> String;
     fn plugins_to_packed_string_array(&self, plugins: HashSet<String>) -> String;
+    fn validate_project_file(&self) -> Result<()>;
     fn save(&self, plugin_config: DefaultPluginConfig) -> Result<()>;
     fn load(&self) -> Result<DefaultGodotConfig>;
     fn update_project_file(&self, plugin_config: DefaultPluginConfig) -> Result<Vec<String>>;
@@ -423,7 +446,7 @@ mod tests {
     // update_project_file
 
     #[test]
-    fn test_update_project_file_should_add_editor_plugins_section_when_missing() {
+    fn test_update_project_file_should_add_editor_plugins_section_when_it_is_missing() {
         use crate::plugin_config_repository::plugin::Plugin;
         use std::collections::BTreeMap;
 
@@ -435,16 +458,58 @@ mod tests {
             Some(String::from("addons")),
         );
 
+        pub const MOCK_PROJECT_GODOT: &str = r#"
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Test Project"
+config/features=PackedStringArray("4.5")
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+
+"#;
+
+        pub const EXPECTED_PROJECT_GODOT: &str = r#"
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Test Project"
+config/features=PackedStringArray("4.5")
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/test_plugin/plugin.cfg")
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+
+"#;
+
         let mut mock_file_service = MockDefaultFileService::default();
-        mock_file_service.expect_read_file_cached().returning(|_| {
-            Ok(String::from(
-                "config_version=5\n\
-                    [application]\n\
-                    config/name=\"Test\"\n\
-                    [rendering]\n\
-                    renderer/rendering_method=\"gl_compatibility\"\n",
-            ))
-        });
+        mock_file_service
+            .expect_read_file_cached()
+            .returning(|_| Ok(String::from(MOCK_PROJECT_GODOT)));
 
         let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
 
@@ -464,13 +529,86 @@ mod tests {
         assert!(result.is_ok());
         let lines = result.unwrap();
 
-        // Check that [editor_plugins] section was added
-        assert!(lines.iter().any(|line| line == "[editor_plugins]"));
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.starts_with("enabled=PackedStringArray"))
+        assert_eq!(lines.join("\n").trim(), EXPECTED_PROJECT_GODOT.trim());
+    }
+
+    #[test]
+    fn test_update_project_file_should_add_editor_plugins_section_when_it_is_missing_in_simple_config()
+     {
+        use crate::plugin_config_repository::plugin::Plugin;
+        use std::collections::BTreeMap;
+
+        let app_config = DefaultAppConfig::new(
+            None,
+            None,
+            None,
+            Some(String::from("tests/mocks/project.godot")),
+            Some(String::from("addons")),
         );
+
+        pub const MOCK_PROJECT_GODOT: &str = r#"
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Test Project"
+config/features=PackedStringArray("4.5")
+"#;
+
+        pub const EXPECTED_PROJECT_GODOT: &str = r#"
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Test Project"
+config/features=PackedStringArray("4.5")
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/test_plugin/plugin.cfg")
+
+"#;
+
+        let mut mock_file_service = MockDefaultFileService::default();
+        mock_file_service
+            .expect_read_file_cached()
+            .returning(|_| Ok(String::from(MOCK_PROJECT_GODOT)));
+
+        let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
+
+        let mut plugins = BTreeMap::new();
+        plugins.insert(
+            "test_plugin".to_string(),
+            Plugin::new(
+                "1".to_string(),
+                "Test Plugin".to_string(),
+                "1.0.0".to_string(),
+                "MIT".to_string(),
+            ),
+        );
+        let plugin_config = DefaultPluginConfig::new(plugins);
+
+        let result = repository.update_project_file(plugin_config);
+        assert!(result.is_ok());
+        let lines = result.unwrap();
+
+        assert_eq!(lines.join("\n").trim(), EXPECTED_PROJECT_GODOT.trim());
     }
 
     #[test]

@@ -25,7 +25,6 @@ use std::sync::Arc;
 use tokio::task::JoinSet;
 use tracing::{debug, error, warn};
 
-#[cfg(not(tarpaulin_include))]
 pub struct DefaultPluginService {
     pub godot_config_repository: Box<dyn GodotConfigRepository>,
     pub asset_store_api: Arc<dyn AssetStoreAPI + Send + Sync>,
@@ -35,7 +34,6 @@ pub struct DefaultPluginService {
     pub file_service: Arc<dyn FileService + Send + Sync>,
 }
 
-#[cfg(not(tarpaulin_include))]
 impl Default for DefaultPluginService {
     fn default() -> Self {
         Self {
@@ -49,7 +47,6 @@ impl Default for DefaultPluginService {
     }
 }
 
-#[cfg(not(tarpaulin_include))]
 impl DefaultPluginService {
     #[allow(unused)]
     fn new(
@@ -73,6 +70,14 @@ impl DefaultPluginService {
 
 impl PluginService for DefaultPluginService {
     async fn install_all_plugins(&self) -> Result<BTreeMap<String, Plugin>> {
+        self.godot_config_repository.validate_project_file()?;
+        let plugins = self.plugin_config_repository.get_plugins()?;
+
+        if plugins.is_empty() {
+            println!("No plugins installed.");
+            return Ok(BTreeMap::new());
+        }
+
         let assets: Vec<AssetResponse> = self.fetch_installed_assets().await?;
 
         let plugins = self
@@ -95,6 +100,10 @@ impl PluginService for DefaultPluginService {
         if !version.is_empty() && !asset_id.is_empty() {
             asset = self
                 .find_plugin_by_asset_id_and_version(asset_id.to_string(), version.to_string())
+                .await?;
+        } else if !name.is_empty() && !version.is_empty() {
+            asset = self
+                .find_plugin_by_asset_name_and_version(name, version)
                 .await?;
         } else if !name.is_empty() || !asset_id.is_empty() {
             asset = self.find_plugin_by_id_or_name(asset_id, name).await?;
@@ -235,6 +244,10 @@ impl PluginService for DefaultPluginService {
             return Err(anyhow!("Either name or asset ID must be provided."));
         }
 
+        if !_name.is_empty() && !_asset_id.is_empty() {
+            return Err(anyhow!("Cannot specify both name and asset ID."));
+        }
+
         self.install_plugin(&_name, &_asset_id, &_version).await?;
         Ok(())
     }
@@ -243,6 +256,27 @@ impl PluginService for DefaultPluginService {
         let plugin_config = self.plugin_config_repository.add_plugins(plugins)?;
         self.godot_config_repository.save(plugin_config)?;
         Ok(())
+    }
+
+    async fn find_plugin_by_asset_name_and_version(
+        &self,
+        name: &str,
+        version: &str,
+    ) -> Result<AssetResponse> {
+        if !name.is_empty() && !version.is_empty() {
+            debug!(
+                "Finding plugin by asset name and version: {} {}",
+                name, version
+            );
+            let asset = self.find_plugin_by_id_or_name("", name).await?;
+            self.find_plugin_by_asset_id_and_version(asset.asset_id, version.to_string())
+                .await
+        } else {
+            error!("Asset name or version is empty");
+            Err(anyhow!(
+                "Both asset name and version must be provided to search by version."
+            ))
+        }
     }
 
     async fn find_plugin_by_asset_id_and_version(
@@ -304,7 +338,9 @@ impl PluginService for DefaultPluginService {
         }
     }
 
+    /// Removes a plugin by its folder name, e.g. "gut"
     async fn remove_plugin_by_name(&self, name: &str) -> Result<()> {
+        self.godot_config_repository.validate_project_file()?;
         let installed_plugin = self.plugin_config_repository.get_plugin_key_by_name(name);
         let addon_folder = self.app_config.get_addon_folder_path();
 
@@ -400,8 +436,14 @@ impl PluginService for DefaultPluginService {
     /// Plugin                  Current    Latest
     /// some_plugin             1.5.0      1.6.0 (update available)
     async fn check_outdated_plugins(&self) -> Result<()> {
-        let installed_plugins = self.fetch_latest_assets().await?;
         let plugins = self.plugin_config_repository.get_plugins()?;
+
+        if plugins.is_empty() {
+            println!("No plugins installed.");
+            return Ok(());
+        }
+
+        let installed_plugins = self.fetch_latest_assets().await?;
 
         println!("Checking for outdated plugins");
         println!();
@@ -457,8 +499,14 @@ impl PluginService for DefaultPluginService {
     /// Downloads and installs the latest versions of all plugins that have updates available
     /// Updates the plugin configuration file with the new versions
     async fn update_plugins(&self) -> Result<BTreeMap<String, Plugin>> {
-        let installed_plugins = self.fetch_latest_assets().await?;
         let plugins = self.plugin_config_repository.get_plugins()?;
+
+        if plugins.is_empty() {
+            println!("No plugins installed.");
+            return Ok(BTreeMap::new());
+        }
+
+        let installed_plugins = self.fetch_latest_assets().await?;
 
         let mut plugins_to_update = Vec::new();
 
@@ -594,6 +642,11 @@ pub trait PluginService {
         version: String,
     ) -> Result<AssetResponse>;
     async fn find_plugin_by_id_or_name(&self, asset_id: &str, name: &str) -> Result<AssetResponse>;
+    async fn find_plugin_by_asset_name_and_version(
+        &self,
+        name: &str,
+        version: &str,
+    ) -> Result<AssetResponse>;
 
     async fn remove_plugin_by_name(&self, name: &str) -> Result<()>;
 

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, bail};
 use reqwest::Response;
 use serde_json::Value;
 use tracing::{error, info};
@@ -24,13 +24,18 @@ impl Default for DefaultHttpClient {
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
 impl HttpClient for DefaultHttpClient {
-    #[cfg(not(tarpaulin_include))]
     async fn get(&self, url: String, params: HashMap<String, String>) -> Result<Value> {
         let _url = Url::parse_with_params(&url, params)?;
 
         match reqwest::get(_url.as_str()).await {
             Ok(response) => {
-                info!("[GET] {} [{}]", _url, response.status());
+                let status = response.status();
+                info!("[GET] {} [{}]", _url, status);
+
+                if !status.is_success() {
+                    bail!(status);
+                }
+
                 let data = response.json().await?;
                 Ok(data)
             }
@@ -44,7 +49,6 @@ impl HttpClient for DefaultHttpClient {
         }
     }
 
-    #[cfg(not(tarpaulin_include))]
     async fn get_file(&self, url: String) -> Result<Response> {
         let _url = Url::parse(&url)?;
 

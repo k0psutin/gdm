@@ -7,5 +7,12 @@
     "rust-analyzer.check.command": "clippy",
     "editor.defaultFormatter": "rust-lang.rust-analyzer",
     "editor.formatOnSave": true,
-    "markiscodecoverage.searchCriteria": "coverage/lcov.info"
+    "coverage-gutters.coverageFileNames": [
+        "lcov.info",
+        "cov.xml",
+        "coverage.xml",
+        "cobertura.xml",
+        "jacoco.xml",
+        "coverage.cobertura.xml"
+    ]
 }

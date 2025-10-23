@@ -4,7 +4,7 @@
 
 - [Rust](https://www.rust-lang.org/tools/install) (latest stable version)
 - [Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html) (comes with Rust)
-- [Tarpaulin](https://github.com/xd009642/tarpaulin) for test coverage
+- [llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) for test coverage
 
 ## Steps
 
@@ -31,7 +31,7 @@
 
 4. **Gather test coverage**
     ```bash
-    cargo tarpaulin --out lcov --output-dir coverage
+    cargo llvm-cov --lcov --output-path lcov.info
     ```
 
 5. **Binary location:**

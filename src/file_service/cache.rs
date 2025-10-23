@@ -7,7 +7,7 @@ pub struct DefaultCache {
 }
 
 impl DefaultCache {
-    #[cfg(not(tarpaulin_include))]
+    
     pub fn new<'a>() -> &'a DefaultCache {
         let cache: Mutex<HashMap<String, String>> = {
             let mut _cache = HashMap::new();

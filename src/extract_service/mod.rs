@@ -11,13 +11,13 @@ use crate::app_config::DefaultAppConfig;
 use crate::file_service::{DefaultFileService, FileService};
 use crate::utils::Utils;
 
-#[cfg(not(tarpaulin_include))]
+
 pub struct DefaultExtractService {
     pub file_service: Box<dyn FileService + Send + Sync + 'static>,
     pub app_config: DefaultAppConfig,
 }
 
-#[cfg(not(tarpaulin_include))]
+
 impl DefaultExtractService {
     #[allow(unused)]
     pub fn new(
@@ -31,7 +31,7 @@ impl DefaultExtractService {
     }
 }
 
-#[cfg(not(tarpaulin_include))]
+
 impl Default for DefaultExtractService {
     fn default() -> Self {
         DefaultExtractService {

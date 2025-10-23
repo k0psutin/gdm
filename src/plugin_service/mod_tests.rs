@@ -28,6 +28,7 @@ mod tests {
         asset_id: &str,
         plugin_name: &str,
         installed_version: Option<&str>,
+        search_name: Option<&str>,
     ) -> DefaultPluginService {
         let mut godot_config_repository = MockDefaultGodotConfigRepository::default();
         let mut asset_store_api = MockDefaultAssetStoreAPI::default();
@@ -67,6 +68,52 @@ mod tests {
         // Setup asset store API
         let asset_id_for_api = asset_id.to_string();
         let plugin_name_for_api = plugin_name.to_string();
+
+        // Add get_assets mock if search_name is provided
+        if let Some(_name) = search_name {
+            let asset_id_for_search = asset_id.to_string();
+            let plugin_name_for_search = plugin_name.to_string();
+
+            asset_store_api.expect_get_assets().returning(move |_| {
+                let asset = AssetListItem::new(
+                    asset_id_for_search.clone(),
+                    plugin_name_for_search.clone(),
+                    "Author".to_string(),
+                    "Scripts".to_string(),
+                    "4.5".to_string(),
+                    "5".to_string(),
+                    "MIT".to_string(),
+                    "official".to_string(),
+                    "11".to_string(),
+                    "9.1.0".to_string(),
+                    "2023-10-01".to_string(),
+                );
+                Ok(AssetListResponse::new(vec![asset]))
+            });
+
+            // Add get_asset_by_id mock for the name search flow
+            let asset_id_for_get_by_id = asset_id.to_string();
+            let plugin_name_for_get_by_id = plugin_name.to_string();
+
+            asset_store_api
+                .expect_get_asset_by_id()
+                .returning(move |_| {
+                    Ok(AssetResponse::new(
+                        asset_id_for_get_by_id.clone(),
+                        plugin_name_for_get_by_id.clone(),
+                        "11".to_string(),
+                        "latest".to_string(),
+                        "4.5".to_string(),
+                        "5".to_string(),
+                        "MIT".to_string(),
+                        "Some description".to_string(),
+                        "GitHub".to_string(),
+                        "commit_hash".to_string(),
+                        "2023-10-01".to_string(),
+                        format!("https://example.com/{}.zip", asset_id_for_get_by_id),
+                    ))
+                });
+        }
 
         asset_store_api
             .expect_get_asset_by_id_and_version()
@@ -196,6 +243,72 @@ mod tests {
         assert_eq!(asset.version_string, "9.1.0");
     }
 
+    // find_plugin_by_asset_name_and_version
+
+    #[tokio::test]
+    async fn test_find_plugin_by_asset_name_and_version_should_return_asset() {
+        let plugin_service = setup_plugin_service();
+        let name = "Godot Unit Testing";
+        let version = "9.1.0";
+        let result = plugin_service
+            .find_plugin_by_asset_name_and_version(name, version)
+            .await;
+
+        assert!(result.is_ok());
+        let asset = result.unwrap();
+        assert_eq!(asset.title, "GUT - Godot Unit Testing (Godot 4)");
+        assert_eq!(asset.asset_id, "1709");
+        assert_eq!(asset.version_string, "9.1.0");
+    }
+
+    #[tokio::test]
+    async fn test_find_plugin_by_asset_name_and_version_missing_name_should_return_err() {
+        let plugin_service = setup_plugin_service();
+        let name = "";
+        let version = "9.1.0";
+        let result = plugin_service
+            .find_plugin_by_asset_name_and_version(name, version)
+            .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_find_plugin_by_asset_name_and_version_missing_version_should_return_err() {
+        let plugin_service = setup_plugin_service();
+        let name = "Godot Unit Testing";
+        let version = "";
+        let result = plugin_service
+            .find_plugin_by_asset_name_and_version(name, version)
+            .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_find_plugin_by_asset_name_and_version_with_invalid_name_should_return_err() {
+        let plugin_service = setup_plugin_service();
+        let name = "NonExistentPluginXYZ123";
+        let version = "1.0.0";
+        let result = plugin_service
+            .find_plugin_by_asset_name_and_version(name, version)
+            .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_find_plugin_by_asset_name_and_version_with_invalid_version_should_return_err() {
+        let plugin_service = setup_plugin_service();
+        let name = "Godot Unit Testing";
+        let version = "0.0.1"; // Non-existent version
+        let result = plugin_service
+            .find_plugin_by_asset_name_and_version(name, version)
+            .await;
+
+        assert!(result.is_err());
+    }
+
     // get_asset_list_response_by_name_or_version
 
     #[tokio::test]
@@ -269,6 +382,10 @@ mod tests {
         godot_config_repository
             .expect_save()
             .returning(|_path| Ok(()));
+
+        godot_config_repository
+            .expect_validate_project_file()
+            .returning(|| Ok(()));
 
         godot_config_repository
             .expect_get_godot_version_from_project()
@@ -402,8 +519,6 @@ mod tests {
         assert_eq!(installed_plugins, expected_plugins);
     }
 
-    // TODO test error case for install_all_plugins
-
     // install_plugins
 
     #[tokio::test]
@@ -523,6 +638,7 @@ mod tests {
             "1234",
             "Test Plugin",
             Some("2.0.0"), // Already installed version (newer)
+            None,          // No name search needed
         );
 
         let result = plugin_service.install_plugin("", "1234", "1.5.0").await;
@@ -539,6 +655,7 @@ mod tests {
             "1234",
             "Test Plugin",
             Some("1.0.0"), // Already installed version (older)
+            None,          // No name search needed
         );
 
         let result = plugin_service.install_plugin("", "1234", "2.0.0").await;
@@ -555,6 +672,7 @@ mod tests {
             "1234",
             "Test Plugin",
             Some("1.5.0"), // Already installed version
+            None,          // No name search needed
         );
 
         let result = plugin_service.install_plugin("", "1234", "1.5.0").await;
@@ -571,6 +689,7 @@ mod tests {
             "1234",
             "Test Plugin",
             None, // Not installed
+            None, // No name search needed
         );
 
         let result = plugin_service.install_plugin("", "1234", "1.2.3").await;
@@ -587,6 +706,7 @@ mod tests {
             "1234",
             "Test Plugin",
             Some("1.0.0-beta"), // Already installed prerelease version
+            None,               // No name search needed
         );
 
         let result = plugin_service.install_plugin("", "1234", "1.0.0").await;
@@ -595,6 +715,109 @@ mod tests {
         let installed_plugins = result.unwrap();
         let plugin = installed_plugins.get("test_plugin").unwrap();
         assert_eq!(plugin.get_version(), "1.0.0");
+    }
+
+    // install_plugin with name and version
+
+    #[tokio::test]
+    async fn test_install_plugin_with_name_and_version_should_install_correct_version() {
+        let plugin_service = setup_plugin_service_with_versions(
+            "1709",
+            "GUT - Godot Unit Testing (Godot 4)",
+            None,                       // Not installed
+            Some("Godot Unit Testing"), // Enable name search
+        );
+
+        let name = "Godot Unit Testing";
+        let asset_id = "";
+        let version = "9.1.0";
+        let result = plugin_service.install_plugin(name, asset_id, version).await;
+
+        assert!(result.is_ok());
+        let installed_plugins = result.unwrap();
+        assert_eq!(installed_plugins.len(), 1);
+
+        // Verify the correct version was installed
+        let plugin = installed_plugins.get("test_plugin").unwrap();
+        assert_eq!(plugin.asset_id, "1709");
+        assert_eq!(plugin.get_version(), "9.1.0");
+    }
+
+    #[tokio::test]
+    async fn test_install_plugin_with_name_and_version_when_already_installed_newer_should_downgrade()
+     {
+        let plugin_service = setup_plugin_service_with_versions(
+            "1709",
+            "GUT - Godot Unit Testing (Godot 4)",
+            Some("9.5.0"),              // Already installed newer version
+            Some("Godot Unit Testing"), // Enable name search
+        );
+
+        let name = "Godot Unit Testing";
+        let asset_id = "";
+        let version = "9.1.0";
+        let result = plugin_service.install_plugin(name, asset_id, version).await;
+
+        assert!(result.is_ok());
+        let installed_plugins = result.unwrap();
+        let plugin = installed_plugins.get("test_plugin").unwrap();
+        assert_eq!(plugin.get_version(), "9.1.0");
+    }
+
+    #[tokio::test]
+    async fn test_install_plugin_with_name_and_version_when_already_installed_older_should_upgrade()
+    {
+        let plugin_service = setup_plugin_service_with_versions(
+            "1709",
+            "GUT - Godot Unit Testing (Godot 4)",
+            Some("9.0.0"),              // Already installed older version
+            Some("Godot Unit Testing"), // Enable name search
+        );
+
+        let name = "Godot Unit Testing";
+        let asset_id = "";
+        let version = "9.1.0";
+        let result = plugin_service.install_plugin(name, asset_id, version).await;
+
+        assert!(result.is_ok());
+        let installed_plugins = result.unwrap();
+        let plugin = installed_plugins.get("test_plugin").unwrap();
+        assert_eq!(plugin.get_version(), "9.1.0");
+    }
+
+    #[tokio::test]
+    async fn test_install_plugin_with_name_and_invalid_version_should_return_err() {
+        let plugin_service = setup_plugin_service();
+        let name = "Godot Unit Testing";
+        let asset_id = "";
+        let version = "0.0.1"; // Non-existent version
+        let result = plugin_service.install_plugin(name, asset_id, version).await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_install_plugin_with_invalid_name_and_version_should_return_err() {
+        let plugin_service = setup_plugin_service();
+        let name = "NonExistentPluginXYZ123";
+        let asset_id = "";
+        let version = "1.0.0";
+        let result = plugin_service.install_plugin(name, asset_id, version).await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_install_plugin_with_name_and_version_but_multiple_matches_should_return_err() {
+        let plugin_service = setup_plugin_service();
+        // Using a generic term that might match multiple plugins
+        let name = "unit"; // This should match multiple results
+        let asset_id = "";
+        let version = "1.0.0";
+        let result = plugin_service.install_plugin(name, asset_id, version).await;
+
+        // Should fail because find_plugin_by_id_or_name expects exactly one match
+        assert!(result.is_err());
     }
 
     // download_plugins_operation
@@ -875,6 +1098,9 @@ mod tests {
         godot_config_repository
             .expect_save()
             .returning(|_path| Ok(()));
+        godot_config_repository
+            .expect_validate_project_file()
+            .returning(|| Ok(()));
 
         let mut plugin_config_repository = MockDefaultPluginConfigRepository::default();
         plugin_config_repository
@@ -906,7 +1132,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_remove_plugin_by_name_with_nonexistent_plugin_should_return_ok() {
-        let godot_config_repository = MockDefaultGodotConfigRepository::default();
+        let mut godot_config_repository = MockDefaultGodotConfigRepository::default();
+        godot_config_repository
+            .expect_validate_project_file()
+            .returning(|| anyhow::Result::Ok(()));
 
         let mut plugin_config_repository = MockDefaultPluginConfigRepository::default();
         plugin_config_repository

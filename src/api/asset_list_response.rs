@@ -1,12 +1,12 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
-#[cfg(not(tarpaulin_include))]
+
 #[derive(serde::Deserialize, Debug)]
 pub struct AssetListResponse {
     pub result: Vec<AssetListItem>,
 }
 
-#[cfg(not(tarpaulin_include))]
+
 impl AssetListResponse {
     #[allow(unused)]
     pub fn new(result: Vec<AssetListItem>) -> AssetListResponse {
@@ -26,7 +26,7 @@ impl AssetListResponse {
     }
 }
 
-#[cfg(not(tarpaulin_include))]
+
 #[derive(Debug, serde::Deserialize)]
 pub struct AssetListItem {
     pub asset_id: String,
@@ -42,7 +42,7 @@ pub struct AssetListItem {
     pub modify_date: String,
 }
 
-#[cfg(not(tarpaulin_include))]
+
 impl AssetListItem {
     #[allow(unused, clippy::too_many_arguments)]
     pub fn new(

@@ -1,12 +1,12 @@
-use dotenv::dotenv;
+use serde::Deserialize;
 
 use std::path::Path;
 
 /// Application configuration settings
 ///
 /// Settings are loaded from environment variables using the `dotenv` crate.
-#[cfg(not(tarpaulin_include))]
-#[derive(Debug, Clone)]
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct DefaultAppConfig {
     /// API_BASE_URL environment variable
     pub api_base_url: String,
@@ -20,7 +20,6 @@ pub struct DefaultAppConfig {
     addon_folder_path: String,
 }
 
-#[cfg(not(tarpaulin_include))]
 impl DefaultAppConfig {
     #[allow(unused)]
     pub fn new(
@@ -30,44 +29,24 @@ impl DefaultAppConfig {
         godot_project_file_path: Option<String>,
         addon_folder_path: Option<String>,
     ) -> DefaultAppConfig {
-        dotenv().ok();
-
-        let api_base_url = api_base_url.unwrap_or_else(|| dotenv::var("API_BASE_URL").unwrap());
-        let config_file_path =
-            config_file_path.unwrap_or_else(|| dotenv::var("CONFIG_FILE_PATH").unwrap());
-        let cache_folder_path =
-            cache_folder_path.unwrap_or_else(|| dotenv::var("CACHE_FOLDER_PATH").unwrap());
-        let godot_project_file_path = godot_project_file_path
-            .unwrap_or_else(|| dotenv::var("GODOT_PROJECT_FILE_PATH").unwrap());
-        let addon_folder_path =
-            addon_folder_path.unwrap_or_else(|| dotenv::var("ADDON_FOLDER_PATH").unwrap());
+        dotenvy::dotenv().ok();
+        let default_app_config = envy::from_env::<DefaultAppConfig>().unwrap();
         DefaultAppConfig {
-            api_base_url,
-            config_file_path,
-            cache_folder_path,
-            godot_project_file_path,
-            addon_folder_path,
+            api_base_url: api_base_url.unwrap_or(default_app_config.api_base_url),
+            config_file_path: config_file_path.unwrap_or(default_app_config.config_file_path),
+            cache_folder_path: cache_folder_path.unwrap_or(default_app_config.cache_folder_path),
+            godot_project_file_path: godot_project_file_path
+                .unwrap_or(default_app_config.godot_project_file_path),
+            addon_folder_path: addon_folder_path.unwrap_or(default_app_config.addon_folder_path),
         }
     }
 }
 
-#[cfg(not(tarpaulin_include))]
 impl Default for DefaultAppConfig {
     fn default() -> Self {
-        dotenv().ok();
-
-        let api_base_url = dotenv::var("API_BASE_URL").unwrap();
-        let config_file_path = dotenv::var("CONFIG_FILE_PATH").unwrap();
-        let cache_folder_path = dotenv::var("CACHE_FOLDER_PATH").unwrap();
-        let godot_project_file_path = dotenv::var("GODOT_PROJECT_FILE_PATH").unwrap();
-        let addon_folder_path = dotenv::var("ADDON_FOLDER_PATH").unwrap();
-        DefaultAppConfig {
-            api_base_url,
-            config_file_path,
-            cache_folder_path,
-            godot_project_file_path,
-            addon_folder_path,
-        }
+        dotenvy::dotenv().ok();
+        envy::from_env::<DefaultAppConfig>()
+            .expect("Failed to load configuration from environment variables")
     }
 }
 
@@ -92,22 +71,12 @@ impl AppConfig for DefaultAppConfig {
 
 impl dyn AppConfig {
     #[allow(unused)]
-    #[cfg(not(tarpaulin_include))]
     fn default() -> Box<Self> {
-        dotenv().ok();
-
-        let api_base_url = dotenv::var("API_BASE_URL").unwrap();
-        let config_file_path = dotenv::var("CONFIG_FILE_PATH").unwrap();
-        let cache_folder_path = dotenv::var("CACHE_FOLDER_PATH").unwrap();
-        let godot_project_file_path = dotenv::var("GODOT_PROJECT_FILE_PATH").unwrap();
-        let addon_folder_path = dotenv::var("ADDON_FOLDER_PATH").unwrap();
-        Box::new(DefaultAppConfig {
-            api_base_url,
-            config_file_path,
-            cache_folder_path,
-            godot_project_file_path,
-            addon_folder_path,
-        })
+        dotenvy::dotenv().ok();
+        Box::new(
+            envy::from_env::<DefaultAppConfig>()
+                .expect("Failed to load configuration from environment variables"),
+        )
     }
 }
 

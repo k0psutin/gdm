@@ -122,7 +122,13 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
             .await
         {
             Ok(data) => Ok(serde_json::from_value(data)?),
-            Err(e) => Err(anyhow!("Failed to get asset by ID: {}", e)),
+            Err(e) => {
+                if e.to_string().contains("404") {
+                    Err(anyhow!("No asset found with ID '{}'", asset_id))
+                } else {
+                    Err(anyhow!("Failed to get asset by ID '{}': {}", asset_id, e))
+                }
+            }
         }
     }
 
@@ -141,6 +147,9 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
         let mut page = 0;
         loop {
             let edits_response = self.get_asset_edits_by_asset_id(asset_id, page).await?;
+            if edits_response.result.is_empty() {
+                break;
+            }
             for edit in edits_response.result.iter() {
                 if edit.version_string == version && edit.asset_id == asset_id {
                     let edit_result = self.get_asset_edit_by_edit_id(&edit.edit_id).await?;

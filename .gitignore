@@ -1,5 +1,5 @@
 /target
 /addons
-/coverage
+lcov.info
 .gdm
 addons
