@@ -7,7 +7,6 @@ pub struct DefaultCache {
 }
 
 impl DefaultCache {
-    
     pub fn new<'a>() -> &'a DefaultCache {
         let cache: Mutex<HashMap<String, String>> = {
             let mut _cache = HashMap::new();

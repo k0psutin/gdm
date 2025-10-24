@@ -2,6 +2,7 @@ use crate::plugin_config_repository::plugin::Plugin;
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
+use tracing::info;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct DefaultPluginConfig {
@@ -38,6 +39,7 @@ impl PluginConfig for DefaultPluginConfig {
         let mut _plugins = self.plugins.clone();
         for plugin_key in plugins {
             _plugins.remove(&plugin_key);
+            info!("Removed plugin: {}", plugin_key);
         }
 
         DefaultPluginConfig::new(_plugins)
@@ -47,6 +49,7 @@ impl PluginConfig for DefaultPluginConfig {
         let mut _plugins = self.plugins.clone();
         for (key, plugin) in plugins {
             _plugins.insert(key.clone(), plugin.clone());
+            info!("Added/Updated plugin: {}", key);
         }
 
         DefaultPluginConfig::new(_plugins)

@@ -1112,7 +1112,9 @@ mod tests {
             .returning(|_names| Ok(DefaultPluginConfig::default()));
 
         let mut file_service = MockDefaultFileService::default();
-        file_service.expect_file_exists().returning(|_path| true);
+        file_service
+            .expect_file_exists()
+            .returning(|_path| Ok(true));
         file_service
             .expect_remove_dir_all()
             .returning(|_path| Ok(()));

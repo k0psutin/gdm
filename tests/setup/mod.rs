@@ -4,17 +4,13 @@ use assert_cmd::Command;
 use std::fs;
 use tempfile::TempDir;
 
-/// Helper function to create a test environment with a temporary directory
-pub fn setup_test_env() -> TempDir {
+pub fn setup_test_dir() -> TempDir {
     TempDir::new().expect("Failed to create temp dir")
 }
 
-/// Helper function to get the path to the binary under test
-/// Sets up required environment variables for the application
 pub fn get_bin() -> Command {
     let mut cmd = Command::cargo_bin("gdm").expect("Failed to find binary");
 
-    // Set required environment variables
     cmd.env("API_BASE_URL", "https://godotengine.org/asset-library/api")
         .env("CONFIG_FILE_PATH", "gdm.json")
         .env("CACHE_FOLDER_PATH", ".gdm")
@@ -24,19 +20,16 @@ pub fn get_bin() -> Command {
     cmd
 }
 
-/// Helper function to create a minimal project.godot file
 pub fn create_project_godot(dir: &TempDir, content: &str) {
     let project_path = dir.path().join("project.godot");
     fs::write(project_path, content).expect("Failed to write project.godot");
 }
 
-/// Helper function to create a gdm.json file
 pub fn create_gdm_json(dir: &TempDir, content: &str) {
     let gdm_path = dir.path().join("gdm.json");
     fs::write(gdm_path, content).expect("Failed to write gdm.json");
 }
 
-/// Standard minimal project.godot content
 pub const MINIMAL_PROJECT_GODOT: &str = r#"
 ; Engine configuration file.
 ; It's best edited using the editor UI and not directly,

@@ -2,7 +2,6 @@ use crate::plugin_service::{DefaultPluginService, PluginService};
 
 use anyhow::Result;
 use clap::Args;
-use tracing::debug;
 
 #[derive(Args, Debug)]
 #[command(
@@ -18,7 +17,6 @@ pub struct AddArgs {
 }
 
 pub async fn handle(args: &AddArgs) -> Result<()> {
-    debug!("Adding plugin with args: {:?}", args);
     let plugin_service = DefaultPluginService::default();
     plugin_service
         .add_plugin_by_id_or_name_and_version(

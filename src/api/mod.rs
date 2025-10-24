@@ -230,7 +230,7 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
             self.file_service.create_directory(cache_folder)?;
         }
 
-        if self.file_service.file_exists(&filepath) {
+        if self.file_service.file_exists(&filepath)? {
             self.file_service.remove_file(&filepath)?;
         }
 
@@ -402,7 +402,7 @@ mod tests {
         mock_file_service
             .expect_file_exists()
             .with(eq(PathBuf::from("tests/mocks/cache/asset.zip")))
-            .returning(|_path| false);
+            .returning(|_path| Ok(false));
 
         mock_file_service
             .expect_create_file_async()

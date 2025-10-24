@@ -343,7 +343,7 @@ mod tests {
             .returning(|_: &Path| Ok(()));
         mock_file_service
             .expect_file_exists()
-            .returning(|_: &Path| false);
+            .returning(|_: &Path| Ok(false));
         mock_file_service
             .expect_remove_file()
             .returning(|_: &Path| Ok(()));

@@ -23,7 +23,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::task::JoinSet;
-use tracing::{debug, error, warn};
+use tracing::{error, info, warn};
 
 pub struct DefaultPluginService {
     pub godot_config_repository: Box<dyn GodotConfigRepository>,
@@ -85,6 +85,7 @@ impl PluginService for DefaultPluginService {
             .await?;
 
         self.add_plugins(&plugins)?;
+        info!("All plugins installed successfully");
         Ok(plugins)
     }
 
@@ -164,6 +165,10 @@ impl PluginService for DefaultPluginService {
             .handle_plugin_operations(Operation::Install, &plugins)
             .await?;
         self.add_plugins(&installed_plugins)?;
+        info!(
+            "Plugins installed successfully: {:?}",
+            installed_plugins.keys().collect::<Vec<_>>()
+        );
         Ok(installed_plugins)
     }
 
@@ -172,9 +177,12 @@ impl PluginService for DefaultPluginService {
         operation: Operation,
         plugins: &[AssetResponse],
     ) -> Result<BTreeMap<String, Plugin>> {
-        let downloaded_plugins = self.download_plugins_operation(operation, plugins).await?;
+        let downloaded_plugins = self
+            .download_plugins_operation(operation.clone(), plugins)
+            .await?;
         let extracted_plugins = self.extract_plugins_operation(&downloaded_plugins).await?;
         self.finish_plugins_operation(&extracted_plugins)?;
+        info!("Plugin operation {:?} completed successfully", operation);
         Ok(extracted_plugins)
     }
 
@@ -199,6 +207,7 @@ impl PluginService for DefaultPluginService {
 
         operation_manager.finish();
 
+        info!("Downloaded {} plugins successfully", result.len());
         result.into_iter().collect::<Result<Vec<Asset>>>()
     }
 
@@ -237,6 +246,7 @@ impl PluginService for DefaultPluginService {
             })
             .collect::<BTreeMap<String, Plugin>>();
 
+        info!("Extracted {} plugins successfully", installed_plugins.len());
         Ok(installed_plugins)
     }
 
@@ -247,6 +257,7 @@ impl PluginService for DefaultPluginService {
             finished_bar.finish();
         }
         operation_manager.finish();
+        info!("Finished processing {} plugins successfully", plugins.len());
         Ok(())
     }
 
@@ -269,12 +280,20 @@ impl PluginService for DefaultPluginService {
         }
 
         self.install_plugin(&_name, &_asset_id, &_version).await?;
+        info!(
+            "Plugin {} ({} {}) added successfully",
+            _name, _asset_id, _version
+        );
         Ok(())
     }
 
     fn add_plugins(&self, plugins: &BTreeMap<String, Plugin>) -> Result<()> {
         let plugin_config = self.plugin_config_repository.add_plugins(plugins)?;
         self.godot_config_repository.save(plugin_config)?;
+        info!(
+            "Added {} plugins to configuration successfully",
+            plugins.len()
+        );
         Ok(())
     }
 
@@ -284,10 +303,6 @@ impl PluginService for DefaultPluginService {
         version: &str,
     ) -> Result<AssetResponse> {
         if !name.is_empty() && !version.is_empty() {
-            debug!(
-                "Finding plugin by asset name and version: {} {}",
-                name, version
-            );
             let asset = self.find_plugin_by_id_or_name("", name).await?;
             self.find_plugin_by_asset_id_and_version(asset.asset_id, version.to_string())
                 .await
@@ -303,10 +318,6 @@ impl PluginService for DefaultPluginService {
         version: String,
     ) -> Result<AssetResponse> {
         if !asset_id.is_empty() && !version.is_empty() {
-            debug!(
-                "Finding plugin by asset ID and version: {} {}",
-                asset_id, version
-            );
             let asset = self
                 .asset_store_api
                 .get_asset_by_id_and_version(&asset_id, &version)
@@ -345,6 +356,7 @@ impl PluginService for DefaultPluginService {
                 .get_asset_by_id(&asset.asset_id)
                 .await?;
 
+            info!("Found asset: {}", asset.title);
             Ok(asset)
         } else {
             bail!("No name or asset ID provided")
@@ -365,7 +377,7 @@ impl PluginService for DefaultPluginService {
                 );
 
                 // Remove plugin directory if it exists
-                if self.file_service.file_exists(&plugin_folder_path) {
+                if self.file_service.file_exists(&plugin_folder_path)? {
                     println!(
                         "Removing plugin folder: {}",
                         plugin_folder_path.clone().display()
@@ -422,6 +434,10 @@ impl PluginService for DefaultPluginService {
             .await
             .with_context(|| "Failed to fetch latest plugins from Asset Store API")?;
 
+        info!(
+            "Fetched {} installed assets successfully",
+            fetched_assets.len()
+        );
         Ok(fetched_assets)
     }
 
@@ -441,6 +457,10 @@ impl PluginService for DefaultPluginService {
             .await
             .with_context(|| "Failed to fetch installed plugins from Asset Store API")?;
 
+        info!(
+            "Fetched {} latest assets successfully",
+            fetched_assets.len()
+        );
         Ok(fetched_assets)
     }
 
@@ -476,6 +496,7 @@ impl PluginService for DefaultPluginService {
 
             let curr = current_plugin.unwrap();
             let other = Plugin::from(asset);
+
             let has_an_update = &other > curr;
 
             if has_an_update {
@@ -505,6 +526,7 @@ impl PluginService for DefaultPluginService {
         } else {
             println!("To update plugins, use: gdm update");
         }
+        info!("Outdated plugin check completed successfully");
         Ok(())
     }
 
@@ -553,6 +575,7 @@ impl PluginService for DefaultPluginService {
         self.plugin_config_repository
             .add_plugins(&updated_plugins)?;
         println!("Plugins updated successfully.");
+        info!("Plugin update completed successfully");
         Ok(updated_plugins)
     }
 
@@ -586,6 +609,10 @@ impl PluginService for DefaultPluginService {
             ("godot_version".to_string(), version.to_string()),
         ]);
         let asset_results = self.asset_store_api.get_assets(params).await?;
+        info!(
+            "Fetched asset list response with {} results successfully",
+            asset_results.result.len()
+        );
         Ok(asset_results)
     }
 

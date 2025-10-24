@@ -9,6 +9,7 @@ use crate::plugin_config_repository::plugin_config::{DefaultPluginConfig, Plugin
 use anyhow::{Context, Result};
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
+use tracing::{debug, info};
 
 pub struct DefaultPluginConfigRepository {
     pub app_config: DefaultAppConfig,
@@ -40,16 +41,20 @@ impl DefaultPluginConfigRepository {
 #[cfg_attr(test, mockall::automock)]
 impl PluginConfigRepository for DefaultPluginConfigRepository {
     fn add_plugins(&self, plugins: &BTreeMap<String, Plugin>) -> Result<DefaultPluginConfig> {
+        debug!("Adding plugins: {:?}", plugins.keys());
         let plugin_config = self.load()?;
         let updated_plugin_config = plugin_config.add_plugins(plugins);
         self.save(&updated_plugin_config)?;
+        info!("Added plugins {:?}", updated_plugin_config.plugins.keys());
         Ok(updated_plugin_config)
     }
 
     fn remove_plugins(&self, plugin_keys: HashSet<String>) -> Result<DefaultPluginConfig> {
+        debug!("Removing plugins: {:?}", plugin_keys);
         let plugin_config = self.load()?;
         let updated_plugin_config = plugin_config.remove_plugins(plugin_keys);
         self.save(&updated_plugin_config)?;
+        info!("Removed plugins {:?}", updated_plugin_config.plugins.keys());
         Ok(updated_plugin_config)
     }
 
@@ -78,7 +83,7 @@ impl PluginConfigRepository for DefaultPluginConfigRepository {
     fn load(&self) -> Result<DefaultPluginConfig> {
         let config_file_path = self.app_config.get_config_file_path();
 
-        if !self.file_service.file_exists(config_file_path) {
+        if !self.file_service.file_exists(config_file_path)? {
             return Ok(DefaultPluginConfig::default());
         }
         let content = self.file_service.read_file_cached(config_file_path)?;
@@ -102,7 +107,10 @@ impl PluginConfigRepository for DefaultPluginConfigRepository {
         })?;
 
         self.file_service.write_file(config_file_path, &content)?;
-
+        info!(
+            "Saved plugin config with plugins: {:?}",
+            config.plugins.keys()
+        );
         Ok(content)
     }
 }
@@ -246,7 +254,7 @@ mod tests {
         mock_file_service
             .expect_file_exists()
             .with(eq(test_file_path))
-            .return_const(true);
+            .returning(|_| Ok(true));
         mock_file_service
             .expect_write_file()
             .returning(|_, _| Ok(()));

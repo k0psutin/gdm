@@ -26,11 +26,10 @@ impl Default for DefaultHttpClient {
 impl HttpClient for DefaultHttpClient {
     async fn get(&self, url: String, params: HashMap<String, String>) -> Result<Value> {
         let _url = Url::parse_with_params(&url, params)?;
-
         match reqwest::get(_url.as_str()).await {
             Ok(response) => {
                 let status = response.status();
-                info!("[GET] {} [{}]", _url, status);
+                info!("[GET] {} [{}]", _url, status.as_u16());
 
                 if !status.is_success() {
                     bail!(status);
@@ -54,7 +53,13 @@ impl HttpClient for DefaultHttpClient {
 
         match reqwest::get(_url.as_str()).await {
             Ok(response) => {
-                info!("[GET] {} [{}]", _url, response.status());
+                let status = response.status();
+                info!("[GET] {} [{}]", _url, status.as_u16());
+
+                if !status.is_success() {
+                    bail!(status);
+                }
+
                 Ok(response)
             }
             Err(e) => {

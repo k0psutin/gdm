@@ -1,15 +1,10 @@
-mod common;
+mod setup;
 
-use assert_cmd::Command;
 use predicates::prelude::*;
-
-fn get_bin() -> Command {
-    common::get_bin()
-}
 
 #[test]
 fn test_cli_no_args_shows_help() {
-    let mut cmd = get_bin();
+    let mut cmd = setup::get_bin();
     cmd.assert()
         .failure()
         .stderr(predicate::str::contains("Usage:"));
@@ -17,7 +12,7 @@ fn test_cli_no_args_shows_help() {
 
 #[test]
 fn test_cli_help_flag() {
-    let mut cmd = get_bin();
+    let mut cmd = setup::get_bin();
     cmd.arg("--help")
         .assert()
         .success()
@@ -29,7 +24,7 @@ fn test_cli_help_flag() {
 
 #[test]
 fn test_cli_version_flag() {
-    let mut cmd = get_bin();
+    let mut cmd = setup::get_bin();
     cmd.arg("--version")
         .assert()
         .success()
@@ -38,7 +33,7 @@ fn test_cli_version_flag() {
 
 #[test]
 fn test_invalid_command() {
-    let mut cmd = get_bin();
+    let mut cmd = setup::get_bin();
     cmd.arg("invalid-command")
         .assert()
         .failure()
@@ -47,31 +42,31 @@ fn test_invalid_command() {
 
 #[test]
 fn test_verbosity_flag_short() {
-    let mut cmd = get_bin();
+    let mut cmd = setup::get_bin();
     cmd.arg("-v").arg("--help").assert().success();
 }
 
 #[test]
 fn test_verbosity_flag_long() {
-    let mut cmd = get_bin();
+    let mut cmd = setup::get_bin();
     cmd.arg("--verbose").arg("--help").assert().success();
 }
 
 #[test]
 fn test_quiet_flag_short() {
-    let mut cmd = get_bin();
+    let mut cmd = setup::get_bin();
     cmd.arg("-q").arg("--help").assert().success();
 }
 
 #[test]
 fn test_quiet_flag_long() {
-    let mut cmd = get_bin();
+    let mut cmd = setup::get_bin();
     cmd.arg("--quiet").arg("--help").assert().success();
 }
 
 #[test]
 fn test_all_subcommands_listed_in_help() {
-    let mut cmd = get_bin();
+    let mut cmd = setup::get_bin();
     cmd.arg("--help")
         .assert()
         .success()

@@ -3,6 +3,7 @@ pub mod godot_config;
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use anyhow::{Result, bail};
+use tracing::{debug, error, info};
 
 use crate::app_config::{AppConfig, DefaultAppConfig};
 use crate::file_service::{DefaultFileService, FileService};
@@ -41,7 +42,12 @@ impl DefaultGodotConfigRepository {
 impl GodotConfigRepository for DefaultGodotConfigRepository {
     fn get_godot_version_from_project(&self) -> Result<String> {
         let godot_config = self.load()?;
-        godot_config.get_godot_version()
+        let godot_version = godot_config.get_godot_version()?;
+        info!(
+            "Retrieved Godot version from project: {}",
+            godot_version.clone()
+        );
+        Ok(godot_version)
     }
 
     fn plugin_root_folder_to_resource_path(&self, plugin_path: String) -> String {
@@ -64,12 +70,17 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
             })
             .collect::<Vec<String>>()
             .join(", ");
-        format!("PackedStringArray({})", joined)
+        let packed_string_array = format!("PackedStringArray({})", joined);
+        info!(
+            "Converted plugins to PackedStringArray: {}",
+            packed_string_array
+        );
+        packed_string_array
     }
 
     fn save(&self, plugin_config: DefaultPluginConfig) -> Result<()> {
         let godot_project_file_path = self.app_config.get_godot_project_file_path();
-        if !self.file_service.file_exists(godot_project_file_path) {
+        if !self.file_service.file_exists(godot_project_file_path)? {
             bail!(
                 "Godot project file not found: {}",
                 godot_project_file_path.display()
@@ -81,7 +92,7 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
 
     fn load(&self) -> Result<DefaultGodotConfig> {
         let godot_project_file_path = self.app_config.get_godot_project_file_path();
-        if !self.file_service.file_exists(godot_project_file_path) {
+        if !self.file_service.file_exists(godot_project_file_path)? {
             bail!(
                 "Godot project file not found: {}",
                 godot_project_file_path.display()
@@ -116,6 +127,10 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
         if _plugins.is_empty() {
             // If there are no plugins, we need to remove the [editor_plugins] section if it exists.
             if let Some(index) = editor_plugins_index {
+                info!(
+                    "Removing [editor_plugins] section from Godot project file: {}",
+                    self.app_config.get_godot_project_file_path().display()
+                );
                 for _ in 0..4 {
                     contents.remove(index);
                 }
@@ -225,27 +240,36 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
             .and_then(|v| v.first())
             .cloned()
             .unwrap_or_default();
-        Ok(DefaultGodotConfig::new(config_version, godot_version))
+        let godot_config = DefaultGodotConfig::new(config_version, godot_version);
+        info!("Parsed Godot config successfully");
+        Ok(godot_config)
     }
 
     fn validate_project_file(&self) -> Result<()> {
         let exists = self
             .file_service
-            .file_exists(self.app_config.get_godot_project_file_path());
+            .file_exists(self.app_config.get_godot_project_file_path())?;
         if !exists {
-            bail!(
+            error!(
                 "Godot project file not found: {}",
                 self.app_config.get_godot_project_file_path().display()
-            )
+            );
+            bail!("Godot project file not found at root")
         }
+        info!("Godot project file validated successfully");
         Ok(())
     }
 
     fn load_project_file(&self) -> Result<Vec<String>> {
+        debug!(
+            "Loading Godot project file: {}",
+            self.app_config.get_godot_project_file_path().display()
+        );
         let file = self
             .file_service
             .read_file_cached(self.app_config.get_godot_project_file_path())?;
         let lines = file.split('\n').map(|s| s.to_string()).collect::<Vec<_>>();
+        info!("Loaded Godot project file with {} lines", lines.len());
         Ok(lines)
     }
 
@@ -254,7 +278,7 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
             bail!("No content to write to the project file")
         }
         let godot_project_file_path = self.app_config.get_godot_project_file_path();
-        if !self.file_service.file_exists(godot_project_file_path) {
+        if !self.file_service.file_exists(godot_project_file_path)? {
             bail!(
                 "Godot project file not found: {}",
                 godot_project_file_path.display()
@@ -262,6 +286,10 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
         }
         self.file_service
             .write_file(godot_project_file_path, &lines.join("\n"))?;
+        info!(
+            "Godot project file saved successfully: {}",
+            godot_project_file_path.display()
+        );
         Ok(())
     }
 }
@@ -754,7 +782,9 @@ enabled=PackedStringArray("res://addons/test_plugin/plugin.cfg")
         );
 
         let mut mock_file_service = MockDefaultFileService::default();
-        mock_file_service.expect_file_exists().returning(|_| true);
+        mock_file_service
+            .expect_file_exists()
+            .returning(|_| Ok(true));
         mock_file_service
             .expect_write_file()
             .withf(|path: &Path, content: &str| {
@@ -786,7 +816,9 @@ enabled=PackedStringArray("res://addons/test_plugin/plugin.cfg")
         );
 
         let mut mock_file_service = MockDefaultFileService::default();
-        mock_file_service.expect_file_exists().returning(|_| false);
+        mock_file_service
+            .expect_file_exists()
+            .returning(|_| Ok(false));
 
         let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
 
@@ -842,7 +874,9 @@ enabled=PackedStringArray("res://addons/test_plugin/plugin.cfg")
         );
 
         let mut mock_file_service = MockDefaultFileService::default();
-        mock_file_service.expect_file_exists().returning(|_| true);
+        mock_file_service
+            .expect_file_exists()
+            .returning(|_| Ok(true));
         mock_file_service.expect_read_file_cached().returning(|_| {
             Ok(String::from(
                 "config_version=5\n\
@@ -893,7 +927,9 @@ enabled=PackedStringArray("res://addons/test_plugin/plugin.cfg")
         );
 
         let mut mock_file_service = MockDefaultFileService::default();
-        mock_file_service.expect_file_exists().returning(|_| false);
+        mock_file_service
+            .expect_file_exists()
+            .returning(|_| Ok(false));
 
         let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
 
