@@ -4,7 +4,7 @@ use predicates::prelude::*;
 
 #[test]
 fn test_add_command_help() {
-    let mut cmd = setup::get_bin();
+    let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
     cmd.arg("add")
         .arg("--help")
         .assert()
@@ -15,7 +15,7 @@ fn test_add_command_help() {
 
 #[test]
 fn test_add_command_should_return_err_requires_name_or_asset_id() {
-    let mut cmd = setup::get_bin();
+    let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
     cmd.arg("add")
         .assert()
         .failure()
@@ -26,12 +26,8 @@ fn test_add_command_should_return_err_requires_name_or_asset_id() {
 
 #[test]
 fn test_add_with_plugin_name_without_gdm_json_should_not_fail() {
-    let temp_dir = setup::setup_test_dir();
-    setup::create_project_godot(&temp_dir, setup::MINIMAL_PROJECT_GODOT);
-
-    let mut cmd = setup::get_bin();
+    let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
     let output = cmd
-        .current_dir(temp_dir.path())
         .arg("add")
         .arg("Godot Unit Testing")
         .output()
@@ -39,7 +35,7 @@ fn test_add_with_plugin_name_without_gdm_json_should_not_fail() {
 
     assert!(output.status.success());
 
-    let gdm_json_path = temp_dir.path().join("gdm.json");
+    let gdm_json_path = _temp_dir.path().join("gdm.json");
     assert!(gdm_json_path.exists(), "gdm.json should be created");
 
     let gdm_content = std::fs::read_to_string(&gdm_json_path).expect("Failed to read gdm.json");
@@ -52,7 +48,7 @@ fn test_add_with_plugin_name_without_gdm_json_should_not_fail() {
         "gdm.json should contain the correct asset_id"
     );
 
-    let addons_path = temp_dir.path().join("addons").join("gut");
+    let addons_path = _temp_dir.path().join("addons").join("gut");
     assert!(
         addons_path.exists(),
         "Plugin should be extracted to addons/gut folder"
@@ -61,12 +57,9 @@ fn test_add_with_plugin_name_without_gdm_json_should_not_fail() {
 
 #[test]
 fn test_add_with_version_flag_without_gdm_json() {
-    let temp_dir = setup::setup_test_dir();
-    setup::create_project_godot(&temp_dir, setup::MINIMAL_PROJECT_GODOT);
+    let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
 
-    let mut cmd = setup::get_bin();
     let output = cmd
-        .current_dir(temp_dir.path())
         .arg("add")
         .arg("Godot Unit Testing")
         .arg("--version")
@@ -76,7 +69,7 @@ fn test_add_with_version_flag_without_gdm_json() {
 
     assert!(output.status.success());
 
-    let gdm_json_path = temp_dir.path().join("gdm.json");
+    let gdm_json_path = _temp_dir.path().join("gdm.json");
     assert!(gdm_json_path.exists(), "gdm.json should be created");
 
     let gdm_content = std::fs::read_to_string(&gdm_json_path).expect("Failed to read gdm.json");
@@ -94,7 +87,7 @@ fn test_add_with_version_flag_without_gdm_json() {
         "gdm.json should contain the correct version"
     );
 
-    let addons_path = temp_dir.path().join("addons").join("gut");
+    let addons_path = _temp_dir.path().join("addons").join("gut");
     assert!(
         addons_path.exists(),
         "Plugin should be extracted to addons/gut folder"
@@ -103,13 +96,9 @@ fn test_add_with_version_flag_without_gdm_json() {
 
 #[test]
 fn test_add_with_bad_asset_id() {
-    let temp_dir = setup::setup_test_dir();
-    setup::create_project_godot(&temp_dir, setup::MINIMAL_PROJECT_GODOT);
-    setup::create_gdm_json(&temp_dir, setup::EMPTY_GDM_JSON);
+    let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
 
-    let mut cmd = setup::get_bin();
-    cmd.current_dir(temp_dir.path())
-        .arg("add")
+    cmd.arg("add")
         .arg("--asset-id")
         .arg("999999999")
         .assert()
@@ -121,13 +110,9 @@ fn test_add_with_bad_asset_id() {
 
 #[test]
 fn test_add_with_asset_id_and_version() {
-    let temp_dir = setup::setup_test_dir();
-    setup::create_project_godot(&temp_dir, setup::MINIMAL_PROJECT_GODOT);
-    setup::create_gdm_json(&temp_dir, setup::EMPTY_GDM_JSON);
+    let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
 
-    let mut cmd = setup::get_bin();
-    cmd.current_dir(temp_dir.path())
-        .arg("add")
+    cmd.arg("add")
         .arg("--asset-id")
         .arg("999999999")
         .arg("--version")
@@ -141,25 +126,16 @@ fn test_add_with_asset_id_and_version() {
 
 #[test]
 fn test_add_without_project_godot_fails() {
-    let temp_dir = setup::setup_test_dir();
+    let (mut cmd, _temp_dir) = setup::get_bin();
 
-    let mut cmd = setup::get_bin();
-    cmd.current_dir(temp_dir.path())
-        .arg("add")
-        .arg("Godot Unit Testing")
-        .assert()
-        .failure();
+    cmd.arg("add").arg("Godot Unit Testing").assert().failure();
 }
 
 #[test]
 fn test_add_with_nonexistent_plugin_name_fails() {
-    let temp_dir = setup::setup_test_dir();
-    setup::create_project_godot(&temp_dir, setup::MINIMAL_PROJECT_GODOT);
-    setup::create_gdm_json(&temp_dir, setup::EMPTY_GDM_JSON);
+    let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
 
-    let mut cmd = setup::get_bin();
-    cmd.current_dir(temp_dir.path())
-        .arg("add")
+    cmd.arg("add")
         .arg("This Plugin Definitely Does Not Exist 12345")
         .assert()
         .failure()
@@ -170,13 +146,9 @@ fn test_add_with_nonexistent_plugin_name_fails() {
 
 #[test]
 fn test_add_with_invalid_asset_id_fails() {
-    let temp_dir = setup::setup_test_dir();
-    setup::create_project_godot(&temp_dir, setup::MINIMAL_PROJECT_GODOT);
-    setup::create_gdm_json(&temp_dir, setup::EMPTY_GDM_JSON);
+    let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
 
-    let mut cmd = setup::get_bin();
-    cmd.current_dir(temp_dir.path())
-        .arg("add")
+    cmd.arg("add")
         .arg("--asset-id")
         .arg("999999999")
         .assert()
@@ -188,13 +160,9 @@ fn test_add_with_invalid_asset_id_fails() {
 
 #[test]
 fn test_add_with_invalid_version_fails() {
-    let temp_dir = setup::setup_test_dir();
-    setup::create_project_godot(&temp_dir, setup::MINIMAL_PROJECT_GODOT);
-    setup::create_gdm_json(&temp_dir, setup::EMPTY_GDM_JSON);
+    let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
 
-    let mut cmd = setup::get_bin();
-    cmd.current_dir(temp_dir.path())
-        .arg("add")
+    cmd.arg("add")
         .arg("Godot Unit Testing")
         .arg("--version")
         .arg("999.999.999")
@@ -207,13 +175,9 @@ fn test_add_with_invalid_version_fails() {
 
 #[test]
 fn test_add_with_both_name_and_asset_id() {
-    let temp_dir = setup::setup_test_dir();
-    setup::create_project_godot(&temp_dir, setup::MINIMAL_PROJECT_GODOT);
-    setup::create_gdm_json(&temp_dir, setup::EMPTY_GDM_JSON);
+    let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
 
-    let mut cmd = setup::get_bin();
-    cmd.current_dir(temp_dir.path())
-        .arg("add")
+    cmd.arg("add")
         .arg("Godot Unit Testing")
         .arg("--asset-id")
         .arg("67845")
@@ -226,7 +190,7 @@ fn test_add_with_both_name_and_asset_id() {
 
 #[test]
 fn test_add_missing_version_value() {
-    let mut cmd = setup::get_bin();
+    let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
     cmd.arg("add")
         .arg("plugin-name")
         .arg("--version")
@@ -237,7 +201,7 @@ fn test_add_missing_version_value() {
 
 #[test]
 fn test_add_missing_asset_id_value() {
-    let mut cmd = setup::get_bin();
+    let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
     cmd.arg("add")
         .arg("--asset-id")
         .assert()

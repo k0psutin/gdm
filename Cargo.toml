@@ -3,7 +3,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }
 
 [package]
 name = "gdm"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 description = "A CLI tool to manage Godot addons"
 authors = ["Jani Koponen"]
@@ -27,7 +27,7 @@ tokio = { version = "1.47.1", features = ["full"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 url = "2.5.7"
-zip = "5.1.1"
+zip = "6.0.0"
 
 [dev-dependencies]
 assert_cmd = "2.0"
@@ -36,4 +36,4 @@ mockall = "0.13.1"
 mockall_double = "0.3.1"
 predicates = "3.1"
 serial_test = "3.2.0"
-tempfile = "3.8"
+temp-dir = "0.1.16"

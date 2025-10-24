@@ -4,7 +4,7 @@ use predicates::prelude::*;
 
 #[test]
 fn test_remove_command_help() {
-    let mut cmd = setup::get_bin();
+    let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
     cmd.arg("remove")
         .arg("--help")
         .assert()
@@ -14,7 +14,7 @@ fn test_remove_command_help() {
 
 #[test]
 fn test_remove_command_requires_name() {
-    let mut cmd = setup::get_bin();
+    let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
     cmd.arg("remove")
         .assert()
         .failure()
@@ -25,28 +25,19 @@ fn test_remove_command_requires_name() {
 
 #[test]
 fn test_remove_without_project_godot() {
-    let temp_dir = setup::setup_test_dir();
-    let mut cmd = setup::get_bin();
+    let (mut cmd, _temp_dir) = setup::get_bin();
 
-    cmd.current_dir(temp_dir.path())
-        .arg("remove")
+    cmd.arg("remove")
         .arg("gut")
         .assert()
         .failure()
-        .stdout(predicate::str::contains(
-            "Godot project file not found at root",
-        ));
+        .stdout(predicate::str::contains("Godot project file not found"));
 }
 
 #[test]
 fn test_remove_with_empty_gdm_json() {
-    let temp_dir = setup::setup_test_dir();
-    setup::create_project_godot(&temp_dir, setup::MINIMAL_PROJECT_GODOT);
-    setup::create_gdm_json(&temp_dir, setup::EMPTY_GDM_JSON);
-
-    let mut cmd = setup::get_bin();
-    cmd.current_dir(temp_dir.path())
-        .arg("remove")
+    let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
+    cmd.arg("remove")
         .arg("gut")
         .assert()
         .success()
@@ -55,13 +46,10 @@ fn test_remove_with_empty_gdm_json() {
 
 #[test]
 fn test_remove_should_remove_from_plugin_config() {
-    let temp_dir = setup::setup_test_dir();
-    setup::create_project_godot(&temp_dir, setup::MINIMAL_PROJECT_GODOT);
-    setup::create_gdm_json(&temp_dir, setup::GDM_JSON_WITH_ONE_PLUGIN);
+    let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
+    setup::create_gdm_json(&_temp_dir, setup::GDM_JSON_WITH_ONE_PLUGIN);
 
-    let mut cmd = setup::get_bin();
-    cmd.current_dir(temp_dir.path())
-        .arg("remove")
+    cmd.arg("remove")
         .arg("gut")
         .assert()
         .success()
@@ -73,20 +61,22 @@ fn test_remove_should_remove_from_plugin_config() {
 
 #[test]
 fn test_remove_should_remove_folder() {
-    let temp_dir = setup::setup_test_dir();
-    setup::create_project_godot(&temp_dir, setup::MINIMAL_PROJECT_GODOT);
-    setup::create_gdm_json(&temp_dir, setup::GDM_JSON_WITH_ONE_PLUGIN);
+    let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
+    setup::create_gdm_json(&_temp_dir, setup::GDM_JSON_WITH_ONE_PLUGIN);
+    let addons_path = _temp_dir.child("addons");
+    let gut_path = addons_path.join("gut");
+    std::fs::create_dir(_temp_dir.child("addons")).unwrap();
+    std::fs::create_dir(gut_path.clone()).unwrap();
 
-    std::fs::create_dir_all(temp_dir.path().join("addons").join("gut")).unwrap();
+    let expected = format!(
+        "Removing plugin folder: {}",
+        gut_path.clone().into_os_string().display()
+    );
 
-    let mut cmd = setup::get_bin();
-    cmd.current_dir(temp_dir.path())
-        .arg("remove")
+    cmd.arg("remove")
         .arg("gut")
         .assert()
         .success()
-        .stdout(predicate::str::contains(
-            "Removing plugin folder: addons/gut",
-        ))
+        .stdout(predicate::str::contains(expected))
         .stdout(predicate::str::contains("Plugin gut removed successfully."));
 }

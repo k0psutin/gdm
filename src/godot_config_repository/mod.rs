@@ -254,7 +254,7 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
                 "Godot project file not found: {}",
                 self.app_config.get_godot_project_file_path().display()
             );
-            bail!("Godot project file not found at root")
+            bail!("Godot project file not found")
         }
         info!("Godot project file validated successfully");
         Ok(())

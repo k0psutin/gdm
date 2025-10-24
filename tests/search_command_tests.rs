@@ -4,7 +4,7 @@ use predicates::prelude::*;
 
 #[test]
 fn test_search_command_help() {
-    let mut cmd = setup::get_bin();
+    let (mut cmd, _temp_dir) = setup::get_bin();
     cmd.arg("search")
         .arg("--help")
         .assert()
@@ -15,7 +15,7 @@ fn test_search_command_help() {
 
 #[test]
 fn test_search_command_requires_name() {
-    let mut cmd = setup::get_bin();
+    let (mut cmd, _temp_dir) = setup::get_bin();
     cmd.arg("search")
         .assert()
         .failure()
@@ -26,9 +26,11 @@ fn test_search_command_requires_name() {
 
 #[test]
 fn test_search_with_exact_plugin_name_single_result() {
-    let mut cmd = setup::get_bin();
+    let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
+
     cmd.arg("search")
         .arg("Godot Unit Testing")
+        .arg("-vvvv")
         .timeout(std::time::Duration::from_secs(30))
         .assert()
         .success()
@@ -40,7 +42,8 @@ fn test_search_with_exact_plugin_name_single_result() {
 
 #[test]
 fn test_search_with_partial_name_multiple_results() {
-    let mut cmd = setup::get_bin();
+    let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
+
     cmd.arg("search")
         .arg("godot")
         .timeout(std::time::Duration::from_secs(30))
@@ -52,7 +55,7 @@ fn test_search_with_partial_name_multiple_results() {
 
 #[test]
 fn test_search_with_nonexistent_plugin() {
-    let mut cmd = setup::get_bin();
+    let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
     cmd.arg("search")
         .arg("ThisPluginDefinitelyDoesNotExist12345XYZ")
         .timeout(std::time::Duration::from_secs(30))
@@ -63,7 +66,7 @@ fn test_search_with_nonexistent_plugin() {
 
 #[test]
 fn test_search_with_godot_version_flag() {
-    let mut cmd = setup::get_bin();
+    let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
     cmd.arg("search")
         .arg("Godot Unit Testing")
         .arg("--godot-version")
@@ -75,7 +78,7 @@ fn test_search_with_godot_version_flag() {
 
 #[test]
 fn test_search_missing_godot_version_value() {
-    let mut cmd = setup::get_bin();
+    let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
     cmd.arg("search")
         .arg("Godot Unit Testing")
         .arg("--godot-version")
@@ -86,7 +89,7 @@ fn test_search_missing_godot_version_value() {
 
 #[test]
 fn test_search_with_empty_string_fails() {
-    let mut cmd = setup::get_bin();
+    let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
     cmd.arg("search")
         .arg("")
         .timeout(std::time::Duration::from_secs(30))
@@ -96,7 +99,7 @@ fn test_search_with_empty_string_fails() {
 
 #[test]
 fn test_search_output_shows_asset_info() {
-    let mut cmd = setup::get_bin();
+    let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
     cmd.arg("search")
         .arg("Godot Unit Testing")
         .timeout(std::time::Duration::from_secs(30))
