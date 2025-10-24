@@ -14,9 +14,9 @@
     cd gdm
     ```
 
-2. **Install tarpaulin**
+2. **Install cargo-llvm-cov**
     ```bash
-    cargo install cargo-tarpaulin
+    cargo +stable install cargo-llvm-cov --locked
     ```
 
 2. **Build the project:**
@@ -24,18 +24,14 @@
     cargo build --release
     ```
 
-3. **Run tests (optional):**
-    ```bash
-    cargo test
-    ```
-
-4. **Gather test coverage**
+3. **Run tests**
     ```bash
     cargo llvm-cov --lcov --output-path lcov.info
     ```
 
 5. **Binary location:**
-    - The compiled binary will be in `target/release/gdm`. You can also install the binary with `cargo install --path .` to compile binary to `.cargo/bin/gdm`
+    - The compiled binary will be in `target/release/gdm`. 
+    - You can also install the binary with `cargo install --path .` to compile binary to `.cargo/bin/gdm`
 
 
 ## Troubleshooting
