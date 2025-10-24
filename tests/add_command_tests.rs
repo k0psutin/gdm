@@ -24,7 +24,7 @@ fn test_add_command_should_return_err_requires_name_or_asset_id() {
     cmd.arg("add")
         .assert()
         .failure()
-        .stderr(predicate::str::contains(
+        .stdout(predicate::str::contains(
             "Either name or asset ID must be provided",
         ));
 }
@@ -119,8 +119,8 @@ fn test_add_with_bad_asset_id() {
         .arg("999999999")
         .assert()
         .failure()
-        .stderr(predicates::str::contains(
-            "Error: No asset found with ID \'999999999\'",
+        .stdout(predicates::str::contains(
+            "No asset found with asset ID \'999999999\'\n",
         ));
 }
 
@@ -139,8 +139,8 @@ fn test_add_with_asset_id_and_version() {
         .arg("999.999.999")
         .assert()
         .failure()
-        .stderr(predicates::str::contains(
-            "Error: No asset found for asset_id: 999999999 with version: 999.999.999\n",
+        .stdout(predicates::str::contains(
+            "No asset found for asset_id: 999999999 with version: 999.999.999\n",
         ));
 }
 
@@ -168,8 +168,8 @@ fn test_add_with_nonexistent_plugin_name_fails() {
         .arg("This Plugin Definitely Does Not Exist 12345")
         .assert()
         .failure()
-        .stderr(predicates::str::contains(
-            "Error: Expected to find exactly one asset matching \"This Plugin Definitely Does Not Exist 12345\", but found 0. Please refine your search or use --asset-id.\n",
+        .stdout(predicates::str::contains(
+            "No asset found with name \'This Plugin Definitely Does Not Exist 12345\'\n",
         ));
 }
 
@@ -186,8 +186,8 @@ fn test_add_with_invalid_asset_id_fails() {
         .arg("999999999")
         .assert()
         .failure()
-        .stderr(predicates::str::contains(
-            "Error: No asset found with ID \'999999999\'",
+        .stdout(predicates::str::contains(
+            "No asset found with ID \'999999999\'",
         ));
 }
 
@@ -205,8 +205,8 @@ fn test_add_with_invalid_version_fails() {
         .arg("999.999.999")
         .assert()
         .failure()
-        .stderr(predicates::str::contains(
-            "Error: No asset found for asset_id: 1709 with version: 999.999.999\n",
+        .stdout(predicates::str::contains(
+            "No asset found for asset_id: 1709 with version: 999.999.999\n",
         ));
 
     // Should fail because this version doesn't exist
@@ -226,8 +226,8 @@ fn test_add_with_both_name_and_asset_id() {
         .arg("67845")
         .assert()
         .failure()
-        .stderr(predicates::str::contains(
-            "Error: Cannot specify both name and asset ID",
+        .stdout(predicates::str::contains(
+            "Cannot specify both name and asset ID",
         ));
 }
 
@@ -239,7 +239,7 @@ fn test_add_missing_version_value() {
         .arg("--version")
         .assert()
         .failure()
-        .stderr(predicate::str::contains("a value is required"));
+        .stdout(predicate::str::contains("a value is required"));
 }
 
 #[test]
@@ -249,5 +249,5 @@ fn test_add_missing_asset_id_value() {
         .arg("--asset-id")
         .assert()
         .failure()
-        .stderr(predicate::str::contains("a value is required"));
+        .stdout(predicate::str::contains("a value is required"));
 }

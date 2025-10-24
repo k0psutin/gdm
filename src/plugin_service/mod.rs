@@ -17,7 +17,7 @@ use crate::plugin_service::operation::Operation;
 use crate::plugin_service::operation_manager::OperationManager;
 use crate::utils::Utils;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use futures::future::try_join_all;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
@@ -88,7 +88,6 @@ impl PluginService for DefaultPluginService {
         Ok(plugins)
     }
 
-    // TODO Fix --version flag for name, so we could use gdm add "plugin_name" --version "x.y.z"
     /// Installs a single plugin by its name or asset ID, and version
     async fn install_plugin(
         &self,
@@ -100,15 +99,37 @@ impl PluginService for DefaultPluginService {
         if !version.is_empty() && !asset_id.is_empty() {
             asset = self
                 .find_plugin_by_asset_id_and_version(asset_id.to_string(), version.to_string())
-                .await?;
+                .await
+                .with_context(|| {
+                    format!(
+                        "Failed to find plugin with asset ID '{}' and version '{}'",
+                        asset_id, version
+                    )
+                })?;
         } else if !name.is_empty() && !version.is_empty() {
             asset = self
                 .find_plugin_by_asset_name_and_version(name, version)
-                .await?;
+                .await
+                .with_context(|| {
+                    format!(
+                        "Failed to find plugin with name '{}' and version '{}'",
+                        name, version
+                    )
+                })?;
         } else if !name.is_empty() || !asset_id.is_empty() {
-            asset = self.find_plugin_by_id_or_name(asset_id, name).await?;
+            asset = self
+                .find_plugin_by_id_or_name(asset_id, name)
+                .await
+                .with_context(|| {
+                    let error_base = "No asset found with";
+                    if !name.is_empty() {
+                        format!("{} name '{}'", error_base, name)
+                    } else {
+                        format!("{} asset ID '{}'", error_base, asset_id)
+                    }
+                })?;
         } else {
-            return Err(anyhow!("No name or asset ID provided"));
+            bail!("No name or asset ID provided")
         }
 
         let existing_plugin = self
@@ -273,9 +294,7 @@ impl PluginService for DefaultPluginService {
                 .await
         } else {
             error!("Asset name or version is empty");
-            Err(anyhow!(
-                "Both asset name and version must be provided to search by version."
-            ))
+            bail!("Both asset name and version must be provided to search by version.")
         }
     }
 
@@ -295,10 +314,7 @@ impl PluginService for DefaultPluginService {
                 .await?;
             Ok(asset)
         } else {
-            error!("Asset ID or version is empty");
-            Err(anyhow!(
-                "Both asset ID and version must be provided to search by version."
-            ))
+            bail!("Both asset ID and version must be provided to search by version.")
         }
     }
 
@@ -332,9 +348,7 @@ impl PluginService for DefaultPluginService {
 
             Ok(asset)
         } else {
-            error!("No name or asset ID provided: {}, {}", name, asset_id);
-            println!("No name or asset ID provided");
-            Err(anyhow!("No name or asset ID provided"))
+            bail!("No name or asset ID provided")
         }
     }
 

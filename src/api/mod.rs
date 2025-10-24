@@ -18,6 +18,7 @@ use asset_response::AssetResponse;
 use indicatif::ProgressBar;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tracing::{error, warn};
 use url::Url;
 
 pub struct DefaultAssetStoreAPI {
@@ -123,19 +124,23 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
         {
             Ok(data) => Ok(serde_json::from_value(data)?),
             Err(e) => {
-                if e.to_string().contains("404") {
-                    Err(anyhow!("No asset found with ID '{}'", asset_id))
-                } else {
-                    Err(anyhow!("Failed to get asset by ID '{}': {}", asset_id, e))
-                }
+                warn!("Failed to get asset by ID '{}': {}", asset_id, e);
+                Err(anyhow!("No asset found with ID '{}'", asset_id))
             }
         }
     }
 
     async fn get_assets(&self, params: HashMap<String, String>) -> Result<AssetListResponse> {
-        match self.http_client.get(self.get_url("/asset"), params).await {
+        match self
+            .http_client
+            .get(self.get_url("/asset"), params.clone())
+            .await
+        {
             Ok(data) => Ok(serde_json::from_value(data)?),
-            Err(e) => Err(anyhow!("Failed to get assets: {}", e)),
+            Err(e) => {
+                warn!("Failed to get assets with params {:?}: {}", params, e);
+                Err(anyhow!("Failed to get assets"))
+            }
         }
     }
 
@@ -185,7 +190,13 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
             .await
         {
             Ok(data) => Ok(serde_json::from_value(data)?),
-            Err(e) => Err(anyhow!("Failed to get assets: {}", e)),
+            Err(e) => {
+                warn!("Failed to get asset edits for asset ID {}: {}", asset_id, e);
+                Err(anyhow!(
+                    "Failed to get asset edits for asset ID {}",
+                    asset_id
+                ))
+            }
         }
     }
 
@@ -196,7 +207,10 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
             .await
         {
             Ok(data) => Ok(serde_json::from_value(data)?),
-            Err(e) => Err(anyhow!("Failed to get assets: {}", e)),
+            Err(e) => {
+                warn!("Failed to get asset edit by edit ID {}: {}", edit_id, e); // TODO check how could I disable error! from loggin without -v 
+                Err(anyhow!("Failed to get asset edit by edit ID {}", edit_id))
+            }
         }
     }
 

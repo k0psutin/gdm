@@ -5,18 +5,17 @@ use std::fs;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
+use tracing::error;
 
 use crate::app_config::AppConfig;
 use crate::app_config::DefaultAppConfig;
 use crate::file_service::{DefaultFileService, FileService};
 use crate::utils::Utils;
 
-
 pub struct DefaultExtractService {
     pub file_service: Box<dyn FileService + Send + Sync + 'static>,
     pub app_config: DefaultAppConfig,
 }
-
 
 impl DefaultExtractService {
     #[allow(unused)]
@@ -30,7 +29,6 @@ impl DefaultExtractService {
         }
     }
 }
-
 
 impl Default for DefaultExtractService {
     fn default() -> Self {
@@ -104,7 +102,16 @@ impl ExtractService for DefaultExtractService {
     ) -> anyhow::Result<()> {
         let file = self.file_service.open(file_path)?;
 
-        let mut archive = zip::ZipArchive::new(file)?;
+        let zip = zip::ZipArchive::new(file);
+        if zip.is_err() {
+            let error = zip.err().unwrap();
+            error!("Error extracting zip archive: {:?}", error);
+            return Err(anyhow!(
+                "Failed to extract zip archive file: {:?}",
+                file_path
+            ));
+        }
+        let mut archive = zip.unwrap();
         let file_count = archive.file_names().count();
         pb_task.set_length(file_count as u64);
 
