@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{Result, bail};
 use indicatif::ProgressBar;
 use std::collections::HashSet;
 use std::fs;
@@ -74,11 +74,11 @@ impl ExtractService for DefaultExtractService {
                 }
                 paths.insert(path);
             } else if file.is_file() && path.iter().count() == 1 {
-                return Err(anyhow!("Invalid archive structure: no root folder"));
+                bail!("Invalid archive structure: no root folder")
             }
         }
         if paths.is_empty() {
-            return Err(anyhow!("No directories found in the archive"));
+            bail!("No directories found in the archive")
         }
         let path = paths.iter().next().unwrap();
         let addons_index = path.iter().position(|p| p == "addons");
@@ -106,10 +106,7 @@ impl ExtractService for DefaultExtractService {
         if zip.is_err() {
             let error = zip.err().unwrap();
             error!("Error extracting zip archive: {:?}", error);
-            return Err(anyhow!(
-                "Failed to extract zip archive file: {:?}",
-                file_path
-            ));
+            bail!("Failed to extract zip archive file: {:?}", file_path)
         }
         let mut archive = zip.unwrap();
         let file_count = archive.file_names().count();

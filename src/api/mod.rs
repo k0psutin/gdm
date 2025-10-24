@@ -12,13 +12,13 @@ use crate::extract_service::{DefaultExtractService, ExtractService};
 use crate::file_service::{DefaultFileService, FileService};
 use crate::http_client::{DefaultHttpClient, HttpClient};
 
-use anyhow::{Result, anyhow};
+use anyhow::{Result, bail};
 use asset_list_response::AssetListResponse;
 use asset_response::AssetResponse;
 use indicatif::ProgressBar;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{error, warn};
+use tracing::error;
 use url::Url;
 
 pub struct DefaultAssetStoreAPI {
@@ -124,8 +124,8 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
         {
             Ok(data) => Ok(serde_json::from_value(data)?),
             Err(e) => {
-                warn!("Failed to get asset by ID '{}': {}", asset_id, e);
-                Err(anyhow!("No asset found with ID '{}'", asset_id))
+                error!("Failed to get asset by ID '{}': {}", asset_id, e);
+                bail!("No asset found with ID '{}'", asset_id)
             }
         }
     }
@@ -138,8 +138,8 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
         {
             Ok(data) => Ok(serde_json::from_value(data)?),
             Err(e) => {
-                warn!("Failed to get assets with params {:?}: {}", params, e);
-                Err(anyhow!("Failed to get assets"))
+                error!("Failed to get assets with params {:?}: {}", params, e);
+                bail!("Failed to get assets")
             }
         }
     }
@@ -167,11 +167,11 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
             }
             page += 1;
         }
-        Err(anyhow!(
+        bail!(
             "No asset found for asset_id: {} with version: {}",
             asset_id,
             version
-        ))
+        )
     }
 
     async fn get_asset_edits_by_asset_id(
@@ -191,11 +191,8 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
         {
             Ok(data) => Ok(serde_json::from_value(data)?),
             Err(e) => {
-                warn!("Failed to get asset edits for asset ID {}: {}", asset_id, e);
-                Err(anyhow!(
-                    "Failed to get asset edits for asset ID {}",
-                    asset_id
-                ))
+                error!("Failed to get asset edits for asset ID {}: {}", asset_id, e);
+                bail!("Failed to get asset edits for asset ID {}", asset_id)
             }
         }
     }
@@ -208,8 +205,8 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
         {
             Ok(data) => Ok(serde_json::from_value(data)?),
             Err(e) => {
-                warn!("Failed to get asset edit by edit ID {}: {}", edit_id, e); // TODO check how could I disable error! from loggin without -v 
-                Err(anyhow!("Failed to get asset edit by edit ID {}", edit_id))
+                error!("Failed to get asset edit by edit ID {}: {}", edit_id, e); // TODO check how could I disable error! from loggin without -v 
+                bail!("Failed to get asset edit by edit ID {}", edit_id)
             }
         }
     }
@@ -259,7 +256,7 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
                     asset.clone(),
                 ))
             }
-            Err(e) => Err(anyhow!("Failed to fetch file: {}", e)),
+            Err(e) => bail!("Failed to fetch file: {}", e),
         }
     }
 }

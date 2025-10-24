@@ -2,7 +2,7 @@ pub mod godot_config;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use anyhow::{Result, anyhow};
+use anyhow::{Result, bail};
 
 use crate::app_config::{AppConfig, DefaultAppConfig};
 use crate::file_service::{DefaultFileService, FileService};
@@ -70,10 +70,10 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
     fn save(&self, plugin_config: DefaultPluginConfig) -> Result<()> {
         let godot_project_file_path = self.app_config.get_godot_project_file_path();
         if !self.file_service.file_exists(godot_project_file_path) {
-            return Err(anyhow!(
+            bail!(
                 "Godot project file not found: {}",
                 godot_project_file_path.display()
-            ));
+            )
         }
         let lines = self.update_project_file(plugin_config)?;
         self.save_project_file(lines)
@@ -82,10 +82,10 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
     fn load(&self) -> Result<DefaultGodotConfig> {
         let godot_project_file_path = self.app_config.get_godot_project_file_path();
         if !self.file_service.file_exists(godot_project_file_path) {
-            return Err(anyhow!(
+            bail!(
                 "Godot project file not found: {}",
                 godot_project_file_path.display()
-            ));
+            )
         }
         self.read_godot_project_file()
     }
@@ -167,7 +167,7 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
             }
         }
 
-        Err(anyhow!("Failed to update plugins in Godot project file"))
+        bail!("Failed to update plugins in Godot project file")
     }
 
     /// Parses project.godot file and gathers plugins, config_version, and godot_version
@@ -233,10 +233,10 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
             .file_service
             .file_exists(self.app_config.get_godot_project_file_path());
         if !exists {
-            return Err(anyhow!(
+            bail!(
                 "Godot project file not found: {}",
                 self.app_config.get_godot_project_file_path().display()
-            ));
+            )
         }
         Ok(())
     }
@@ -251,14 +251,14 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
 
     fn save_project_file(&self, lines: Vec<String>) -> Result<()> {
         if lines.is_empty() {
-            return Err(anyhow!("No content to write to the project file"));
+            bail!("No content to write to the project file")
         }
         let godot_project_file_path = self.app_config.get_godot_project_file_path();
         if !self.file_service.file_exists(godot_project_file_path) {
-            return Err(anyhow!(
+            bail!(
                 "Godot project file not found: {}",
                 godot_project_file_path.display()
-            ));
+            )
         }
         self.file_service
             .write_file(godot_project_file_path, &lines.join("\n"))?;

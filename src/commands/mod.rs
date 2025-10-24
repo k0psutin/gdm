@@ -8,6 +8,7 @@ mod update;
 use anyhow::Result;
 
 use clap::{Parser, Subcommand};
+use clap_verbosity_flag::{OffLevel, Verbosity};
 
 use crate::commands::{
     add::AddArgs, install::InstallArgs, outdated::OutdatedArgs, remove::RemoveArgs,
@@ -21,7 +22,7 @@ pub struct Cli {
     pub command: Commands,
 
     #[command(flatten)]
-    pub verbosity: clap_verbosity_flag::Verbosity,
+    pub verbosity: Verbosity<OffLevel>,
 }
 
 #[derive(Subcommand)]

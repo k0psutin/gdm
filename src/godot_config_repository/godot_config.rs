@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -41,10 +41,7 @@ impl DefaultGodotConfig {
         match self.get_config_version() {
             5 => Ok("4.5".to_string()),
             4 => Ok("3.6".to_string()),
-            _ => Err(anyhow!(
-                "Unsupported config_version: {}",
-                self.get_config_version()
-            )),
+            _ => bail!("Unsupported config_version: {}", self.get_config_version()),
         }
     }
 }

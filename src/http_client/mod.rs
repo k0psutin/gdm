@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Result, bail};
 use reqwest::Response;
 use serde_json::Value;
 use tracing::{error, info};
@@ -44,7 +44,7 @@ impl HttpClient for DefaultHttpClient {
                     Some(status) => error!("[GET] {} [{}] - Error: {}", _url, status, e),
                     None => error!("[GET] {} - Error: {}", _url, e),
                 }
-                Err(anyhow!("Failed to fetch data: {}", e))
+                bail!("Failed to fetch data: {}", e)
             }
         }
     }
@@ -62,7 +62,7 @@ impl HttpClient for DefaultHttpClient {
                     Some(status) => error!("[GET] {} [{}] - Error: {}", _url, status, e),
                     None => error!("[GET] {} - Error: {}", _url, e),
                 }
-                Err(anyhow!("Failed to fetch file: {}", e))
+                bail!("Failed to fetch file: {}", e)
             }
         }
     }

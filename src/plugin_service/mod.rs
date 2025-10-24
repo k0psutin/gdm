@@ -17,7 +17,7 @@ use crate::plugin_service::operation::Operation;
 use crate::plugin_service::operation_manager::OperationManager;
 use crate::utils::Utils;
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Error, Result, bail};
 use futures::future::try_join_all;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
@@ -195,8 +195,7 @@ impl PluginService for DefaultPluginService {
                 .spawn(async move { asset_store_api.download_asset(&asset, pb_task).await });
         }
 
-        let result: Vec<std::result::Result<Asset, anyhow::Error>> =
-            download_tasks.join_all().await;
+        let result: Vec<std::result::Result<Asset, Error>> = download_tasks.join_all().await;
 
         operation_manager.finish();
 
@@ -262,11 +261,11 @@ impl PluginService for DefaultPluginService {
         let _version = version.unwrap_or_default();
 
         if _name.is_empty() && _asset_id.is_empty() {
-            return Err(anyhow!("Either name or asset ID must be provided."));
+            bail!("Either name or asset ID must be provided.")
         }
 
         if !_name.is_empty() && !_asset_id.is_empty() {
-            return Err(anyhow!("Cannot specify both name and asset ID."));
+            bail!("Cannot specify both name and asset ID.")
         }
 
         self.install_plugin(&_name, &_asset_id, &_version).await?;
@@ -334,11 +333,11 @@ impl PluginService for DefaultPluginService {
             let asset_results = self.asset_store_api.get_assets(params).await?;
 
             if asset_results.result.len() != 1 {
-                return Err(anyhow!(
+                bail!(
                     "Expected to find exactly one asset matching \"{}\", but found {}. Please refine your search or use --asset-id.",
                     name,
                     asset_results.result.len()
-                ));
+                )
             }
             let asset = asset_results.result.first().unwrap();
             let asset = self
@@ -567,13 +566,13 @@ impl PluginService for DefaultPluginService {
             .get_godot_version_from_project()?;
 
         if name.is_empty() {
-            return Err(anyhow!("No name provided"));
+            bail!("No name provided")
         }
 
         if version.is_empty() && parsed_version.is_empty() {
-            return Err(anyhow!(
+            bail!(
                 "Couldn't determine Godot version from project.godot. Please provide a version using --godot-version."
-            ));
+            );
         }
 
         let version = if version.is_empty() {
