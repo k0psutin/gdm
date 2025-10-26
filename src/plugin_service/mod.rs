@@ -71,11 +71,9 @@ impl DefaultPluginService {
 impl PluginService for DefaultPluginService {
     async fn install_all_plugins(&self) -> Result<BTreeMap<String, Plugin>> {
         self.godot_config_repository.validate_project_file()?;
-        let plugins = self.plugin_config_repository.get_plugins()?;
 
-        if plugins.is_empty() {
-            println!("No plugins installed.");
-            return Ok(BTreeMap::new());
+        if !self.plugin_config_repository.has_installed_plugins()? {
+            bail!("No plugins installed.");
         }
 
         let assets: Vec<AssetResponse> = self.fetch_installed_assets().await?;
@@ -366,6 +364,11 @@ impl PluginService for DefaultPluginService {
     /// Removes a plugin by its folder name, e.g. "gut"
     async fn remove_plugin_by_name(&self, name: &str) -> Result<()> {
         self.godot_config_repository.validate_project_file()?;
+
+        if !self.plugin_config_repository.has_installed_plugins()? {
+            bail!("No plugins installed.");
+        }
+
         let installed_plugin = self.plugin_config_repository.get_plugin_key_by_name(name);
         let addon_folder = self.app_config.get_addon_folder_path();
 
@@ -469,12 +472,11 @@ impl PluginService for DefaultPluginService {
     /// Plugin                  Current    Latest
     /// some_plugin             1.5.0      1.6.0 (update available)
     async fn check_outdated_plugins(&self) -> Result<()> {
-        let plugins = self.plugin_config_repository.get_plugins()?;
-
-        if plugins.is_empty() {
-            println!("No plugins installed.");
-            return Ok(());
+        if !self.plugin_config_repository.has_installed_plugins()? {
+            bail!("No plugins installed.");
         }
+
+        let plugins = self.plugin_config_repository.get_plugins()?;
 
         let installed_plugins = self.fetch_latest_assets().await?;
 
@@ -537,8 +539,7 @@ impl PluginService for DefaultPluginService {
         let plugins = self.plugin_config_repository.get_plugins()?;
 
         if plugins.is_empty() {
-            println!("No plugins installed.");
-            return Ok(BTreeMap::new());
+            bail!("No plugins installed.");
         }
 
         let installed_plugins = self.fetch_latest_assets().await?;

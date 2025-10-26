@@ -1,3 +1,4 @@
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -412,6 +413,10 @@ mod tests {
         plugin_config_repository
             .expect_get_plugin_by_asset_id()
             .returning(|_asset_id| None);
+
+        plugin_config_repository
+            .expect_has_installed_plugins()
+            .returning(|| Ok(true));
 
         let app_config = DefaultAppConfig::default();
         let mut extract_service = MockDefaultExtractService::default();
@@ -926,6 +931,10 @@ mod tests {
             .expect_remove_plugins()
             .returning(|_plugin_names| Ok(DefaultPluginConfig::default()));
 
+        plugin_config_repository
+            .expect_has_installed_plugins()
+            .returning(|| Ok(true));
+
         let app_config = DefaultAppConfig::default();
         let mut extract_service = MockDefaultExtractService::default();
 
@@ -1121,6 +1130,9 @@ mod tests {
         plugin_config_repository
             .expect_remove_plugins()
             .returning(|_names| Ok(DefaultPluginConfig::default()));
+        plugin_config_repository
+            .expect_has_installed_plugins()
+            .returning(|| Ok(true));
 
         let mut file_service = MockDefaultFileService::default();
         file_service
@@ -1155,6 +1167,10 @@ mod tests {
             .expect_get_plugin_key_by_name()
             .with(eq("nonexistent"))
             .returning(|_name| None);
+
+        plugin_config_repository
+            .expect_has_installed_plugins()
+            .returning(|| Ok(true));
 
         let plugin_service = DefaultPluginService::new(
             Box::new(godot_config_repository),

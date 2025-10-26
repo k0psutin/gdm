@@ -80,6 +80,12 @@ impl PluginConfigRepository for DefaultPluginConfigRepository {
         Ok(plugin_config.plugins.clone())
     }
 
+    fn has_installed_plugins(&self) -> Result<bool> {
+        let plugins = self.get_plugins()?;
+
+        Ok(!plugins.is_empty())
+    }
+
     fn load(&self) -> Result<DefaultPluginConfig> {
         let config_file_path = self.app_config.get_config_file_path();
 
@@ -120,10 +126,12 @@ pub trait PluginConfigRepository {
     fn get_plugin_by_asset_id(&self, asset_id: &str) -> Option<Plugin>;
     fn get_plugin_key_by_name(&self, name: &str) -> Option<String>;
     fn get_plugins(&self) -> Result<BTreeMap<String, Plugin>>;
+    fn has_installed_plugins(&self) -> Result<bool>;
     fn load(&self) -> Result<DefaultPluginConfig>;
     fn remove_plugins(&self, plugin_keys: HashSet<String>) -> Result<DefaultPluginConfig>;
     fn save(&self, config: &DefaultPluginConfig) -> Result<String>;
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -484,5 +492,41 @@ mod tests {
                 "{\n  \"plugins\": {\n    \"plugin_1\": {\n      \"asset_id\": \"54321\",\n      \"title\": \"Awesome Plugin\",\n      \"version\": \"1.0.0\",\n      \"license\": \"MIT\"\n    },\n    \"plugin_2\": {\n      \"asset_id\": \"12345\",\n      \"title\": \"Super Plugin\",\n      \"version\": \"2.1.3\",\n      \"license\": \"MIT\"\n    }\n  }\n}"
             )
         );
+    }
+
+    // has_installed_plugins
+
+    #[test]
+    fn test_has_installed_plugins_should_return_true_if_plugins_exist() {
+        let app_config = DefaultAppConfig::new(
+            None,
+            Some(String::from("tests/mocks/gdm.json")),
+            None,
+            None,
+            None,
+        );
+        let plugin_config_repository =
+            DefaultPluginConfigRepository::new(app_config, Arc::new(DefaultFileService));
+        let result = plugin_config_repository.has_installed_plugins();
+        assert!(result.is_ok());
+        let has_plugins = result.unwrap();
+        assert!(has_plugins);
+    }
+
+    #[test]
+    fn test_has_installed_plugins_should_return_false_if_plugins_do_not_exist() {
+        let app_config = DefaultAppConfig::new(
+            None,
+            Some(String::from("tests/mocks/gdm_non_existent.json")),
+            None,
+            None,
+            None,
+        );
+        let plugin_config_repository =
+            DefaultPluginConfigRepository::new(app_config, Arc::new(DefaultFileService));
+        let result = plugin_config_repository.has_installed_plugins();
+        assert!(result.is_ok());
+        let has_plugins = result.unwrap();
+        assert!(!has_plugins);
     }
 }

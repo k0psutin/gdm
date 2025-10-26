@@ -45,8 +45,10 @@ pub trait Cache {
     fn get(&self, key: &str) -> Option<String>;
     fn insert(&self, key: &str, value: &str);
     #[cfg(test)]
+    #[allow(dead_code)]
     fn clear(&self);
 }
+
 
 #[cfg(test)]
 mod tests {

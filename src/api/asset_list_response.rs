@@ -1,11 +1,9 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
-
 #[derive(serde::Deserialize, Debug)]
 pub struct AssetListResponse {
     pub result: Vec<AssetListItem>,
 }
-
 
 impl AssetListResponse {
     #[allow(unused)]
@@ -26,7 +24,6 @@ impl AssetListResponse {
     }
 }
 
-
 #[derive(Debug, serde::Deserialize)]
 pub struct AssetListItem {
     pub asset_id: String,
@@ -41,7 +38,6 @@ pub struct AssetListItem {
     pub version_string: String,
     pub modify_date: String,
 }
-
 
 impl AssetListItem {
     #[allow(unused, clippy::too_many_arguments)]
@@ -104,6 +100,7 @@ Asset URL: https://godotengine.org/asset-library/asset/{}",
         )
     }
 }
+
 
 #[cfg(test)]
 mod tests {

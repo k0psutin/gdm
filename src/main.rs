@@ -25,7 +25,7 @@ async fn main() -> Result<()> {
     match result {
         Ok(_) => Ok(()),
         Err(e) => {
-            println!("{}", e);
+            eprintln!("{}", e);
             std::process::exit(1);
         }
     }

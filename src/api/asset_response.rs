@@ -2,7 +2,6 @@ use crate::api::asset_edit_response::AssetEditResponse;
 
 use serde::{Deserialize, Serialize};
 
-
 #[derive(Debug, Serialize, Default, Deserialize, Clone, PartialEq)]
 pub struct AssetResponse {
     pub asset_id: String,
@@ -39,7 +38,6 @@ impl From<AssetEditResponse> for AssetResponse {
     }
 }
 
-
 impl AssetResponse {
     #[allow(unused, clippy::too_many_arguments)]
     pub fn new(
@@ -72,6 +70,7 @@ impl AssetResponse {
         }
     }
 }
+
 
 #[cfg(test)]
 mod tests {

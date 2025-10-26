@@ -70,7 +70,6 @@ impl FileService for DefaultFileService {
     }
 
     async fn write_all_async(&self, file: &mut tokio::fs::File, chunk: &Bytes) -> Result<()> {
-        debug!("Writing all to async file");
         tokio::io::AsyncWriteExt::write_all(&mut *file, chunk)
             .await
             .with_context(|| "Failed to write to async file")?;

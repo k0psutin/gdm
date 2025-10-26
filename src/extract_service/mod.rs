@@ -99,7 +99,7 @@ impl ExtractService for DefaultExtractService {
         file_path: &Path,
         destination: &Path,
         pb_task: ProgressBar,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         let file = self.file_service.open(file_path)?;
 
         let zip = zip::ZipArchive::new(file);
@@ -125,15 +125,15 @@ impl ExtractService for DefaultExtractService {
             let extract_path = outpath.as_path();
 
             if file.is_dir() {
-                self.file_service.create_directory(extract_path).unwrap();
+                self.file_service.create_directory(extract_path)?;
             } else {
                 if let Some(p) = outpath.parent()
                     && !p.exists()
                 {
-                    self.file_service.create_directory(p).unwrap();
+                    self.file_service.create_directory(p)?;
                 }
-                let mut outfile = self.file_service.create_file(extract_path).unwrap();
-                io::copy(&mut file, &mut outfile).unwrap();
+                let mut outfile = self.file_service.create_file(extract_path)?;
+                io::copy(&mut file, &mut outfile)?;
             }
             // Get and Set permissions
             #[cfg(unix)]
@@ -141,7 +141,7 @@ impl ExtractService for DefaultExtractService {
                 use std::os::unix::fs::PermissionsExt;
 
                 if let Some(mode) = file.unix_mode() {
-                    fs::set_permissions(&outpath, fs::Permissions::from_mode(mode)).unwrap();
+                    fs::set_permissions(&outpath, fs::Permissions::from_mode(mode))?;
                 }
             }
         }

@@ -18,6 +18,7 @@ use asset_response::AssetResponse;
 use indicatif::ProgressBar;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
 use tracing::error;
 use url::Url;
 
@@ -245,6 +246,7 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
             self.file_service.write_all_async(&mut file, &chunk).await?;
         }
 
+        file.flush().await?;
         pb_task.finish_and_clear();
 
         match res.error_for_status() {
