@@ -127,10 +127,7 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
         if _plugins.is_empty() {
             // If there are no plugins, we need to remove the [editor_plugins] section if it exists.
             if let Some(index) = editor_plugins_index {
-                info!(
-                    "Removing [editor_plugins] section from Godot project file: {}",
-                    self.app_config.get_godot_project_file_path().display()
-                );
+                info!("Removing [editor_plugins] section from Godot project file");
                 for _ in 0..4 {
                     contents.remove(index);
                 }
@@ -148,36 +145,41 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
         };
 
         if let Some(plugin_index) = plugin_index {
+            debug!(
+                "Updating existing [editor_plugins] section with plugins: {:?}",
+                plugin_config.plugins.keys().cloned()
+            );
             contents[plugin_index] =
                 format!("enabled={}", self.plugins_to_packed_string_array(_plugins));
             return Ok(contents);
         }
 
+        info!("Adding [editor_plugins] section to Godot project file");
+
+        let editor_plugins_section = vec![
+            "[editor_plugins]".to_string(),
+            "".to_string(),
+            format!("enabled={}", self.plugins_to_packed_string_array(_plugins)),
+            "".to_string(),
+        ];
+
         // If [editor_plugins] section doesn't exists, we need to add it to the project file.
         // I _think_ it should be added alphabetically, but I'm not 100% sure.
         for i in 0..contents.len() {
             let line = &contents[i];
+            // Checks if the line is a section header and if it's alphabetically after [editor_plugins]
             if line.starts_with("[")
                 && line.ends_with("]")
                 && line.to_lowercase().cmp(&"[editor_plugins]".to_string())
                     == std::cmp::Ordering::Greater
             {
-                let new_lines = vec![
-                    "[editor_plugins]".to_string(),
-                    "".to_string(),
-                    format!("enabled={}", self.plugins_to_packed_string_array(_plugins)),
-                    "".to_string(),
-                ];
-                contents.splice(i..i, new_lines);
+                debug!("Inserting [editor_plugins] section before section {}", line);
+                contents.splice(i..i, editor_plugins_section);
                 return Ok(contents);
+                // If we reach the end of the file, we need to add the section at the end.
             } else if i == contents.len() - 1 {
-                let new_lines = vec![
-                    "[editor_plugins]".to_string(),
-                    "".to_string(),
-                    format!("enabled={}", self.plugins_to_packed_string_array(_plugins)),
-                    "".to_string(),
-                ];
-                contents.extend(new_lines);
+                debug!("Appending [editor_plugins] section to the end of the file");
+                contents.extend(editor_plugins_section);
                 return Ok(contents);
             }
         }
@@ -305,7 +307,6 @@ pub trait GodotConfigRepository {
     fn load_project_file(&self) -> Result<Vec<String>>;
     fn save_project_file(&self, lines: Vec<String>) -> Result<()>;
 }
-
 
 #[cfg(test)]
 mod tests {
