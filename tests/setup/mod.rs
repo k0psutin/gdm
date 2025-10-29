@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
-use assert_cmd::Command;
+use assert_cmd::pkg_name;
+use assert_cmd::{Command, cargo};
 use std::fs;
 use temp_dir::TempDir;
 
@@ -10,7 +11,7 @@ pub fn setup_test_dir() -> TempDir {
 
 pub fn get_bin() -> (Command, TempDir) {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let mut cmd = Command::cargo_bin("gdm").expect("Failed to find binary");
+    let mut cmd = cargo::cargo_bin_cmd!(pkg_name!());
 
     cmd.env("API_BASE_URL", "https://godotengine.org/asset-library/api")
         .env("CONFIG_FILE_PATH", temp_dir.child("gdm.json"))
