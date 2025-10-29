@@ -6,10 +6,6 @@ on:
     paths-ignore:
       - '**/*.md'
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
     build:
         strategy:
@@ -53,6 +49,14 @@ jobs:
           id: coverage
           run: |
             echo "COVERAGE=$(cargo llvm-cov report -q --summary-only | awk '/^TOTAL/ { print $4 }' | sed 's/%//')" >> "$GITHUB_OUTPUT"
+        - name: Generate Markdown Report
+          uses: DeepuGeorgeJacob/lcov-markdown-reporter@v1 
+          id: lcov_report
+          with:
+            lcov-file: lcov.info
+            output-file: coverage_report.md
+        - name: Append Report to Job Summary
+          run: cat coverage_report.md >> $GITHUB_STEP_SUMMARY
         - name: Compare coverage to previous coverage
           if: fromJson(steps.coverage.outputs.COVERAGE) < fromJson(steps.gist_content.outputs.content).coverage
           run: |
