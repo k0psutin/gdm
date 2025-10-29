@@ -49,14 +49,14 @@ jobs:
           id: coverage
           run: |
             echo "COVERAGE=$(cargo llvm-cov report -q --summary-only | awk '/^TOTAL/ { print $4 }' | sed 's/%//')" >> "$GITHUB_OUTPUT"
-        - name: Generate Markdown Report
-          uses: DeepuGeorgeJacob/lcov-markdown-reporter@v1 
-          id: lcov_report
+        - name: Generate Markdown coverage report
+          run: |
+            cargo llvm-cov report --summary-only --json | jq -r '("# LCOV Coverage summary for PR\n", "| File | Covered | Total | Percent |\n|------|---------|-------|---------|", (.data[0].files[] | "| " + (.filename | split("/") | last) + " | " + (.summary.lines.covered|tostring) + " | " + (.summary.lines.count|tostring) + " | " + (.summary.lines.percent|tostring) + "% |"), "", "| Metric    | Covered | Total | Percent |", "|-----------|---------|-------|---------|", "| Lines     | \(.data[0].totals.lines.covered) | \(.data[0].totals.lines.count) | \(.data[0].totals.lines.percent)% |", "| Functions | \(.data[0].totals.functions.covered) | \(.data[0].totals.functions.count) | \(.data[0].totals.functions.percent)% |", "| Regions   | \(.data[0].totals.regions.covered) | \(.data[0].totals.regions.count) | \(.data[0].totals.regions.percent)% |")' > report.md
+        - name: Add coverage report to PR
+          uses: marocchino/sticky-pull-request-comment@v2
           with:
-            lcov-file: lcov.info
-            output-file: coverage_report.md
-        - name: Append Report to Job Summary
-          run: cat coverage_report.md >> $GITHUB_STEP_SUMMARY
+            recreate: true
+            path: report.md
         - name: Compare coverage to previous coverage
           if: fromJson(steps.coverage.outputs.COVERAGE) < fromJson(steps.gist_content.outputs.content).coverage
           run: |
