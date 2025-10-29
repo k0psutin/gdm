@@ -1,6 +1,5 @@
 mod setup;
 
-
 mod cli_basic_tests {
     use crate::setup;
     use predicates::prelude::*;

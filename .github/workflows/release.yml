@@ -1,0 +1,74 @@
+name: release
+on:
+ release:
+    types:
+    - created
+
+jobs:
+  linux_windows:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout the repository
+      uses: actions/checkout@v2
+    
+    - name: Install Linux and Windows Cross Compilers
+      run: sudo apt-get update && sudo apt-get install --yes musl-tools gcc-mingw-w64-x86-64-win32
+
+    - name: Install Linux and Windows targets
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        target: |
+          x86_64-unknown-linux-musl
+          x86_64-pc-windows-gnu
+    
+    - name: Build the executable
+      run: cargo build --release --target x86_64-unknown-linux-musl --target x86_64-pc-windows-gnu
+
+    - name: Tar x86_64 binary
+      run: tar -czvf gdm-gnu-linux-x86_64.tar.gz -C target/x86_64-unknown-linux-musl/release gdm
+
+    - name: Zip windows binary
+      run: zip -j gdm-windows.zip target/x86_64-pc-windows-gnu/release/gdm.exe
+
+    - name: Generate SHA256 checksums
+      run: |
+        shasum -a 256 gdm-gnu-linux-x86_64.tar.gz > gdm-gnu-linux-x86_64.tar.gz.sha256
+        shasum -a 256 gdm-windows.zip > gdm-windows.zip.sha256
+    - name: Upload release binaries
+      uses: alexellis/upload-assets@0.4.0
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      with:
+        asset_paths: '["gdm-gnu-linux-x86_64.tar.gz", "gdm-windows.zip", "gdm-gnu-linux-x86_64.tar.gz.sha256", "gdm-windows.zip.sha256"]'
+  macos:
+    runs-on: macos-latest
+    steps:
+    - name: Checkout the repository
+      uses: actions/checkout@v2
+
+    - name: Install Linux and Windows targets
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        target: |
+          x86_64-apple-darwin
+          aarch64-apple-darwin
+
+    - name: Build the executable
+      run: cargo build --release --target=x86_64-apple-darwin --target=aarch64-apple-darwin
+
+    - name: Tar x86_64 binary
+      run: tar -czvf gdm-gnu-apple-x86_64.tar.gz -C target/x86_64-apple-darwin/release gdm
+
+    - name: Tar aarch64 binary
+      run: tar -czvf gdm-gnu-apple-aarch64.tar.gz -C target/aarch64-apple-darwin/release gdm
+
+    - name: Generate SHA256 checksums
+      run: |
+        shasum -a 256 gdm-gnu-apple-x86_64.tar.gz > gdm-gnu-apple-x86_64.tar.gz.sha256
+        shasum -a 256 gdm-gnu-apple-aarch64.tar.gz > gdm-gnu-apple-aarch64.tar.gz.sha256
+    - name: Upload release binaries
+      uses: alexellis/upload-assets@0.4.0
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      with:
+        asset_paths: '["gdm-gnu-apple-x86_64.tar.gz", "gdm-gnu-apple-aarch64.tar.gz", "gdm-gnu-apple-x86_64.tar.gz.sha256", "gdm-gnu-apple-aarch64.tar.gz.sha256"]'

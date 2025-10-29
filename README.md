@@ -1,3 +1,6 @@
+![Version Badge](https://img.shields.io/badge/version-1.0.0-blue) ![Coverage](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fgist.githubusercontent.com%2Fk0psutin%2F02a7627bd5ba7bdaaf0063e02cadcfde%2Fraw%2F7cf2de6525c551d8d68af57847fbb9713323a6a3%2Fgdm_coverage.json&query=%24.coverage&suffix=%25&label=coverage&color=green)
+
+
 # GD Manager (gdm)
 
 **GD Manager** (`gdm`) is a CLI tool for managing Godot plugin dependencies.

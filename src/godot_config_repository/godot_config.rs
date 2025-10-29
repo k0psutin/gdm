@@ -46,7 +46,6 @@ impl DefaultGodotConfig {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

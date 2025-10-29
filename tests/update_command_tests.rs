@@ -1,6 +1,5 @@
 mod setup;
 
-
 mod update_command_tests {
     use crate::setup;
 

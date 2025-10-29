@@ -63,7 +63,6 @@ impl Plugin {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

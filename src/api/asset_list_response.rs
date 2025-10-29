@@ -101,7 +101,6 @@ Asset URL: https://godotengine.org/asset-library/asset/{}",
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

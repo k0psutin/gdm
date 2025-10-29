@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::asset_response::AssetResponse;
 
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AssetEditResponse {
     pub edit_id: String,
@@ -15,7 +14,6 @@ pub struct AssetEditResponse {
     pub download_url: String,
     pub original: AssetResponse,
 }
-
 
 impl AssetEditResponse {
     #[allow(unused, clippy::too_many_arguments)]

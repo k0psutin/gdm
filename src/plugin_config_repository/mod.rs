@@ -132,7 +132,6 @@ pub trait PluginConfigRepository {
     fn save(&self, config: &DefaultPluginConfig) -> Result<String>;
 }
 
-
 #[cfg(test)]
 mod tests {
     use std::path::Path;

@@ -55,7 +55,6 @@ impl OperationManager {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

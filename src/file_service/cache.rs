@@ -49,7 +49,6 @@ pub trait Cache {
     fn clear(&self);
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

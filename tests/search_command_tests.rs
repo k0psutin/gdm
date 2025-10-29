@@ -1,6 +1,5 @@
 mod setup;
 
-
 mod search_command_tests {
     use crate::setup;
 

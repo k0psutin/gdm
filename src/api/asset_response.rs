@@ -71,7 +71,6 @@ impl AssetResponse {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -63,7 +63,6 @@ pub trait PluginConfig {
     fn add_plugins(&self, plugins: &BTreeMap<String, Plugin>) -> DefaultPluginConfig;
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

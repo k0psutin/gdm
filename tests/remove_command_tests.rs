@@ -1,6 +1,5 @@
 mod setup;
 
-
 mod remove_command_tests {
     use crate::setup;
 
