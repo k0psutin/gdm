@@ -17,7 +17,7 @@ clap-verbosity-flag = { version = "3.0.4", default-features = false, features = 
 dotenvy = "0.15.7"
 envy = "0.4.2"
 futures = "0.3.31"
-indicatif = "0.18.0"
+indicatif = "0.18.2"
 openssl = { version = "0.10.74", features = ["vendored"] }
 regex = "1.12.2"
 reqwest = { version = "0.12.24", features = ["json"] }
