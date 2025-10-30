@@ -12,6 +12,7 @@ concurrency:
 
 jobs:
     coverage:
+        name: Report Code Coverage
         runs-on: ubuntu-latest
         permissions:
           contents: read
@@ -42,6 +43,7 @@ jobs:
             github-token: ${{ secrets.GITHUB_TOKEN }}
             update-comment: true
     build:
+        name: Lint and Build
         needs: coverage
         strategy:
           matrix:
