@@ -32,25 +32,15 @@ jobs:
             action: "get"
             gist_id: "02a7627bd5ba7bdaaf0063e02cadcfde"
             file_name: "gdm_coverage.json"
-        - name: Generate code coverage
-          id: coverage
-          run: |
-            echo "COVERAGE=$(cargo llvm-cov report -q --summary-only | awk '/^TOTAL/ { print $4 }' | sed 's/%//')" >> "$GITHUB_OUTPUT"
-        - name: Generate Markdown coverage report
-          run: |
-            cargo llvm-cov report --summary-only --json | jq -r '("# LCOV Coverage summary for PR\n", "| File | Covered | Total | Percent |\n|------|---------|-------|---------|", (.data[0].files[] | "| " + (.filename | split("/") | last) + " | " + (.summary.lines.covered|tostring) + " | " + (.summary.lines.count|tostring) + " | " + (.summary.lines.percent|tostring) + "% |"), "", "| Metric    | Covered | Total | Percent |", "|-----------|---------|-------|---------|", "| Lines     | \(.data[0].totals.lines.covered) | \(.data[0].totals.lines.count) | \(.data[0].totals.lines.percent)% |", "| Functions | \(.data[0].totals.functions.covered) | \(.data[0].totals.functions.count) | \(.data[0].totals.functions.percent)% |", "| Regions   | \(.data[0].totals.regions.covered) | \(.data[0].totals.regions.count) | \(.data[0].totals.regions.percent)% |")' > report.md
-        - name: Add coverage report to PR
-          uses: marocchino/sticky-pull-request-comment@v2
+        - name: Setup LCOV
+          uses: hrishikesh-kadam/setup-lcov@v1
+        - name: Report code coverage
+          uses: zgosalvez/github-actions-report-lcov@v4
           with:
-            recreate: true
-            path: report.md
-        - name: Compare coverage to previous coverage
-          if: fromJson(steps.coverage.outputs.COVERAGE) < fromJson(steps.gist_content.outputs.content).coverage
-          run: |
-            echo "Current coverage: ${{ steps.coverage.outputs.COVERAGE }}%" >> $GITHUB_STEP_SUMMARY
-            echo "Previous coverage: ${{ steps.gist_content.outputs.content }}%" >> $GITHUB_STEP_SUMMARY
-            echo "Code coverage decreased. Failing the check."
-            exit 1
+            coverage-files: lcov.info
+            minimum-coverage: ${{ fromJson(steps.gist_content.outputs.content).coverage }}
+            github-token: ${{ secrets.GITHUB_TOKEN }}
+            update-comment: true
     build:
         needs: coverage
         strategy:
