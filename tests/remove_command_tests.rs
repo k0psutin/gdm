@@ -81,16 +81,13 @@ mod remove_command_tests {
         std::fs::create_dir(_temp_dir.child("addons")).unwrap();
         std::fs::create_dir(gut_path.clone()).unwrap();
 
-        let expected = format!(
-            "Removing plugin folder: {}",
-            gut_path.clone().into_os_string().display()
-        );
-
         cmd.arg("remove")
             .arg("gut")
             .assert()
             .success()
-            .stdout(predicate::str::contains(expected))
+            .stdout(predicate::str::contains(
+                "Removing plugin folder: addons/gut",
+            ))
             .stdout(predicate::str::contains("Plugin gut removed successfully."));
     }
 }

@@ -3,9 +3,6 @@ use serde::Deserialize;
 use std::path::Path;
 
 /// Application configuration settings
-///
-/// Settings are loaded from environment variables using the `dotenv` crate.
-
 #[derive(Debug, Clone, Deserialize)]
 pub struct DefaultAppConfig {
     /// API_BASE_URL environment variable
@@ -29,24 +26,26 @@ impl DefaultAppConfig {
         godot_project_file_path: Option<String>,
         addon_folder_path: Option<String>,
     ) -> DefaultAppConfig {
-        dotenvy::dotenv().ok();
-        let default_app_config = envy::from_env::<DefaultAppConfig>().unwrap();
         DefaultAppConfig {
-            api_base_url: api_base_url.unwrap_or(default_app_config.api_base_url),
-            config_file_path: config_file_path.unwrap_or(default_app_config.config_file_path),
-            cache_folder_path: cache_folder_path.unwrap_or(default_app_config.cache_folder_path),
-            godot_project_file_path: godot_project_file_path
-                .unwrap_or(default_app_config.godot_project_file_path),
-            addon_folder_path: addon_folder_path.unwrap_or(default_app_config.addon_folder_path),
+            api_base_url: api_base_url
+                .unwrap_or("https://godotengine.org/asset-library/api".to_string()),
+            config_file_path: config_file_path.unwrap_or("gdm.json".to_string()),
+            cache_folder_path: cache_folder_path.unwrap_or(".gdm".to_string()),
+            godot_project_file_path: godot_project_file_path.unwrap_or("project.godot".to_string()),
+            addon_folder_path: addon_folder_path.unwrap_or("addons".to_string()),
         }
     }
 }
 
 impl Default for DefaultAppConfig {
     fn default() -> Self {
-        dotenvy::dotenv().ok();
-        envy::from_env::<DefaultAppConfig>()
-            .expect("Failed to load configuration from environment variables")
+        DefaultAppConfig {
+            api_base_url: "https://godotengine.org/asset-library/api".to_string(),
+            config_file_path: "gdm.json".to_string(),
+            cache_folder_path: ".gdm".to_string(),
+            godot_project_file_path: "project.godot".to_string(),
+            addon_folder_path: "addons".to_string(),
+        }
     }
 }
 
@@ -72,11 +71,7 @@ impl AppConfig for DefaultAppConfig {
 impl dyn AppConfig {
     #[allow(unused)]
     fn default() -> Box<Self> {
-        dotenvy::dotenv().ok();
-        Box::new(
-            envy::from_env::<DefaultAppConfig>()
-                .expect("Failed to load configuration from environment variables"),
-        )
+        Box::new(DefaultAppConfig::default())
     }
 }
 
