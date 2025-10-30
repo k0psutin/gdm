@@ -69,7 +69,7 @@ impl ExtractService for DefaultExtractService {
             let file = archive.by_index(i).unwrap();
             let path = file.mangled_name().iter().skip(1).collect::<PathBuf>();
             if file.is_dir() {
-                if path == PathBuf::from("addons") || path == PathBuf::from("") {
+                if path == Path::new("addons") || path.as_os_str().is_empty() {
                     continue;
                 }
                 paths.insert(path);
