@@ -15,8 +15,6 @@ async-trait = "0.1.89"
 bytes = "1.10.1"
 clap = { version = "4.5.51", features = ["derive"] }
 clap-verbosity-flag = { version = "3.0.4", default-features = false, features = ["tracing"] }
-dotenvy = "0.15.7"
-envy = "0.4.2"
 futures = "0.3.31"
 indicatif = "0.18.2"
 regex = "1.12.2"
