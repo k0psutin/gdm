@@ -1,4 +1,4 @@
-Output gdm_remove.gif
+Output ./gifs/gdm_remove.gif
 
 Require echo
 

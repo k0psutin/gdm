@@ -1,4 +1,4 @@
-Output gdm_outdated.gif
+Output ./gifs/gdm_outdated.gif
 
 Require echo
 

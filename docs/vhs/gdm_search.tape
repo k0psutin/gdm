@@ -1,4 +1,4 @@
-Output gdm_search.gif
+Output ./gifs/gdm_search.gif
 
 Require echo
 

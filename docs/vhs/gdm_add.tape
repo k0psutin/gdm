@@ -1,4 +1,4 @@
-Output ../gifs/gdm_add.gif
+Output ./gifs/gdm_add.gif
 
 Require echo
 
