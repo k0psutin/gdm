@@ -7,7 +7,13 @@
 
 > NOTE: docs folder already includes `project.godot` and `gdm.json` to fiddle with.
 
-## Updating gifs
+## Update all .gifs
+
+```bash
+./generate_gifs.sh
+```
+
+## Updating a single .gif
 
 To update a specific `.gif` go to `docs` and run related `.tape`:
 ```bash
