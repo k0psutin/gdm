@@ -11,8 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-    coverage:
-        name: Report Code Coverage
+    checks:
         runs-on: ubuntu-latest
         permissions:
           contents: read
@@ -20,6 +19,14 @@ jobs:
         steps:
         - uses: actions/checkout@v5
         - uses: actions-rust-lang/setup-rust-toolchain@v1
+          with:
+            components: |
+                clippy
+                rustfmt
+        - name: Run clippy
+          run: cargo clippy -- -D warnings
+        - name: Rustfmt Check
+          uses: actions-rust-lang/rustfmt@v1
         - name: Install cargo-llvm-cov
           uses: taiki-e/install-action@cargo-llvm-cov
         - name: Generate code coverage
@@ -43,8 +50,7 @@ jobs:
             github-token: ${{ secrets.GITHUB_TOKEN }}
             update-comment: true
     build:
-        name: Lint and Build
-        needs: coverage
+        needs: checks
         strategy:
           matrix:
             os: [ubuntu-latest, macos-latest, windows-latest]
@@ -52,13 +58,5 @@ jobs:
         steps:
         - uses: actions/checkout@v5
         - uses: actions-rust-lang/setup-rust-toolchain@v1
-          with:
-            components: |
-                clippy
-                rustfmt
-        - name: Run clippy
-          run: cargo clippy -- -D warnings
-        - name: Rustfmt Check
-          uses: actions-rust-lang/rustfmt@v1
         - name: Build
           run: cargo build --release
