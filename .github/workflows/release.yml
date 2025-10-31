@@ -25,21 +25,21 @@ jobs:
       run: cargo build --release --target x86_64-unknown-linux-musl --target x86_64-pc-windows-gnu
 
     - name: Tar x86_64 binary
-      run: tar -czvf gdm-gnu-linux-x86_64.tar.gz -C target/x86_64-unknown-linux-musl/release gdm
+      run: tar -czvf gdm-linux-x86_64.tar.gz -C target/x86_64-unknown-linux-musl/release gdm
 
     - name: Zip windows binary
       run: zip -j gdm-windows.zip target/x86_64-pc-windows-gnu/release/gdm.exe
 
     - name: Generate SHA256 checksums
       run: |
-        shasum -a 256 gdm-gnu-linux-x86_64.tar.gz > gdm-gnu-linux-x86_64.tar.gz.sha256
+        shasum -a 256 gdm-linux-x86_64.tar.gz > gdm-gnu-linux-x86_64.tar.gz.sha256
         shasum -a 256 gdm-windows.zip > gdm-windows.zip.sha256
     - name: Upload release binaries
       uses: alexellis/upload-assets@0.4.0
       env:
         GITHUB_TOKEN: ${{ github.token }}
       with:
-        asset_paths: '["gdm-gnu-linux-x86_64.tar.gz", "gdm-windows.zip", "gdm-gnu-linux-x86_64.tar.gz.sha256", "gdm-windows.zip.sha256"]'
+        asset_paths: '["gdm-linux-x86_64.tar.gz", "gdm-windows.zip", "gdm-linux-x86_64.tar.gz.sha256", "gdm-windows.zip.sha256"]'
   macos:
     runs-on: macos-latest
     steps:
@@ -57,18 +57,18 @@ jobs:
       run: cargo build --release --target=x86_64-apple-darwin --target=aarch64-apple-darwin
 
     - name: Tar x86_64 binary
-      run: tar -czvf gdm-apple-x86_64.tar.gz -C target/x86_64-apple-darwin/release gdm
+      run: tar -czvf gdm-macos-x86_64.tar.gz -C target/x86_64-apple-darwin/release gdm
 
     - name: Tar aarch64 binary
-      run: tar -czvf gdm-apple-aarch64.tar.gz -C target/aarch64-apple-darwin/release gdm
+      run: tar -czvf gdm-macos-aarch64.tar.gz -C target/aarch64-apple-darwin/release gdm
 
     - name: Generate SHA256 checksums
       run: |
-        shasum -a 256 gdm-apple-x86_64.tar.gz > gdm-apple-x86_64.tar.gz.sha256
-        shasum -a 256 gdm-apple-aarch64.tar.gz > gdm-apple-aarch64.tar.gz.sha256
+        shasum -a 256 gdm-macos-x86_64.tar.gz > gdm-macos-x86_64.tar.gz.sha256
+        shasum -a 256 gdm-macos-aarch64.tar.gz > gdm-macos-aarch64.tar.gz.sha256
     - name: Upload release binaries
       uses: alexellis/upload-assets@0.4.0
       env:
         GITHUB_TOKEN: ${{ github.token }}
       with:
-        asset_paths: '["gdm-apple-x86_64.tar.gz", "gdm-apple-aarch64.tar.gz", "gdm-apple-x86_64.tar.gz.sha256", "gdm-apple-aarch64.tar.gz.sha256"]'
+        asset_paths: '["gdm-macos-x86_64.tar.gz", "gdm-macos-aarch64.tar.gz", "gdm-macos-x86_64.tar.gz.sha256", "gdm-macos-aarch64.tar.gz.sha256"]'

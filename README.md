@@ -50,7 +50,7 @@ This makes `gdm` available from any terminal window.
 ##### Linux
 
 ```bash
-tar -xzf gdm-gnu-linux-x86_64.tar.gz
+tar -xzf gdm-linux-x86_64.tar.gz
 sudo mv gdm /usr/local/bin/
 ```
 
@@ -61,7 +61,7 @@ Extract the `gdm-windows.zip` file and move `gdm.exe` to a folder in your `PATH`
 ##### macOS
 
 ```bash
-tar -xzf gdm-apple-aarch64.tar.gz
+tar -xzf gdm-macos-aarch64.tar.gz
 sudo mv gdm /usr/local/bin/
 ```
 

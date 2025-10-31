@@ -58,5 +58,7 @@ jobs:
         steps:
         - uses: actions/checkout@v5
         - uses: actions-rust-lang/setup-rust-toolchain@v1
+        - name: Test
+          run: cargo test
         - name: Build
           run: cargo build --release
