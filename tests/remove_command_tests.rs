@@ -1,7 +1,7 @@
 mod setup;
 
 mod remove_command_tests {
-    use std::path::PathBuf;
+    use std::path::Path;
 
     use crate::setup;
 
@@ -83,7 +83,7 @@ mod remove_command_tests {
         std::fs::create_dir(_temp_dir.child("addons")).unwrap();
         std::fs::create_dir(gut_path.clone()).unwrap();
 
-        let expected_directory = PathBuf::from("addons/gut");
+        let expected_directory = Path::new("addons").join("gut");
 
         cmd.arg("remove")
             .arg("gut")
@@ -91,7 +91,7 @@ mod remove_command_tests {
             .success()
             .stdout(predicate::str::contains(format!(
                 "Removing plugin folder: {}",
-                expected_directory.as_os_str().to_str().unwrap()
+                expected_directory.display()
             )))
             .stdout(predicate::str::contains("Plugin gut removed successfully."));
     }
