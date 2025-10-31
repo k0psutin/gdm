@@ -91,7 +91,7 @@ mod remove_command_tests {
             .success()
             .stdout(predicate::str::contains(format!(
                 "Removing plugin folder: {}",
-                expected_directory.as_os_str().display()
+                expected_directory.as_os_str().to_str().unwrap()
             )))
             .stdout(predicate::str::contains("Plugin gut removed successfully."));
     }
