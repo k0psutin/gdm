@@ -1,6 +1,8 @@
 mod setup;
 
 mod remove_command_tests {
+    use std::path::PathBuf;
+
     use crate::setup;
 
     use predicates::prelude::*;
@@ -81,13 +83,16 @@ mod remove_command_tests {
         std::fs::create_dir(_temp_dir.child("addons")).unwrap();
         std::fs::create_dir(gut_path.clone()).unwrap();
 
+        let expected_directory = PathBuf::from("addons/gut");
+
         cmd.arg("remove")
             .arg("gut")
             .assert()
             .success()
-            .stdout(predicate::str::contains(
-                "Removing plugin folder: addons/gut",
-            ))
+            .stdout(predicate::str::contains(format!(
+                "Removing plugin folder: {}",
+                expected_directory.as_os_str().display()
+            )))
             .stdout(predicate::str::contains("Plugin gut removed successfully."));
     }
 }
