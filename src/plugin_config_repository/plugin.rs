@@ -343,4 +343,28 @@ mod tests {
         assert_eq!(original, deserialized);
         assert_eq!(deserialized.version, Version::parse("3.2.1-alpha").unwrap());
     }
+
+    #[test]
+    fn test_plugin_deserialize_v_prefix_version() {
+        let json = r#"{
+            "asset_id": "101",
+            "title": "V Prefix Plugin",
+            "version": "v7.3.4",
+            "license": "BSD-2-Clause"
+        }"#;
+        let deserialized: Plugin = serde_json::from_str(json).unwrap();
+        assert_eq!(deserialized.version, Version::parse("7.3.4").unwrap());
+    }
+
+    #[test]
+    fn test_plugin_deserialize_v_prefix_version_with_build_metadata() {
+        let json = r#"{
+            "asset_id": "101",
+            "title": "V Prefix Plugin",
+            "version": "v7.3.4 (26)",
+            "license": "BSD-2-Clause"
+        }"#;
+        let deserialized: Plugin = serde_json::from_str(json).unwrap();
+        assert_eq!(deserialized.version, Version::parse("7.3.4").unwrap());
+    }
 }
