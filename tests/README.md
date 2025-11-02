@@ -1,10 +1,11 @@
 # Tests
 
-## Prerequisites
+## Requirements
 
 - [Rust](https://www.rust-lang.org/tools/install) (latest stable version)
 - [Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html) (comes with Rust)
 - [llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) for test coverage
+- [CodeLLDB](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb) for debugging (VSCode extension)
 
 ## Test structuring
 

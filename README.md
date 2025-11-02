@@ -5,6 +5,11 @@
 
 **GD Manager** (`gdm`) is a CLI tool for managing Godot plugin dependencies.
 
+## Supported Godot versions
+
+- 3.6.x
+- 4.5.x
+
 ## Asset Management and Caching
 
 The `gdm` CLI uses a `.gdm` directory in your project as a cache for downloaded plugin assets. This folder temporarily stores assets before they are extracted and used by your project.
