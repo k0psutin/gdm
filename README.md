@@ -10,11 +10,9 @@
 - 3.6.x
 - 4.5.x
 
-## Asset Management and Caching
+## Temporary directory
 
-The `gdm` CLI uses a `.gdm` directory in your project as a cache for downloaded plugin assets. This folder temporarily stores assets before they are extracted and used by your project.
-
-Since `.gdm` is managed automatically (assets are downloaded and removed as needed), you should add `.gdm` to your `.gitignore` file to avoid committing cached or temporary files to version control.
+CLI creates a `.gdm` directory, where it will temporarily keep the downloaded compressed assets. You can add the `.gdm` directory to `.gitignore` to keep it away from the version control:
 
 **Example `.gitignore` entry:**
 ```bash
@@ -25,7 +23,9 @@ Since `.gdm` is managed automatically (assets are downloaded and removed as need
 
 When using `gdm`, all plugin additions and removals should be performed through the CLI tool. Directly editing the `project.godot` file to add or remove plugins is not supported and may result in inconsistencies or overwritten changes.
 
-`gdm` manages the `[plugin]` section of your `project.godot` file automatically. Any manual changes to plugin entries in this file may be lost the next time you run a `gdm` command that modifies plugins. Always use `gdm add` or `gdm remove` to ensure your project stays in sync and your plugin configuration is preserved correctly.
+`gdm` manages the `[editor_plugins]` section of your `project.godot` file automatically. Any manual changes to plugin entries in this file may be lost the next time you run a `gdm` command that modifies plugins. Always use `gdm add` or `gdm remove` to ensure your project stays in sync and your plugin configuration is preserved correctly.
+
+> There is no way to migrate previously installed plugins to `gdm`. Suggested way is to reinstall all plugins via `gdm` to keep `gdm.json` and `project.godot` in sync.
 
 ## Features
 
