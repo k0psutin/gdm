@@ -3,8 +3,6 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - '**/*.md'
 
 concurrency:
   group: '${{ github.workflow }}-${{ github.head_ref }}'
@@ -16,14 +14,24 @@ jobs:
         runs-on: ubuntu-latest
         steps:
         - uses: actions/checkout@v5
+        - uses: dorny/paths-filter@v2.2.1
+          id: filter
+          with:
+            filters: |
+              rs:
+                - '**/*.rs'
         - uses: actions-rust-lang/setup-rust-toolchain@v1
+          if: ${{ steps.filter.outputs.rs == 'true' }}
         - name: Install cargo-llvm-cov
+          if: ${{ steps.filter.outputs.rs == 'true' }}
           uses: taiki-e/install-action@cargo-llvm-cov
         - name: Generate code coverage
+          if: ${{ steps.filter.outputs.rs == 'true' }}
           id: coverage
           run: |
             echo "COVERAGE=$(cargo llvm-cov -q --summary-only | awk '/^TOTAL/ { print $4 }' | sed 's/%//')" >> "$GITHUB_OUTPUT"
         - name: Update gist
+          if: ${{ steps.filter.outputs.rs == 'true' }}
           uses: gorgbus/gist-actions@main
           env:
             GITHUB_TOKEN: ${{ secrets.GIST_TOKEN }}
