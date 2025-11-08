@@ -73,8 +73,8 @@ impl ExtractService for DefaultExtractService {
                     continue;
                 }
                 paths.insert(path);
-            } else if file.is_file() && path.iter().count() == 1 {
-                bail!("Invalid archive structure: no root folder")
+            } else {
+                continue;
             }
         }
         if paths.is_empty() {
@@ -192,6 +192,7 @@ mod tests {
 
     use super::*;
     use serial_test::serial;
+
     // get_root_directory_name_from_archive
 
     #[test]
@@ -224,15 +225,67 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[test]
+    #[serial]
+    fn test_get_root_directory_name_from_archive_with_addons_folder_with_root_files() {
+        let extract = DefaultExtractService::default();
+        let file =
+            fs::File::open("tests/mocks/zip_files/test_with_addons_folder_with_root_files.zip")
+                .unwrap();
+        let mut archive = zip::ZipArchive::new(file).unwrap();
+        let root_dir = extract.get_root_directory_name_from_archive(&mut archive);
+        assert_eq!(root_dir.unwrap(), PathBuf::from("some_plugin"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_root_directory_name_from_archive_with_addons_folder_with_extra_addons_files() {
+        let extract = DefaultExtractService::default();
+        let file = fs::File::open(
+            "tests/mocks/zip_files/test_with_addons_folder_with_extra_addons_files.zip",
+        )
+        .unwrap();
+        let mut archive = zip::ZipArchive::new(file).unwrap();
+        let root_dir = extract.get_root_directory_name_from_archive(&mut archive);
+        assert_eq!(root_dir.unwrap(), PathBuf::from("some_plugin"));
+    }
+
     // extract_zip_file
 
     #[test]
     #[serial]
-    fn test_extract_zip_file() {
+    fn test_extract_zip_file_with_addons_folder() {
         let extract = DefaultExtractService::default();
         let pb_task = ProgressBar::new(5000000);
         let result = extract.extract_zip_file(
             Path::new("tests/mocks/zip_files/test_with_addons_folder.zip"),
+            Path::new("tests/addons"),
+            pb_task,
+        );
+        assert!(result.is_ok());
+        fs::remove_dir_all("tests/addons").unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn test_extract_zip_file_with_extra_addons_files() {
+        let extract = DefaultExtractService::default();
+        let pb_task = ProgressBar::new(5000000);
+        let result = extract.extract_zip_file(
+            Path::new("tests/mocks/zip_files/test_with_addons_folder_with_extra_addons_files.zip"),
+            Path::new("tests/addons"),
+            pb_task,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn test_extract_zip_file_with_root_files() {
+        let extract = DefaultExtractService::default();
+        let pb_task = ProgressBar::new(5000000);
+        let result = extract.extract_zip_file(
+            Path::new("tests/mocks/zip_files/test_with_addons_folder_with_root_files.zip"),
             Path::new("tests/addons"),
             pb_task,
         );
