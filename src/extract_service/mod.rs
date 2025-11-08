@@ -43,6 +43,7 @@ impl Default for DefaultExtractService {
 #[async_trait::async_trait]
 impl ExtractService for DefaultExtractService {
     fn create_extract_path(&self, root: PathBuf, path: PathBuf) -> PathBuf {
+        // TODO: Modify to return Option<PathBuf> and return None if path is outside expected structure
         let index = path.iter().skip(1).position(|p| p == "addons");
         match index {
             Some(i) => {
@@ -116,13 +117,18 @@ impl ExtractService for DefaultExtractService {
             let mut file = archive.by_index(i)?;
             pb_task.inc(1);
             let outpath = match file.enclosed_name() {
-                Some(path) => {
-                    self.create_extract_path(destination.to_path_buf(), path.to_path_buf())
-                }
+                Some(path) => self.create_extract_path(destination.to_path_buf(), path),
                 None => continue,
             };
 
             let extract_path = outpath.as_path();
+
+            if !file.is_dir() && extract_path.is_dir() {
+                // If we have a file that is outside the expected structure, skip it
+                // E.g., .zip file contains file /some-file.txt at root level.
+                // See [create_extract_path] TODO comment
+                continue;
+            }
 
             if file.is_dir() {
                 self.file_service.create_directory(extract_path)?;
@@ -262,8 +268,8 @@ mod tests {
             Path::new("tests/addons"),
             pb_task,
         );
-        assert!(result.is_ok());
         fs::remove_dir_all("tests/addons").unwrap();
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -276,6 +282,7 @@ mod tests {
             Path::new("tests/addons"),
             pb_task,
         );
+        fs::remove_dir_all("tests/addons").unwrap();
         assert!(result.is_ok());
     }
 
@@ -289,8 +296,8 @@ mod tests {
             Path::new("tests/addons"),
             pb_task,
         );
-        assert!(result.is_ok());
         fs::remove_dir_all("tests/addons").unwrap();
+        assert!(result.is_ok());
     }
 
     // create_extract_path
@@ -365,7 +372,6 @@ mod tests {
         );
     }
 
-    // extract_plugin
     // get_root_directory_name_from_archive
 
     #[tokio::test]
