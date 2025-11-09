@@ -1,4 +1,5 @@
-![Version Badge](https://img.shields.io/badge/version-1.0.0-blue) ![Coverage](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fgist.githubusercontent.com%2Fk0psutin%2F02a7627bd5ba7bdaaf0063e02cadcfde%2Fraw%2F7cf2de6525c551d8d68af57847fbb9713323a6a3%2Fgdm_coverage.json&query=%24.coverage&suffix=%25&label=coverage&color=green)
+![Version badge](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fk0psutin%2Fgdm%2Frefs%2Fheads%2Fmain%2FCargo.toml&query=%24.package.version&label=version)
+ ![Coverage](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fgist.githubusercontent.com%2Fk0psutin%2F02a7627bd5ba7bdaaf0063e02cadcfde%2Fraw%2F7cf2de6525c551d8d68af57847fbb9713323a6a3%2Fgdm_coverage.json&query=%24.coverage&suffix=%25&label=coverage&color=green)
 
 
 # GD Manager (gdm)
@@ -26,6 +27,9 @@ When using `gdm`, all plugin additions and removals should be performed through 
 `gdm` manages the `[editor_plugins]` section of your `project.godot` file automatically. Any manual changes to plugin entries in this file may be lost the next time you run a `gdm` command that modifies plugins. Always use `gdm add` or `gdm remove` to ensure your project stays in sync and your plugin configuration is preserved correctly.
 
 > There is no way to migrate previously installed plugins to `gdm`. Suggested way is to reinstall all plugins via `gdm` to keep `gdm.json` and `project.godot` in sync.
+
+> **Warning about assets containing multiple addons:**  
+> Currently, `gdm` assumes each plugin asset provides a single addon folder. Assets with multiple addon folders can lead to unexpected behavior or incomplete plugin management. If a downloaded asset contains multiple folders under `/addons` (e.g., `/addons/addon1`, `/addons/addon2`), `gdm` may not work as expected.
 
 ## Features
 
