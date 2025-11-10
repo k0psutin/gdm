@@ -52,6 +52,7 @@ jobs:
             github-token: ${{ secrets.GITHUB_TOKEN }}
             update-comment: true
     build-windows:
+      name: build (windows-latest)
       needs: checks
       runs-on: windows-latest
       steps:
@@ -67,6 +68,7 @@ jobs:
       - name: Build the executable
         run: cargo build --release --target x86_64-pc-windows-gnu
     build-linux:
+      name: build (ubuntu-latest)
       needs: checks
       runs-on: ubuntu-latest
       steps:
@@ -85,6 +87,7 @@ jobs:
       - name: Build the executable
         run: cargo build --release --target x86_64-unknown-linux-musl
     build-macos:
+      name: build (macos-latest)
       needs: checks
       runs-on: macos-latest
       steps:
