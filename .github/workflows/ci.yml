@@ -16,32 +16,24 @@ jobs:
           pull-requests: write
         steps:
         - uses: actions/checkout@v5
-        - uses: dorny/paths-filter@v2.2.1
-          id: filter
-          with:
-            filters: |
-              rs:
-                - '**/*.rs'
         - uses: actions-rust-lang/setup-rust-toolchain@v1
-          if: ${{ steps.filter.outputs.rs == 'true' }}
           with:
             components: |
                 clippy
                 rustfmt
+        - name: Install audit
+          run: cargo install cargo-audit --locked
+        - name: Run audit
+          run: cargo audit
         - name: Run clippy
-          if: ${{ steps.filter.outputs.rs == 'true' }}
           run: cargo clippy -- -D warnings
         - name: Rustfmt Check
-          if: ${{ steps.filter.outputs.rs == 'true' }}
           uses: actions-rust-lang/rustfmt@v1
         - name: Install cargo-llvm-cov
-          if: ${{ steps.filter.outputs.rs == 'true' }}
           uses: taiki-e/install-action@cargo-llvm-cov
         - name: Generate code coverage
-          if: ${{ steps.filter.outputs.rs == 'true' }}
           run: cargo llvm-cov -q --lcov --output-path lcov.info
         - name: Get previous coverage from Gist
-          if: ${{ steps.filter.outputs.rs == 'true' }}  
           id: gist_content
           uses: gorgbus/gist-actions@main
           env:
@@ -51,35 +43,60 @@ jobs:
             gist_id: "02a7627bd5ba7bdaaf0063e02cadcfde"
             file_name: "gdm_coverage.json"
         - name: Setup LCOV
-          if: ${{ steps.filter.outputs.rs == 'true' }}
           uses: hrishikesh-kadam/setup-lcov@v1
         - name: Report code coverage
-          if: ${{ steps.filter.outputs.rs == 'true' }}
           uses: zgosalvez/github-actions-report-lcov@v4
           with:
             coverage-files: lcov.info
             minimum-coverage: ${{ fromJson(steps.gist_content.outputs.content).coverage }}
             github-token: ${{ secrets.GITHUB_TOKEN }}
             update-comment: true
-    build:
-        needs: checks
-        strategy:
-          matrix:
-            os: [ubuntu-latest, macos-latest, windows-latest]
-        runs-on: ${{ matrix.os }}
-        steps:
-        - uses: actions/checkout@v5
-        - uses: dorny/paths-filter@v2.2.1
-          id: filter
-          with:
-            filters: |
-              rs:
-                - '**/*.rs'
-        - uses: actions-rust-lang/setup-rust-toolchain@v1
-          if: ${{ steps.filter.outputs.rs == 'true' }}
-        - name: Test
-          if: ${{ steps.filter.outputs.rs == 'true' }}
-          run: cargo test -q
-        - name: Build
-          if: ${{ steps.filter.outputs.rs == 'true' }}
-          run: cargo build --release
+    build-windows:
+      needs: checks
+      runs-on: windows-latest
+      steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v2
+
+      - name: Install Windows targets
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: |
+            x86_64-pc-windows-gnu
+      
+      - name: Build the executable
+        run: cargo build --release --target x86_64-pc-windows-gnu
+    build-linux:
+      needs: checks
+      runs-on: ubuntu-latest
+      steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v2
+      
+      - name: Install Linux and Windows Cross Compilers
+        run: sudo apt-get update && sudo apt-get install --yes musl-dev musl-tools gcc-mingw-w64-x86-64-win32 libssl-dev
+
+      - name: Install Linux and Windows targets
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: |
+            x86_64-unknown-linux-musl
+      
+      - name: Build the executable
+        run: cargo build --release --target x86_64-unknown-linux-musl
+    build-macos:
+      needs: checks
+      runs-on: macos-latest
+      steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v2
+
+      - name: Install MacOS targets
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: |
+            x86_64-apple-darwin
+            aarch64-apple-darwin
+
+      - name: Build the executable
+        run: cargo build --release --target=x86_64-apple-darwin --target=aarch64-apple-darwin
