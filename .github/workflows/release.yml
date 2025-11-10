@@ -15,7 +15,34 @@ permissions:
   statuses: read
 
 jobs:
-  linux_windows:
+  windows:
+    runs-on: windows-latest
+    steps:
+    - name: Checkout the repository
+      uses: actions/checkout@v2
+
+    - name: Install Windows targets
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        target: |
+          x86_64-pc-windows-gnu
+    
+    - name: Build the executable
+      run: cargo build --release --target x86_64-pc-windows-gnu
+
+    - name: Zip windows binary
+      run: zip -j gdm-windows.zip target/x86_64-pc-windows-gnu/release/gdm.exe
+
+    - name: Generate SHA256 checksums
+      run: |
+        shasum -a 256 gdm-windows.zip > gdm-windows.zip.sha256
+    - name: Upload release binaries
+      uses: alexellis/upload-assets@0.4.0
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      with:
+        asset_paths: '["gdm-windows.zip", "gdm-windows.zip.sha256"]'
+  linux:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout the repository
@@ -29,27 +56,22 @@ jobs:
       with:
         target: |
           x86_64-unknown-linux-musl
-          x86_64-pc-windows-gnu
     
     - name: Build the executable
-      run: cargo build --release --target x86_64-unknown-linux-musl --target x86_64-pc-windows-gnu
+      run: cargo build --release --target x86_64-unknown-linux-musl
 
     - name: Tar x86_64 binary
       run: tar -czvf gdm-linux-x86_64.tar.gz -C target/x86_64-unknown-linux-musl/release gdm
 
-    - name: Zip windows binary
-      run: zip -j gdm-windows.zip target/x86_64-pc-windows-gnu/release/gdm.exe
-
     - name: Generate SHA256 checksums
       run: |
         shasum -a 256 gdm-linux-x86_64.tar.gz > gdm-linux-x86_64.tar.gz.sha256
-        shasum -a 256 gdm-windows.zip > gdm-windows.zip.sha256
     - name: Upload release binaries
       uses: alexellis/upload-assets@0.4.0
       env:
         GITHUB_TOKEN: ${{ github.token }}
       with:
-        asset_paths: '["gdm-linux-x86_64.tar.gz", "gdm-windows.zip", "gdm-linux-x86_64.tar.gz.sha256", "gdm-windows.zip.sha256"]'
+        asset_paths: '["gdm-linux-x86_64.tar.gz", "gdm-linux-x86_64.tar.gz.sha256"]'
   macos:
     runs-on: macos-latest
     steps:
