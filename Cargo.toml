@@ -17,7 +17,7 @@ clap = { version = "4.5.51", features = ["derive"] }
 clap-verbosity-flag = { version = "3.0.4", default-features = false, features = ["tracing"] }
 futures = "0.3.31"
 indicatif = "0.18.2"
-openssl = { version = "0.10.74", features = ["vendored"] }
+openssl = { version = "0.10.75", features = ["vendored"] }
 regex = "1.12.2"
 reqwest = { version = "0.12.24", features = ["json"] }
 semver = "1.0.27"
