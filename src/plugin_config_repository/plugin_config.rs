@@ -54,6 +54,18 @@ impl PluginConfig for DefaultPluginConfig {
 
         DefaultPluginConfig::new(_plugins)
     }
+
+    fn get_plugins(&self, only_plugin_config: bool) -> BTreeMap<String, Plugin> {
+        if only_plugin_config {
+            self.plugins
+                .iter()
+                .filter(|(_, p)| p.plugin_cfg_path.is_some())
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
+        } else {
+            self.plugins.clone()
+        }
+    }
 }
 
 pub trait PluginConfig {
@@ -61,37 +73,22 @@ pub trait PluginConfig {
     fn get_plugin_by_name(&self, name: &str) -> Option<Plugin>;
     fn remove_plugins(&self, plugins: HashSet<String>) -> DefaultPluginConfig;
     fn add_plugins(&self, plugins: &BTreeMap<String, Plugin>) -> DefaultPluginConfig;
+    fn get_plugins(&self, only_plugin_config: bool) -> BTreeMap<String, Plugin>;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn setup_test_plugin_map() -> BTreeMap<String, Plugin> {
+        BTreeMap::from([
+            ("plugin_1".to_string(), Plugin::create_mock_plugin_1()),
+            ("plugin_2".to_string(), Plugin::create_mock_plugin_2()),
+        ])
+    }
+
     fn setup_test_plugin_config() -> DefaultPluginConfig {
-        let plugins: BTreeMap<String, Plugin> = BTreeMap::from([
-            (
-                "plugin_1".to_string(),
-                Plugin::new(
-                    "54321".to_string(),
-                    "Awesome Plugin".to_string(),
-                    "1.0.0".to_string(),
-                    "MIT".to_string(),
-                    vec![],
-                    true,
-                ),
-            ),
-            (
-                "plugin_2".to_string(),
-                Plugin::new(
-                    "12345".to_string(),
-                    "Super Plugin".to_string(),
-                    "2.1.3".to_string(),
-                    "Apache-2.0".to_string(),
-                    vec![],
-                    true,
-                ),
-            ),
-        ]);
+        let plugins: BTreeMap<String, Plugin> = setup_test_plugin_map();
         DefaultPluginConfig::new(plugins)
     }
 
@@ -117,28 +114,8 @@ mod tests {
     fn test_get_plugins_should_return_correct_plugins_from_plugin_config_file() {
         let plugin_config = setup_test_plugin_config();
         let expected = BTreeMap::from([
-            (
-                "plugin_1".to_string(),
-                Plugin::new(
-                    "54321".to_string(),
-                    "Awesome Plugin".to_string(),
-                    "1.0.0".to_string(),
-                    "MIT".to_string(),
-                    vec![],
-                    true,
-                ),
-            ),
-            (
-                "plugin_2".to_string(),
-                Plugin::new(
-                    "12345".to_string(),
-                    "Super Plugin".to_string(),
-                    "2.1.3".to_string(),
-                    "Apache-2.0".to_string(),
-                    vec![],
-                    true,
-                ),
-            ),
+            ("plugin_1".to_string(), Plugin::create_mock_plugin_1()),
+            ("plugin_2".to_string(), Plugin::create_mock_plugin_2()),
         ]);
 
         let result = plugin_config.plugins;
@@ -155,11 +132,11 @@ mod tests {
             "plugin_3".to_string(),
             Plugin::new(
                 "67890".to_string(),
+                Some("addons/super_plugin/plugin.cfg".into()),
                 "New Plugin".to_string(),
                 "1.0.0".to_string(),
                 "GPL-3.0".to_string(),
                 vec![],
-                true,
             ),
         )]);
 
@@ -167,37 +144,17 @@ mod tests {
         let actual = updated_plugin_config.plugins.clone();
 
         let expected = BTreeMap::from([
-            (
-                "plugin_1".to_string(),
-                Plugin::new(
-                    "54321".to_string(),
-                    "Awesome Plugin".to_string(),
-                    "1.0.0".to_string(),
-                    "MIT".to_string(),
-                    vec![],
-                    true,
-                ),
-            ),
-            (
-                "plugin_2".to_string(),
-                Plugin::new(
-                    "12345".to_string(),
-                    "Super Plugin".to_string(),
-                    "2.1.3".to_string(),
-                    "Apache-2.0".to_string(),
-                    vec![],
-                    true,
-                ),
-            ),
+            ("plugin_1".to_string(), Plugin::create_mock_plugin_1()),
+            ("plugin_2".to_string(), Plugin::create_mock_plugin_2()),
             (
                 "plugin_3".to_string(),
                 Plugin::new(
                     "67890".to_string(),
+                    Some("addons/super_plugin/plugin.cfg".into()),
                     "New Plugin".to_string(),
                     "1.0.0".to_string(),
                     "GPL-3.0".to_string(),
                     vec![],
-                    true,
                 ),
             ),
         ]);
@@ -213,22 +170,22 @@ mod tests {
                 "plugin_1".to_string(),
                 Plugin::new(
                     "54321".to_string(),
+                    Some("addons/awesome_plugin/plugin.cfg".into()),
                     "Awesome Plugin".to_string(),
                     "1.8.0".to_string(),
                     "MIT".to_string(),
                     vec![],
-                    true,
                 ),
             ),
             (
                 "plugin_2".to_string(),
                 Plugin::new(
                     "12345".to_string(),
+                    Some("addons/super_plugin/plugin.cfg".into()),
                     "Super Plugin".to_string(),
                     "2.1.3".to_string(),
-                    "Apache-2.0".to_string(),
+                    "MIT".to_string(),
                     vec![],
-                    true,
                 ),
             ),
         ]);
@@ -241,22 +198,22 @@ mod tests {
                 "plugin_1".to_string(),
                 Plugin::new(
                     "54321".to_string(),
+                    Some("addons/awesome_plugin/plugin.cfg".into()),
                     "Awesome Plugin".to_string(),
                     "1.8.0".to_string(),
                     "MIT".to_string(),
                     vec![],
-                    true,
                 ),
             ),
             (
                 "plugin_2".to_string(),
                 Plugin::new(
                     "12345".to_string(),
+                    Some("addons/super_plugin/plugin.cfg".into()),
                     "Super Plugin".to_string(),
                     "2.1.3".to_string(),
-                    "Apache-2.0".to_string(),
+                    "MIT".to_string(),
                     vec![],
-                    true,
                 ),
             ),
         ]);
@@ -272,33 +229,33 @@ mod tests {
                 "plugin_1".to_string(),
                 Plugin::new(
                     "54321".to_string(),
+                    Some("addons/awesome_plugin/plugin.cfg".into()),
                     "Awesome Plugin".to_string(),
                     "1.8.0".to_string(),
                     "MIT".to_string(),
                     vec![],
-                    true,
                 ),
             ),
             (
                 "plugin_1".to_string(),
                 Plugin::new(
                     "54321".to_string(),
+                    Some("addons/awesome_plugin/plugin.cfg".into()),
                     "Awesome Plugin".to_string(),
                     "1.8.0".to_string(),
                     "MIT".to_string(),
                     vec![],
-                    true,
                 ),
             ),
             (
                 "plugin_2".to_string(),
                 Plugin::new(
                     "12345".to_string(),
+                    Some("addons/super_plugin/plugin.cfg".into()),
                     "Super Plugin".to_string(),
                     "2.1.3".to_string(),
                     "Apache-2.0".to_string(),
                     vec![],
-                    true,
                 ),
             ),
         ]);
@@ -311,22 +268,22 @@ mod tests {
                 "plugin_1".to_string(),
                 Plugin::new(
                     "54321".to_string(),
+                    Some("addons/awesome_plugin/plugin.cfg".into()),
                     "Awesome Plugin".to_string(),
                     "1.8.0".to_string(),
                     "MIT".to_string(),
                     vec![],
-                    true,
                 ),
             ),
             (
                 "plugin_2".to_string(),
                 Plugin::new(
                     "12345".to_string(),
+                    Some("addons/super_plugin/plugin.cfg".into()),
                     "Super Plugin".to_string(),
                     "2.1.3".to_string(),
                     "Apache-2.0".to_string(),
                     vec![],
-                    true,
                 ),
             ),
         ]);
@@ -341,11 +298,11 @@ mod tests {
             "a_plugin".to_string(),
             Plugin::new(
                 "67890".to_string(),
+                Some("addons/super_plugin/plugin.cfg".into()),
                 "New Plugin".to_string(),
                 "1.0.0".to_string(),
                 "GPL-3.0".to_string(),
                 vec![],
-                true,
             ),
         )]);
         let updated_plugin_config = plugin_config.add_plugins(&new_plugins);
@@ -356,33 +313,33 @@ mod tests {
                 "a_plugin".to_string(),
                 Plugin::new(
                     "67890".to_string(),
+                    Some("addons/super_plugin/plugin.cfg".into()),
                     "New Plugin".to_string(),
                     "1.0.0".to_string(),
                     "GPL-3.0".to_string(),
                     vec![],
-                    true,
                 ),
             ),
             (
                 "plugin_1".to_string(),
                 Plugin::new(
                     "54321".to_string(),
+                    Some("addons/awesome_plugin/plugin.cfg".into()),
                     "Awesome Plugin".to_string(),
                     "1.0.0".to_string(),
                     "MIT".to_string(),
                     vec![],
-                    true,
                 ),
             ),
             (
                 "plugin_2".to_string(),
                 Plugin::new(
                     "12345".to_string(),
+                    Some("addons/super_plugin/plugin.cfg".into()),
                     "Super Plugin".to_string(),
                     "2.1.3".to_string(),
                     "Apache-2.0".to_string(),
                     vec![],
-                    true,
                 ),
             ),
         ]);
@@ -411,11 +368,11 @@ mod tests {
             "plugin_2".to_string(),
             Plugin::new(
                 "12345".to_string(),
+                Some("addons/super_plugin/plugin.cfg".into()),
                 "Super Plugin".to_string(),
                 "2.1.3".to_string(),
                 "Apache-2.0".to_string(),
                 vec![],
-                true,
             ),
         )]);
         let actual = updated_plugin_config.plugins.clone();
@@ -457,11 +414,11 @@ mod tests {
         let plugin = plugin_config.get_plugin_by_asset_id("54321");
         let expected_plugin = Plugin::new(
             "54321".to_string(),
+            Some("addons/awesome_plugin/plugin.cfg".into()),
             "Awesome Plugin".to_string(),
             "1.0.0".to_string(),
             "MIT".to_string(),
             vec![],
-            true,
         );
         assert_eq!(plugin, Some(expected_plugin));
     }
@@ -471,5 +428,37 @@ mod tests {
         let plugin_config = setup_test_plugin_config();
         let plugin = plugin_config.get_plugin_by_asset_id("4321");
         assert_eq!(plugin, None);
+    }
+
+    // get_plugins
+    #[test]
+    fn test_get_plugins_should_return_all_plugins() {
+        let mut plugin_config = setup_test_plugin_config();
+        plugin_config = plugin_config.add_plugins(&BTreeMap::from([(
+            "plugin_3".to_string(),
+            Plugin::create_mock_plugin_3(),
+        )]));
+        let plugins = plugin_config.get_plugins(false);
+        let expected_plugins = BTreeMap::from([
+            ("plugin_1".to_string(), Plugin::create_mock_plugin_1()),
+            ("plugin_2".to_string(), Plugin::create_mock_plugin_2()),
+            ("plugin_3".to_string(), Plugin::create_mock_plugin_3()),
+        ]);
+        assert_eq!(plugins, expected_plugins);
+    }
+
+    #[test]
+    fn test_get_plugins_should_return_plugins_with_plugin_config() {
+        let mut plugin_config = setup_test_plugin_config();
+        plugin_config = plugin_config.add_plugins(&BTreeMap::from([(
+            "plugin_3".to_string(),
+            Plugin::create_mock_plugin_3(),
+        )]));
+        let plugins = plugin_config.get_plugins(true);
+        let expected_plugins = BTreeMap::from([
+            ("plugin_1".to_string(), Plugin::create_mock_plugin_1()),
+            ("plugin_2".to_string(), Plugin::create_mock_plugin_2()),
+        ]);
+        assert_eq!(plugins, expected_plugins);
     }
 }

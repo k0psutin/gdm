@@ -17,6 +17,18 @@ mod search_command_tests {
     }
 
     #[test]
+    fn test_search_without_project_godot_should_fail() {
+        let (mut cmd, _temp_dir) = setup::get_bin();
+        cmd.arg("search")
+            .arg("Godot Unit Testing")
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains(
+                "No project.godot file found in the current directory",
+            ));
+    }
+
+    #[test]
     fn test_search_command_requires_name() {
         let (mut cmd, _temp_dir) = setup::get_bin();
         cmd.arg("search")

@@ -27,6 +27,18 @@ mod add_command_tests {
     }
 
     #[test]
+    fn test_add_command_should_return_err_if_no_project_godot_file() {
+        let (mut cmd, _temp_dir) = setup::get_bin();
+        cmd.arg("add")
+            .arg("Godot Unit Testing")
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains(
+                "No project.godot file found in the current directory",
+            ));
+    }
+
+    #[test]
     fn test_add_with_plugin_name_without_gdm_json_should_not_fail() {
         let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
         let output = cmd

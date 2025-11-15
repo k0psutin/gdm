@@ -21,7 +21,9 @@ mod install_command_tests {
         cmd.arg("install")
             .assert()
             .failure()
-            .stderr(predicate::str::contains("Godot project file not found"));
+            .stderr(predicate::str::contains(
+                "No project.godot file found in the current directory",
+            ));
     }
 
     #[test]

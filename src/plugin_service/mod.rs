@@ -70,8 +70,6 @@ impl DefaultPluginService {
 
 impl PluginService for DefaultPluginService {
     async fn install_all_plugins(&self) -> Result<BTreeMap<String, Plugin>> {
-        self.godot_config_repository.validate_project_file()?;
-
         if !self.plugin_config_repository.has_installed_plugins()? {
             bail!("No plugins installed.");
         }
@@ -366,8 +364,6 @@ impl PluginService for DefaultPluginService {
 
     /// Removes a plugin by its folder name, e.g. "gut"
     async fn remove_plugin_by_name(&self, name: &str) -> Result<()> {
-        self.godot_config_repository.validate_project_file()?;
-
         if !self.plugin_config_repository.has_installed_plugins()? {
             bail!("No plugins installed.");
         }
