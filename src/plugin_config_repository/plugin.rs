@@ -4,7 +4,7 @@ use semver::Version;
 
 use crate::{api::asset_response::AssetResponse, utils::Utils};
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Plugin {
     pub asset_id: String,
     pub title: String,
@@ -13,7 +13,15 @@ pub struct Plugin {
         deserialize_with = "deserialize_version"
     )]
     version: Version,
+    #[serde(default = "Vec::new")]
+    pub sub_assets: Vec<String>,
+    #[serde(default = "default_false")]
+    pub has_plugin_cfg: bool,
     pub license: String,
+}
+
+fn default_false() -> bool {
+    false
 }
 
 fn serialize_version<S>(version: &Version, serializer: S) -> Result<S::Ok, S::Error>
@@ -31,6 +39,12 @@ where
     Ok(Utils::parse_semantic_version(&s))
 }
 
+impl PartialEq for Plugin {
+    fn eq(&self, other: &Self) -> bool {
+        self.asset_id == other.asset_id && self.version == other.version
+    }
+}
+
 impl PartialOrd for Plugin {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.version.cmp(&other.version))
@@ -43,18 +57,30 @@ impl From<AssetResponse> for Plugin {
             asset_response.asset_id,
             asset_response.title,
             asset_response.version_string,
-            asset_response.cost, // TODO check if serde_json can map this directly to license
+            asset_response.cost,
+            Vec::new(),
+            false,
+            // TODO check if serde_json can map this directly to license
         )
     }
 }
 
 impl Plugin {
-    pub fn new(asset_id: String, title: String, version: String, license: String) -> Plugin {
+    pub fn new(
+        asset_id: String,
+        title: String,
+        version: String,
+        license: String,
+        sub_assets: Vec<String>,
+        has_plugin_cfg: bool,
+    ) -> Plugin {
         Plugin {
             asset_id,
             title,
             version: Utils::parse_semantic_version(version.as_str()),
             license,
+            sub_assets,
+            has_plugin_cfg,
         }
     }
 
@@ -76,6 +102,8 @@ mod tests {
             "Sample Plugin".to_string(),
             "1.0.0".to_string(),
             "MIT".to_string(),
+            vec!["sub1".to_string(), "sub2".to_string()],
+            true,
         )
     }
 
@@ -86,6 +114,8 @@ mod tests {
         assert_eq!(plugin.title, "Sample Plugin");
         assert_eq!(plugin.get_version(), "1.0.0");
         assert_eq!(plugin.license, "MIT");
+        assert_eq!(plugin.sub_assets, vec!["sub1", "sub2"]);
+        assert!(plugin.has_plugin_cfg);
     }
 
     #[test]
@@ -109,6 +139,8 @@ mod tests {
         assert_eq!(plugin.title, "Test Asset");
         assert_eq!(plugin.get_version(), "0.0.1");
         assert_eq!(plugin.license, "MIT");
+        assert_eq!(plugin.sub_assets, Vec::<String>::new());
+        assert!(!plugin.has_plugin_cfg);
     }
 
     #[test]
@@ -118,21 +150,45 @@ mod tests {
             "Plugin One".to_string(),
             "1.0.0".to_string(),
             "MIT".to_string(),
+            vec!["sub1".to_string()],
+            true,
         );
         let plugin2 = Plugin::new(
             "id1".to_string(),
             "Plugin One".to_string(),
             "2.0.0".to_string(),
             "MIT".to_string(),
+            vec!["sub1".to_string()],
+            true,
         );
         let plugin3 = Plugin::new(
             "id2".to_string(),
             "Plugin Three".to_string(),
             "1.0.0".to_string(),
             "GPL".to_string(),
+            vec!["sub2".to_string()],
+            false,
+        );
+        let plugin4 = Plugin::new(
+            "id1".to_string(),
+            "Plugin One".to_string(),
+            "1.0.0".to_string(),
+            "MIT".to_string(),
+            vec!["sub2".to_string()], // different sub_assets
+            true,
+        );
+        let plugin5 = Plugin::new(
+            "id1".to_string(),
+            "Plugin One".to_string(),
+            "1.0.0".to_string(),
+            "MIT".to_string(),
+            vec!["sub1".to_string()],
+            false, // different has_plugin_cfg
         );
         assert_ne!(plugin1, plugin2);
         assert_ne!(plugin1, plugin3);
+        assert_ne!(plugin1, plugin4);
+        assert_ne!(plugin1, plugin5);
     }
 
     #[test]
@@ -142,12 +198,16 @@ mod tests {
             "Plugin 2".to_string(),
             "1.10.0".to_string(),
             "MIT".to_string(),
+            vec![],
+            false,
         );
         let plugin_2_old = Plugin::new(
             "id2".to_string(),
             "Plugin 2".to_string(),
             "1.2.0".to_string(),
             "MIT".to_string(),
+            vec![],
+            false,
         );
         assert!(plugin_2_new > plugin_2_old);
     }
@@ -159,12 +219,16 @@ mod tests {
             "Plugin Long".to_string(),
             "1.0".to_string(),
             "MIT".to_string(),
+            vec![],
+            false,
         );
         let plugin_long = Plugin::new(
             "id".to_string(),
             "Plugin Long".to_string(),
             "1.0.0".to_string(),
             "MIT".to_string(),
+            vec![],
+            false,
         );
         assert!(plugin_short == plugin_long);
     }
@@ -176,12 +240,16 @@ mod tests {
             "Plugin Pre".to_string(),
             "1.0.0-alpha".to_string(),
             "MIT".to_string(),
+            vec![],
+            false,
         );
         let plugin_release = Plugin::new(
             "idRel".to_string(),
             "Plugin Release".to_string(),
             "1.0.0".to_string(),
             "MIT".to_string(),
+            vec![],
+            false,
         );
         assert!(plugin_pre < plugin_release);
     }
@@ -193,12 +261,16 @@ mod tests {
             "Plugin Empty".to_string(),
             "".to_string(),
             "MIT".to_string(),
+            vec![],
+            false,
         );
         let plugin_nonempty = Plugin::new(
             "idNE".to_string(),
             "Plugin NonEmpty".to_string(),
             "0.0.1".to_string(),
             "MIT".to_string(),
+            vec![],
+            false,
         );
         assert!(plugin_empty < plugin_nonempty);
     }
@@ -210,12 +282,16 @@ mod tests {
             "Plugin Same".to_string(),
             "2.3.4".to_string(),
             "MIT".to_string(),
+            vec![],
+            false,
         );
         let plugin_same2 = Plugin::new(
             "idSame2".to_string(),
             "Plugin Same".to_string(),
             "2.3.4".to_string(),
             "MIT".to_string(),
+            vec![],
+            false,
         );
         assert_eq!(
             plugin_same1.partial_cmp(&plugin_same2),
@@ -230,12 +306,16 @@ mod tests {
             "Plugin A".to_string(),
             "1.0.0-alpha".to_string(),
             "MIT".to_string(),
+            vec![],
+            false,
         );
         let plugin_b = Plugin::new(
             "idB".to_string(),
             "Plugin B".to_string(),
             "1.0.0-beta".to_string(),
             "MIT".to_string(),
+            vec![],
+            false,
         );
         assert!(plugin_a < plugin_b);
 
@@ -244,6 +324,8 @@ mod tests {
             "Plugin Num".to_string(),
             "1.0.0".to_string(),
             "MIT".to_string(),
+            vec![],
+            false,
         );
         assert!(plugin_num > plugin_a);
     }
@@ -255,12 +337,16 @@ mod tests {
             "Plugin LeadingZero".to_string(),
             "01.2.3".to_string(),
             "MIT".to_string(),
+            vec![],
+            false,
         );
         let plugin_normal = Plugin::new(
             "idN".to_string(),
             "Plugin Normal".to_string(),
             "1.2.3".to_string(),
             "MIT".to_string(),
+            vec![],
+            false,
         );
         assert!(plugin_leading_zero < plugin_normal);
     }
@@ -272,12 +358,16 @@ mod tests {
             "Plugin LeadingZero".to_string(),
             "1".to_string(),
             "MIT".to_string(),
+            vec![],
+            false,
         );
         let plugin_normal = Plugin::new(
             "idN".to_string(),
             "Plugin Normal".to_string(),
             "1.1".to_string(),
             "MIT".to_string(),
+            vec![],
+            false,
         );
         assert!(plugin_leading_zero < plugin_normal);
     }
@@ -289,12 +379,16 @@ mod tests {
             "Plugin LeadingZero".to_string(),
             "1.1.1".to_string(),
             "MIT".to_string(),
+            vec![],
+            false,
         );
         let plugin_two_segment = Plugin::new(
             "idN".to_string(),
             "Plugin Normal".to_string(),
             "1.1".to_string(),
             "MIT".to_string(),
+            vec![],
+            false,
         );
         assert!(plugin_three_segment > plugin_two_segment);
     }
@@ -306,6 +400,8 @@ mod tests {
             title: "Test Plugin".to_string(),
             version: Version::new(1, 0, 0),
             license: "MIT".to_string(),
+            sub_assets: vec!["sub1".to_string()],
+            has_plugin_cfg: true,
         };
         let json = serde_json::to_string(&plugin).unwrap();
         // Version should be serialized as a string
@@ -313,6 +409,8 @@ mod tests {
         assert!(json.contains("\"asset_id\":\"123\""));
         assert!(json.contains("\"title\":\"Test Plugin\""));
         assert!(json.contains("\"license\":\"MIT\""));
+        assert!(json.contains("\"sub_assets\":[\"sub1\"]"));
+        assert!(json.contains("\"has_plugin_cfg\":true"));
     }
 
     #[test]
@@ -321,13 +419,17 @@ mod tests {
             "asset_id": "456",
             "title": "Deserialize Plugin",
             "version": "2.1.3",
-            "license": "Apache-2.0"
+            "license": "Apache-2.0",
+            "sub_assets": ["subA", "subB"],
+            "has_plugin_cfg": true
         }"#;
         let plugin: Plugin = serde_json::from_str(json).unwrap();
         assert_eq!(plugin.asset_id, "456");
         assert_eq!(plugin.title, "Deserialize Plugin");
         assert_eq!(plugin.version, Version::new(2, 1, 3));
         assert_eq!(plugin.license, "Apache-2.0");
+        assert_eq!(plugin.sub_assets, vec!["subA", "subB"]);
+        assert!(plugin.has_plugin_cfg);
     }
 
     #[test]
@@ -337,11 +439,15 @@ mod tests {
             title: "Roundtrip Plugin".to_string(),
             version: Version::parse("3.2.1-alpha").unwrap(),
             license: "GPL-3.0".to_string(),
+            sub_assets: vec!["subX".to_string()],
+            has_plugin_cfg: true,
         };
         let json = serde_json::to_string(&original).unwrap();
         let deserialized: Plugin = serde_json::from_str(&json).unwrap();
         assert_eq!(original, deserialized);
         assert_eq!(deserialized.version, Version::parse("3.2.1-alpha").unwrap());
+        assert_eq!(deserialized.sub_assets, vec!["subX".to_string()]);
+        assert!(deserialized.has_plugin_cfg);
     }
 
     #[test]
@@ -350,10 +456,14 @@ mod tests {
             "asset_id": "101",
             "title": "V Prefix Plugin",
             "version": "v7.3.4",
-            "license": "BSD-2-Clause"
+            "license": "BSD-2-Clause",
+            "sub_assets": [],
+            "has_plugin_cfg": false
         }"#;
         let deserialized: Plugin = serde_json::from_str(json).unwrap();
         assert_eq!(deserialized.version, Version::parse("7.3.4").unwrap());
+        assert_eq!(deserialized.sub_assets, Vec::<String>::new());
+        assert!(!deserialized.has_plugin_cfg);
     }
 
     #[test]
@@ -362,9 +472,13 @@ mod tests {
             "asset_id": "101",
             "title": "V Prefix Plugin",
             "version": "v7.3.4 (26)",
-            "license": "BSD-2-Clause"
+            "license": "BSD-2-Clause",
+            "sub_assets": [],
+            "has_plugin_cfg": false
         }"#;
         let deserialized: Plugin = serde_json::from_str(json).unwrap();
         assert_eq!(deserialized.version, Version::parse("7.3.4").unwrap());
+        assert_eq!(deserialized.sub_assets, Vec::<String>::new());
+        assert!(!deserialized.has_plugin_cfg);
     }
 }

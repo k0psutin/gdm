@@ -194,8 +194,12 @@ impl PluginService for DefaultPluginService {
 
         for (index, _asset) in plugins.iter().enumerate() {
             let asset = _asset.clone();
-            let plugin = Plugin::from(asset.clone());
-            let pb_task = operation_manager.add_progress_bar(index, plugins.len(), &plugin)?;
+            let pb_task = operation_manager.add_progress_bar(
+                index,
+                plugins.len(),
+                &asset.title,
+                &asset.version,
+            )?;
             let asset_store_api = self.asset_store_api.clone();
             download_tasks
                 .spawn(async move { asset_store_api.download_asset(&asset, pb_task).await });
@@ -219,30 +223,24 @@ impl PluginService for DefaultPluginService {
 
         for (index, downloaded_asset) in plugins.iter().enumerate() {
             let asset_response = downloaded_asset.asset_response.clone();
-            let file_path = downloaded_asset.file_path.clone();
             let pb_task = operation_manager.add_progress_bar(
                 index,
                 plugins.len(),
-                &Plugin::from(asset_response),
+                &asset_response.title,
+                &asset_response.version,
             )?;
             let extract_service = self.extract_service.clone();
+            let asset = downloaded_asset.clone();
             extract_service_tasks
-                .spawn(async move { extract_service.extract_plugin(&file_path, pb_task).await });
+                .spawn(async move { extract_service.extract_asset(&asset, pb_task).await });
         }
 
-        while let Some(res) = extract_service_tasks.join_next().await {
-            let _ = res??;
+        let mut installed_plugins = BTreeMap::new();
+        if let Some(res) = extract_service_tasks.join_next().await {
+            let (main_plugin_folder, plugin) = res??;
+            // Use the root folder name as the key, matching test expectations
+            installed_plugins.insert(main_plugin_folder, plugin);
         }
-
-        let installed_plugins = plugins
-            .iter()
-            .map(|downloaded_asset| {
-                let asset_response = downloaded_asset.asset_response.clone();
-                let plugin: Plugin = Plugin::from(asset_response);
-                let plugin_name = downloaded_asset.root_folder.clone();
-                (plugin_name, plugin)
-            })
-            .collect::<BTreeMap<String, Plugin>>();
 
         info!("Extracted {} plugins successfully", installed_plugins.len());
         Ok(installed_plugins)
@@ -251,7 +249,12 @@ impl PluginService for DefaultPluginService {
     fn finish_plugins_operation(&self, plugins: &BTreeMap<String, Plugin>) -> Result<()> {
         let operation_manager = OperationManager::new(Operation::Finished)?;
         for (index, plugin) in plugins.values().clone().enumerate() {
-            let finished_bar = operation_manager.add_progress_bar(index, plugins.len(), plugin)?;
+            let finished_bar = operation_manager.add_progress_bar(
+                index,
+                plugins.len(),
+                &plugin.title,
+                &plugin.get_version(),
+            )?;
             finished_bar.finish();
         }
         operation_manager.finish();

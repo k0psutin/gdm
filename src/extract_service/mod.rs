@@ -1,3 +1,5 @@
+use crate::app_config::AppConfig;
+use crate::plugin_config_repository::plugin::Plugin;
 use anyhow::{Result, bail};
 use indicatif::ProgressBar;
 use std::collections::HashSet;
@@ -5,18 +7,15 @@ use std::fs;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
-use tracing::error;
 
-use crate::app_config::AppConfig;
+use crate::api::asset::Asset;
 use crate::app_config::DefaultAppConfig;
 use crate::file_service::{DefaultFileService, FileService};
-use crate::utils::Utils;
 
 pub struct DefaultExtractService {
     pub file_service: Box<dyn FileService + Send + Sync + 'static>,
     pub app_config: DefaultAppConfig,
 }
-
 impl DefaultExtractService {
     #[allow(unused)]
     pub fn new(
@@ -42,8 +41,13 @@ impl Default for DefaultExtractService {
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
 impl ExtractService for DefaultExtractService {
+    fn open_archive_file(&self, file_path: &Path) -> Result<zip::ZipArchive<fs::File>> {
+        let file = self.file_service.open(file_path)?;
+        let archive = zip::ZipArchive::new(file)?;
+        Ok(archive)
+    }
+
     fn create_extract_path(&self, root: PathBuf, path: PathBuf) -> PathBuf {
-        // TODO: Modify to return Option<PathBuf> and return None if path is outside expected structure
         let index = path.iter().skip(1).position(|p| p == "addons");
         match index {
             Some(i) => {
@@ -61,55 +65,14 @@ impl ExtractService for DefaultExtractService {
         }
     }
 
-    fn get_root_directory_name_from_archive(
-        &self,
-        archive: &mut zip::ZipArchive<fs::File>,
-    ) -> Result<PathBuf> {
-        let mut paths = HashSet::new();
-        for i in 0..archive.len() {
-            let file = archive.by_index(i).unwrap();
-            let path = file.mangled_name().iter().skip(1).collect::<PathBuf>();
-            if file.is_dir() {
-                if path == Path::new("addons") || path.as_os_str().is_empty() {
-                    continue;
-                }
-                paths.insert(path);
-            } else {
-                continue;
-            }
-        }
-        if paths.is_empty() {
-            bail!("No directories found in the archive")
-        }
-        let path = paths.iter().next().unwrap();
-        let addons_index = path.iter().position(|p| p == "addons");
-        match addons_index {
-            Some(i) => Ok(path.iter().skip(i + 1).take(1).collect::<PathBuf>()),
-            None => Ok(path.iter().take(1).collect::<PathBuf>()),
-        }
-    }
-
-    fn get_root_dir_from_archive(&self, file_path: &Path) -> Result<PathBuf> {
-        let file = self.file_service.open(file_path)?;
-        let mut archive = zip::ZipArchive::new(file)?;
-        self.get_root_directory_name_from_archive(&mut archive)
-    }
-
     fn extract_zip_file(
         &self,
         file_path: &Path,
         destination: &Path,
         pb_task: ProgressBar,
     ) -> Result<()> {
-        let file = self.file_service.open(file_path)?;
+        let mut archive = self.open_archive_file(file_path)?;
 
-        let zip = zip::ZipArchive::new(file);
-        if zip.is_err() {
-            let error = zip.err().unwrap();
-            error!("Error extracting zip archive: {:?}", error);
-            bail!("Failed to extract zip archive file: {:?}", file_path)
-        }
-        let mut archive = zip.unwrap();
         let file_count = archive.file_names().count();
         pb_task.set_length(file_count as u64);
 
@@ -155,105 +118,274 @@ impl ExtractService for DefaultExtractService {
         Ok(())
     }
 
-    /// ExtractServices a downloaded plugin zip file to the addons folder and removes the zip file afterwards
-    ///
-    /// Removes the old plugin folder if it already exists
-    async fn extract_plugin(&self, file_path: &Path, pb_task: ProgressBar) -> Result<PathBuf> {
-        let plugin_folder = self.get_root_dir_from_archive(file_path)?;
-        let addon_folder = self.app_config.get_addon_folder_path();
-        let plugin_folder_path =
-            Utils::plugin_name_to_addon_folder_path(&plugin_folder, addon_folder);
+    fn create_plugin_from_asset_archive(&self, asset: &Asset) -> Result<(PathBuf, Plugin)> {
+        let mut archive = self.open_archive_file(&asset.file_path)?;
+        let addons_folder = PathBuf::from(self.app_config.get_addon_folder_path());
+        let mut paths = HashSet::new();
+        let mut plugin_cfgs = HashSet::new();
 
-        if self.file_service.directory_exists(&plugin_folder_path) {
-            self.file_service.remove_dir_all(&plugin_folder_path)?;
+        for i in 0..archive.len() {
+            let file = archive.by_index(i).unwrap();
+            let outpath = match file.enclosed_name() {
+                Some(path) => self.create_extract_path(addons_folder.clone(), path),
+                None => continue,
+            };
+
+            if file.is_dir() {
+                if outpath == addons_folder || outpath.as_os_str().is_empty() {
+                    continue;
+                }
+                paths.insert(outpath);
+            } else if file.name().ends_with("plugin.cfg") {
+                plugin_cfgs.insert(outpath);
+            }
+        }
+        if paths.is_empty() {
+            bail!("No directories found in the archive")
         }
 
-        self.extract_zip_file(file_path, Path::new(&addon_folder), pb_task)?;
-        self.file_service.remove_file(file_path)?;
-        Ok(plugin_folder)
+        let filtered_paths = paths
+            .iter()
+            .map(|p| {
+                let index = p.iter().position(|comp| comp == "addons");
+                if let Some(index) = index {
+                    p.iter()
+                        .by_ref()
+                        .skip(index + 1)
+                        .take(1)
+                        .collect::<PathBuf>()
+                } else {
+                    p.iter().by_ref().skip(1).take(1).collect::<PathBuf>()
+                }
+            })
+            .collect::<HashSet<_>>();
+
+        let filename = &asset
+            .file_path
+            .file_stem()
+            .unwrap_or_default()
+            .display()
+            .to_string();
+        let title = &asset.asset_response.title;
+
+        let best_match = filtered_paths
+            .iter()
+            .fold((PathBuf::new(), 0.0), |mut best, path| {
+                let folder_name = path.to_string_lossy().to_string();
+                let jaro_filename =
+                    strsim::jaro(&folder_name.to_lowercase(), &filename.to_lowercase());
+                let jaro_title = strsim::jaro(&folder_name.to_lowercase(), &title.to_lowercase());
+                let max_jaro = jaro_filename.max(jaro_title);
+                if max_jaro > best.1 {
+                    best = (PathBuf::from(path), max_jaro);
+                }
+                best
+            });
+
+        let main_plugin_folder = best_match.0.clone();
+
+        let sub_addons = filtered_paths
+            .iter()
+            .filter(|p| {
+                let folder_name = p.to_string_lossy().to_string();
+                folder_name != main_plugin_folder
+            })
+            .map(|p| p.to_string_lossy().to_string())
+            .collect::<Vec<String>>();
+
+        // Check if best match has a plugin.cfg file
+        let filtered_plugin_cfg_paths = paths
+            .iter()
+            .map(|p| {
+                let index = p.iter().position(|comp| comp == "addons");
+                if let Some(index) = index {
+                    p.iter()
+                        .by_ref()
+                        .skip(index + 1)
+                        .take(1)
+                        .collect::<PathBuf>()
+                } else {
+                    p.iter().by_ref().skip(1).take(1).collect::<PathBuf>()
+                }
+            })
+            .collect::<HashSet<_>>();
+
+        let has_plugin_cfg = filtered_plugin_cfg_paths.contains(&main_plugin_folder);
+
+        Ok((
+            main_plugin_folder,
+            Plugin::new(
+                asset.asset_response.asset_id.clone(),
+                asset.asset_response.title.clone(),
+                asset.asset_response.version.clone(),
+                asset.asset_response.cost.clone(),
+                sub_addons,
+                has_plugin_cfg,
+            ),
+        ))
+    }
+
+    /// Extracts a downloaded plugin zip file to the Godot project's addons folder and removes the zip file afterwards.
+    ///
+    /// # Arguments
+    ///
+    /// * `file_path` - Path to the plugin zip file to extract.
+    /// * `pb_task` - ProgressBar instance for reporting extraction progress.
+    ///
+    /// # Returns
+    ///
+    /// Returns a tuple containing the plugin folder name (as a String) and the constructed `Plugin` struct.
+    ///
+    /// # Side Effects
+    ///
+    /// - Removes the old plugin folder if it already exists in the addons directory.
+    /// - Extracts the contents of the zip file into the addons directory.
+    /// - Deletes the original zip file after extraction.
+    ///
+    /// # Panics
+    ///
+    /// Returns an error if extraction fails, the zip file is invalid, or the plugin folder cannot be determined.
+    async fn extract_asset(&self, asset: &Asset, pb_task: ProgressBar) -> Result<(String, Plugin)> {
+        let (main_plugin_folder, plugin) = self.create_plugin_from_asset_archive(asset)?;
+        let plugin_folder = self
+            .app_config
+            .get_addon_folder_path()
+            .join(&main_plugin_folder);
+
+        if self.file_service.directory_exists(&plugin_folder) {
+            self.file_service.remove_dir_all(&plugin_folder)?;
+        }
+
+        self.extract_zip_file(&asset.file_path, &plugin_folder, pb_task)?;
+        self.file_service.remove_file(&asset.file_path)?;
+
+        let plugin_name = main_plugin_folder.to_string_lossy().to_string();
+
+        Ok((plugin_name, plugin))
     }
 }
 
 #[async_trait::async_trait]
 pub trait ExtractService: Send + Sync + 'static {
+    fn open_archive_file(&self, file_path: &Path) -> Result<zip::ZipArchive<fs::File>>;
+
     fn create_extract_path(&self, root: PathBuf, path: PathBuf) -> PathBuf;
 
-    fn get_root_directory_name_from_archive(
-        &self,
-        archive: &mut zip::ZipArchive<fs::File>,
-    ) -> Result<PathBuf>;
-    fn get_root_dir_from_archive(&self, file_path: &Path) -> Result<PathBuf>;
+    fn create_plugin_from_asset_archive(&self, asset: &Asset) -> Result<(PathBuf, Plugin)>;
+
     fn extract_zip_file(
         &self,
         file_path: &Path,
         destination: &Path,
         pb_task: ProgressBar,
-    ) -> anyhow::Result<()>;
-    async fn extract_plugin(&self, file_path: &Path, pb_task: ProgressBar) -> Result<PathBuf>;
+    ) -> Result<()>;
+
+    async fn extract_asset(&self, asset: &Asset, pb_task: ProgressBar) -> Result<(String, Plugin)>;
 }
 
 #[cfg(test)]
 mod tests {
+    fn make_mock_asset<P: Into<std::path::PathBuf>>(zip_path: P, title: &str) -> Asset {
+        use crate::api::asset_response::AssetResponse;
+        Asset {
+            file_path: zip_path.into(),
+            asset_response: AssetResponse {
+                asset_id: "test_id".to_string(),
+                title: title.to_string(),
+                version: "1.0.0".to_string(),
+                version_string: "1.0.0".to_string(),
+                godot_version: "4.0".to_string(),
+                rating: "5".to_string(),
+                cost: "Free".to_string(),
+                description: "Test plugin asset".to_string(),
+                download_provider: "local".to_string(),
+                download_commit: "".to_string(),
+                modify_date: "2023-01-01".to_string(),
+                download_url: "".to_string(),
+            },
+        }
+    }
     use crate::file_service::MockDefaultFileService;
 
     use super::*;
     use serial_test::serial;
 
-    // get_root_directory_name_from_archive
+    // create_plugin_from_asset_archive
 
     #[test]
     #[serial]
-    fn test_get_root_directory_name_from_archive_with_addons_folder() {
+    fn test_create_plugin_from_asset_archive_with_no_directories_should_error() {
         let extract = DefaultExtractService::default();
-        let file = fs::File::open("tests/mocks/zip_files/test_with_addons_folder.zip").unwrap();
-        let mut archive = zip::ZipArchive::new(file).unwrap();
-        let root_dir = extract.get_root_directory_name_from_archive(&mut archive);
-        assert_eq!(root_dir.unwrap(), PathBuf::from("some_plugin"));
-    }
-
-    #[test]
-    #[serial]
-    fn test_get_root_directory_name_from_archive_without_addons_folder() {
-        let extract = DefaultExtractService::default();
-        let file = fs::File::open("tests/mocks/zip_files/test_without_addons_folder.zip").unwrap();
-        let mut archive = zip::ZipArchive::new(file).unwrap();
-        let root_dir = extract.get_root_directory_name_from_archive(&mut archive);
-        assert_eq!(root_dir.unwrap(), PathBuf::from("some_plugin"));
-    }
-
-    #[test]
-    #[serial]
-    fn test_get_root_directory_name_from_archive_without_root_should_return_error() {
-        let extract = DefaultExtractService::default();
-        let file = fs::File::open("tests/mocks/zip_files/test_without_root_folder.zip").unwrap();
-        let mut archive = zip::ZipArchive::new(file).unwrap();
-        let result = extract.get_root_directory_name_from_archive(&mut archive);
+        let asset = make_mock_asset(
+            "tests/mocks/zip_files/test_without_root_folder.zip",
+            "NoDirs",
+        );
+        let result = extract.create_plugin_from_asset_archive(&asset);
         assert!(result.is_err());
     }
 
     #[test]
     #[serial]
-    fn test_get_root_directory_name_from_archive_with_addons_folder_with_root_files() {
+    fn test_create_plugin_from_asset_archive_with_single_plugin_folder() {
         let extract = DefaultExtractService::default();
-        let file =
-            fs::File::open("tests/mocks/zip_files/test_with_addons_folder_with_root_files.zip")
-                .unwrap();
-        let mut archive = zip::ZipArchive::new(file).unwrap();
-        let root_dir = extract.get_root_directory_name_from_archive(&mut archive);
-        assert_eq!(root_dir.unwrap(), PathBuf::from("some_plugin"));
+        let asset = make_mock_asset(
+            "tests/mocks/zip_files/test_with_addons_folder.zip",
+            "SomePlugin",
+        );
+        let result = extract.create_plugin_from_asset_archive(&asset);
+        assert!(result.is_ok());
+        let (main_folder, plugin) = result.unwrap();
+        assert_eq!(main_folder, PathBuf::from("some_plugin"));
+        assert_eq!(plugin.title, asset.asset_response.title);
+        assert_eq!(plugin.asset_id, asset.asset_response.asset_id);
+        assert_eq!(plugin.get_version(), asset.asset_response.version);
+        assert_eq!(plugin.license, asset.asset_response.cost);
+        assert_eq!(plugin.sub_assets.len(), 0);
+        assert!(plugin.has_plugin_cfg);
     }
 
     #[test]
     #[serial]
-    fn test_get_root_directory_name_from_archive_with_addons_folder_with_extra_addons_files() {
+    fn test_create_plugin_from_asset_archive_with_multiple_plugin_folders() {
         let extract = DefaultExtractService::default();
-        let file = fs::File::open(
+        let asset = make_mock_asset(
+            "tests/mocks/zip_files/test_with_addons_folder_with_subaddons.zip",
+            "MultiPlugin",
+        );
+        let result = extract.create_plugin_from_asset_archive(&asset);
+        assert!(result.is_ok());
+        let (_main_folder, plugin) = result.unwrap();
+        // Should have at least one sub_asset
+        assert_eq!(plugin.sub_assets.len(), 1);
+        assert_eq!(plugin.sub_assets[0], "some_plugin");
+    }
+
+    #[test]
+    #[serial]
+    fn test_create_plugin_from_asset_archive_with_plugin_cfg_in_subfolder() {
+        let extract = DefaultExtractService::default();
+        let asset = make_mock_asset(
             "tests/mocks/zip_files/test_with_addons_folder_with_extra_addons_files.zip",
-        )
-        .unwrap();
-        let mut archive = zip::ZipArchive::new(file).unwrap();
-        let root_dir = extract.get_root_directory_name_from_archive(&mut archive);
-        assert_eq!(root_dir.unwrap(), PathBuf::from("some_plugin"));
+            "PluginCfgSubfolder",
+        );
+        let result = extract.create_plugin_from_asset_archive(&asset);
+        assert!(result.is_ok());
+        let (_main_folder, plugin) = result.unwrap();
+        assert!(plugin.has_plugin_cfg);
+    }
+
+    #[test]
+    #[serial]
+    fn test_create_plugin_from_asset_archive_with_files_at_root_or_addons() {
+        let extract = DefaultExtractService::default();
+        let asset = make_mock_asset(
+            "tests/mocks/zip_files/test_with_addons_folder_with_root_files.zip",
+            "RootFiles",
+        );
+        let result = extract.create_plugin_from_asset_archive(&asset);
+        assert!(result.is_ok());
+        let (main_folder, _) = result.unwrap();
+        assert_eq!(main_folder.to_string_lossy(), "some_plugin");
     }
 
     // extract_zip_file
@@ -372,7 +504,7 @@ mod tests {
         );
     }
 
-    // get_root_directory_name_from_archive
+    // extract_plugin
 
     #[tokio::test]
     #[serial]
@@ -418,13 +550,14 @@ mod tests {
             ),
         );
         let pb_task = ProgressBar::no_length();
-        let result = extract
-            .extract_plugin(
-                Path::new("tests/mocks/zip_files/test_with_addons_folder.zip"),
-                pb_task,
-            )
-            .await;
+        let asset = make_mock_asset(
+            "tests/mocks/zip_files/test_with_addons_folder.zip",
+            "SomePlugin",
+        );
+        let result = extract.extract_asset(&asset, pb_task).await;
         assert!(result.is_ok());
+        let (_plugin_folder, _plugin) = result.unwrap();
+        assert_eq!(_plugin_folder, PathBuf::from("some_plugin"));
         fs::remove_dir_all("tests/addons").unwrap();
     }
 }

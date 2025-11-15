@@ -1,8 +1,6 @@
 use anyhow::{Context, Result};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 
-use crate::plugin_config_repository::plugin::Plugin;
-
 /// Enum representing different plugin service operations with their progress bar styles
 /// and messages. These enums are also used to customize function behaviors based on operation type.
 #[derive(Debug, Clone)]
@@ -54,17 +52,13 @@ impl Operation {
         m: &MultiProgress,
         index: usize,
         total: usize,
-        plugin: &Plugin,
+        title: &str,
+        version: &str,
     ) -> Result<ProgressBar> {
         let pb = m.add(ProgressBar::new(self.default_progress_bar_length()));
         pb.set_style(self.progress_bar_style()?);
         pb.set_prefix(format!("[{}/{}]", index + 1, total));
-        pb.set_message(format!(
-            "{}: {} ({})",
-            self.action_verb(),
-            plugin.title,
-            plugin.get_version()
-        ));
+        pb.set_message(format!("{}: {} ({})", self.action_verb(), title, version));
         Ok(pb)
     }
 }
@@ -159,13 +153,7 @@ mod tests {
     fn test_create_progress_bar_install() {
         let operation = Operation::Install;
         let m = MultiProgress::new();
-        let plugin = Plugin::new(
-            "test-plugin".to_string(),
-            "Test Plugin".to_string(),
-            "1.0.0".to_string(),
-            "MIT".to_string(),
-        );
-        let result = operation.create_progress_bar(&m, 1, 5, &plugin);
+        let result = operation.create_progress_bar(&m, 1, 5, "Test Plugin", "1.0.0");
         assert!(result.is_ok());
         let pb = result.unwrap();
         assert_eq!(pb.length().unwrap(), 500);
@@ -175,13 +163,7 @@ mod tests {
     fn test_create_progress_bar_update() {
         let operation = Operation::Update;
         let m = MultiProgress::new();
-        let plugin = Plugin::new(
-            "test-plugin".to_string(),
-            "Test Plugin".to_string(),
-            "2.0.0".to_string(),
-            "MIT".to_string(),
-        );
-        let result = operation.create_progress_bar(&m, 2, 10, &plugin);
+        let result = operation.create_progress_bar(&m, 2, 10, "Update Plugin", "2.0.0");
         assert!(result.is_ok());
         let pb = result.unwrap();
         assert_eq!(pb.length().unwrap(), 500);
@@ -191,13 +173,7 @@ mod tests {
     fn test_create_progress_bar_extract() {
         let operation = Operation::Extract;
         let m = MultiProgress::new();
-        let plugin = Plugin::new(
-            "extract-plugin".to_string(),
-            "Extract Plugin".to_string(),
-            "1.5.0".to_string(),
-            "Apache-2.0".to_string(),
-        );
-        let result = operation.create_progress_bar(&m, 3, 7, &plugin);
+        let result = operation.create_progress_bar(&m, 3, 7, "Extract Plugin", "1.5.0");
         assert!(result.is_ok());
         let pb = result.unwrap();
         assert_eq!(pb.length().unwrap(), 500);
@@ -207,13 +183,7 @@ mod tests {
     fn test_create_progress_bar_finished() {
         let operation = Operation::Finished;
         let m = MultiProgress::new();
-        let plugin = Plugin::new(
-            "finished-plugin".to_string(),
-            "Finished Plugin".to_string(),
-            "3.0.0".to_string(),
-            "BSD-3-Clause".to_string(),
-        );
-        let result = operation.create_progress_bar(&m, 1, 1, &plugin);
+        let result = operation.create_progress_bar(&m, 1, 1, "Finished Plugin", "3.0.0");
         assert!(result.is_ok());
         let pb = result.unwrap();
         assert_eq!(pb.length().unwrap(), 1);

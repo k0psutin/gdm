@@ -8,7 +8,6 @@ use crate::api::asset::Asset;
 use crate::api::asset_edit_list_response::AssetEditListResponse;
 use crate::api::asset_edit_response::AssetEditResponse;
 use crate::app_config::{AppConfig, DefaultAppConfig};
-use crate::extract_service::{DefaultExtractService, ExtractService};
 use crate::file_service::{DefaultFileService, FileService};
 use crate::http_client::{DefaultHttpClient, HttpClient};
 
@@ -25,7 +24,6 @@ use url::Url;
 pub struct DefaultAssetStoreAPI {
     pub http_client: Arc<dyn HttpClient + Send + Sync>,
     pub app_config: DefaultAppConfig,
-    pub extract_service: Box<dyn ExtractService + Send + Sync + 'static>,
     pub file_service: Arc<dyn FileService + Send + Sync + 'static>,
 }
 
@@ -34,13 +32,11 @@ impl DefaultAssetStoreAPI {
     pub fn new(
         http_client: Arc<dyn HttpClient + Send + Sync>,
         app_config: DefaultAppConfig,
-        extract_service: Box<dyn ExtractService + Send + Sync + 'static>,
         file_service: Arc<dyn FileService + Send + Sync + 'static>,
     ) -> DefaultAssetStoreAPI {
         DefaultAssetStoreAPI {
             http_client,
             app_config,
-            extract_service,
             file_service,
         }
     }
@@ -55,7 +51,6 @@ impl Default for DefaultAssetStoreAPI {
         DefaultAssetStoreAPI {
             http_client: Arc::new(DefaultHttpClient::default()),
             app_config: DefaultAppConfig::default(),
-            extract_service: Box::new(DefaultExtractService::default()),
             file_service: Arc::new(DefaultFileService),
         }
     }
@@ -250,14 +245,7 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
         pb_task.finish_and_clear();
 
         match res.error_for_status() {
-            Ok(_) => {
-                let root_folder = self.extract_service.get_root_dir_from_archive(&filepath)?;
-                Ok(Asset::new(
-                    root_folder.display().to_string(),
-                    filepath,
-                    asset.clone(),
-                ))
-            }
+            Ok(_) => Ok(Asset::new(filepath, asset.clone())),
             Err(e) => bail!("Failed to fetch file: {}", e),
         }
     }
@@ -267,10 +255,7 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
 mod tests {
     use std::path::PathBuf;
 
-    use crate::{
-        extract_service::MockDefaultExtractService, file_service::MockDefaultFileService,
-        http_client::MockDefaultHttpClient,
-    };
+    use crate::{file_service::MockDefaultFileService, http_client::MockDefaultHttpClient};
 
     use super::*;
     use mockall::predicate::*;
@@ -394,7 +379,6 @@ mod tests {
         });
 
         let mut mock_file_service = MockDefaultFileService::new();
-        let mut mock_extract_service = MockDefaultExtractService::new();
 
         mock_file_service
             .expect_directory_exists()
@@ -419,11 +403,6 @@ mod tests {
             .expect_write_all_async()
             .returning(|_file, _chunk| Ok(()));
 
-        mock_extract_service
-            .expect_get_root_dir_from_archive()
-            .with(eq(PathBuf::from("tests/mocks/cache/asset.zip")))
-            .returning(|_path| Ok(PathBuf::from("tests/mocks/addons/asset")));
-
         let api = DefaultAssetStoreAPI::new(
             Arc::new(mock_http_client),
             DefaultAppConfig::new(
@@ -435,7 +414,6 @@ mod tests {
                 )),
                 Some(String::from("tests/mocks/addons")),
             ),
-            Box::new(mock_extract_service),
             Arc::new(mock_file_service),
         );
 

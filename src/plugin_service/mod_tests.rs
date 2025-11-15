@@ -53,6 +53,8 @@ mod tests {
                         plugin_name_clone.clone(),
                         version.clone(),
                         String::from("MIT"),
+                        vec![],
+                        true,
                     )
                 })
             });
@@ -140,7 +142,6 @@ mod tests {
             .expect_download_asset()
             .returning(|asset_response, _pb| {
                 Ok(Asset::new(
-                    "test_plugin".to_string(),
                     PathBuf::from("test_plugin"),
                     asset_response.clone(),
                 ))
@@ -148,8 +149,20 @@ mod tests {
 
         // Setup extract service
         extract_service
-            .expect_extract_plugin()
-            .returning(|_file_path, _pb| Ok(PathBuf::from("test_plugin")));
+            .expect_extract_asset()
+            .returning(|_file_path, _pb| {
+                Ok((
+                    String::from("test_plugin"),
+                    Plugin::new(
+                        "1234".to_string(),        // asset_id from AssetResponse in test
+                        "Test Plugin".to_string(), // title from AssetResponse in test
+                        "1.1.1".to_string(),       // version from AssetResponse in test
+                        "MIT".to_string(),         // license from AssetResponse in test
+                        vec![],
+                        true,
+                    ),
+                ))
+            });
 
         let app_config = DefaultAppConfig::default();
         DefaultPluginService::new(
@@ -423,8 +436,20 @@ mod tests {
         let file_service = Arc::new(MockDefaultFileService::default());
 
         extract_service
-            .expect_extract_plugin()
-            .returning(|_file_path, _pb| Ok(PathBuf::from("test_plugin")));
+            .expect_extract_asset()
+            .returning(|_file_path, _pb| {
+                Ok((
+                    String::from("test_plugin"),
+                    Plugin::new(
+                        "1234".to_string(),
+                        "Test Plugin".to_string(),
+                        "1.1.1".to_string(),
+                        "MIT".to_string(),
+                        vec![],
+                        true,
+                    ),
+                ))
+            });
         plugin_config_repository.expect_get_plugins().returning(|| {
             Ok(BTreeMap::from([(
                 String::from("test_plugin"),
@@ -433,6 +458,8 @@ mod tests {
                     String::from("Test Plugin"),
                     String::from("1.1.1"),
                     String::from("MIT"),
+                    vec![],
+                    true,
                 ),
             )]))
         });
@@ -484,15 +511,25 @@ mod tests {
                     "https://example.com/test_plugin.zip".to_string(),
                 ))
             });
-        asset_store_api
-            .expect_download_asset()
-            .returning(|asset_response, _pb| {
-                Ok(Asset::new(
-                    "test_plugin".to_string(),
-                    PathBuf::from("test_plugin"),
-                    asset_response.clone(),
-                ))
-            });
+        asset_store_api.expect_download_asset().returning(|_, _pb| {
+            Ok(Asset::new(
+                PathBuf::from("test_plugin"),
+                AssetResponse::new(
+                    "1234".to_string(),
+                    "Test Plugin".to_string(),
+                    "11".to_string(),
+                    "1.1.1".to_string(),
+                    "4.5".to_string(),
+                    "5".to_string(),
+                    "MIT".to_string(),
+                    "Some description".to_string(),
+                    "GitHub".to_string(),
+                    "commit_hash".to_string(),
+                    "2023-10-01".to_string(),
+                    "https://example.com/test_plugin.zip".to_string(),
+                ),
+            ))
+        });
         asset_store_api.expect_get_assets().returning(|_params| {
             Ok(AssetListResponse::new(vec![AssetListItem::new(
                 "1234".to_string(),
@@ -534,6 +571,8 @@ mod tests {
                 String::from("Test Plugin"),
                 String::from("1.1.1"),
                 String::from("MIT"),
+                vec![],
+                true,
             ),
         )]);
 
@@ -559,6 +598,8 @@ mod tests {
                 String::from("Test Plugin"),
                 String::from("1.1.1"),
                 String::from("MIT"),
+                vec![],
+                true,
             ),
         )]);
 
@@ -592,6 +633,8 @@ mod tests {
                 String::from("Test Plugin"),
                 String::from("1.1.1"),
                 String::from("MIT"),
+                vec![],
+                true,
             ),
         )]);
         assert_eq!(installed_plugins, expected_plugins);
@@ -614,6 +657,8 @@ mod tests {
                 String::from("Test Plugin"),
                 String::from("1.1.1"),
                 String::from("MIT"),
+                vec![],
+                true,
             ),
         )]);
         assert_eq!(installed_plugins, expected_plugins);
@@ -863,7 +908,6 @@ mod tests {
         assert_eq!(downloaded_assets.len(), 1);
 
         let asset = &downloaded_assets[0];
-        assert_eq!(asset.root_folder, "test_plugin");
         assert_eq!(asset.file_path, PathBuf::from("test_plugin"));
         assert_eq!(asset.asset_response.asset_id, "1234");
         assert_eq!(asset.asset_response.title, "Test Plugin");
@@ -876,7 +920,6 @@ mod tests {
     async fn test_extract_plugins_operation_should_return_correct_plugins() {
         let plugin_service = setup_plugin_service_mocks();
         let assets = vec![Asset::new(
-            "test_plugin".to_string(),
             PathBuf::from("test_plugin.zip"),
             AssetResponse::new(
                 "1234".to_string(),
@@ -940,8 +983,20 @@ mod tests {
         let file_service = Arc::new(MockDefaultFileService::default());
 
         extract_service
-            .expect_extract_plugin()
-            .returning(|_file_path, _pb| Ok(PathBuf::from("test_plugin")));
+            .expect_extract_asset()
+            .returning(|_file_path, _pb| {
+                Ok((
+                    String::from("test_plugin"),
+                    Plugin::new(
+                        "mock_asset_id".to_string(),
+                        "test_plugin".to_string(),
+                        "1.0.0".to_string(),
+                        "MIT".to_string(),
+                        vec![],
+                        true,
+                    ),
+                ))
+            });
 
         plugin_config_repository.expect_get_plugins().returning({
             let current_plugin_version = current_plugin_version.to_string();
@@ -953,6 +1008,8 @@ mod tests {
                         String::from("Test Plugin"),
                         current_plugin_version.clone(),
                         String::from("MIT"),
+                        vec![],
+                        true,
                     ),
                 )]))
             }
@@ -1001,7 +1058,6 @@ mod tests {
             .expect_download_asset()
             .returning(|asset_response, _pb| {
                 Ok(Asset::new(
-                    "test_plugin".to_string(),
                     PathBuf::from("test_plugin"),
                     asset_response.clone(),
                 ))
@@ -1045,6 +1101,8 @@ mod tests {
                 String::from("Test Plugin"),
                 String::from("1.2.0"),
                 String::from("MIT"),
+                vec![],
+                true,
             ),
         )]);
         assert_eq!(updated_plugins, expected_updated_plugins);
@@ -1064,6 +1122,8 @@ mod tests {
                 String::from("Test Plugin"),
                 String::from("1.1.12"),
                 String::from("MIT"),
+                vec![],
+                true,
             ),
         )]);
         assert_eq!(updated_plugins, expected_updated_plugins);
@@ -1274,6 +1334,8 @@ mod tests {
                 "Test Plugin".to_string(),
                 "1.0.0".to_string(),
                 "MIT".to_string(),
+                vec![],
+                true,
             ),
         )]);
 
@@ -1311,6 +1373,8 @@ mod tests {
                 "Test Plugin".to_string(),
                 "1.0.0".to_string(),
                 "MIT".to_string(),
+                vec![],
+                true,
             ),
         )]);
 

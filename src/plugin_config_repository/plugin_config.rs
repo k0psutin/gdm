@@ -76,6 +76,8 @@ mod tests {
                     "Awesome Plugin".to_string(),
                     "1.0.0".to_string(),
                     "MIT".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
             (
@@ -85,6 +87,8 @@ mod tests {
                     "Super Plugin".to_string(),
                     "2.1.3".to_string(),
                     "Apache-2.0".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
         ]);
@@ -120,6 +124,8 @@ mod tests {
                     "Awesome Plugin".to_string(),
                     "1.0.0".to_string(),
                     "MIT".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
             (
@@ -129,6 +135,8 @@ mod tests {
                     "Super Plugin".to_string(),
                     "2.1.3".to_string(),
                     "Apache-2.0".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
         ]);
@@ -150,6 +158,8 @@ mod tests {
                 "New Plugin".to_string(),
                 "1.0.0".to_string(),
                 "GPL-3.0".to_string(),
+                vec![],
+                true,
             ),
         )]);
 
@@ -164,6 +174,8 @@ mod tests {
                     "Awesome Plugin".to_string(),
                     "1.0.0".to_string(),
                     "MIT".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
             (
@@ -173,6 +185,8 @@ mod tests {
                     "Super Plugin".to_string(),
                     "2.1.3".to_string(),
                     "Apache-2.0".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
             (
@@ -182,6 +196,8 @@ mod tests {
                     "New Plugin".to_string(),
                     "1.0.0".to_string(),
                     "GPL-3.0".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
         ]);
@@ -200,6 +216,8 @@ mod tests {
                     "Awesome Plugin".to_string(),
                     "1.8.0".to_string(),
                     "MIT".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
             (
@@ -209,6 +227,8 @@ mod tests {
                     "Super Plugin".to_string(),
                     "2.1.3".to_string(),
                     "Apache-2.0".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
         ]);
@@ -224,6 +244,8 @@ mod tests {
                     "Awesome Plugin".to_string(),
                     "1.8.0".to_string(),
                     "MIT".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
             (
@@ -233,6 +255,8 @@ mod tests {
                     "Super Plugin".to_string(),
                     "2.1.3".to_string(),
                     "Apache-2.0".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
         ]);
@@ -251,6 +275,8 @@ mod tests {
                     "Awesome Plugin".to_string(),
                     "1.8.0".to_string(),
                     "MIT".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
             (
@@ -260,6 +286,8 @@ mod tests {
                     "Awesome Plugin".to_string(),
                     "1.8.0".to_string(),
                     "MIT".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
             (
@@ -269,6 +297,8 @@ mod tests {
                     "Super Plugin".to_string(),
                     "2.1.3".to_string(),
                     "Apache-2.0".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
         ]);
@@ -284,6 +314,8 @@ mod tests {
                     "Awesome Plugin".to_string(),
                     "1.8.0".to_string(),
                     "MIT".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
             (
@@ -293,6 +325,8 @@ mod tests {
                     "Super Plugin".to_string(),
                     "2.1.3".to_string(),
                     "Apache-2.0".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
         ]);
@@ -310,6 +344,8 @@ mod tests {
                 "New Plugin".to_string(),
                 "1.0.0".to_string(),
                 "GPL-3.0".to_string(),
+                vec![],
+                true,
             ),
         )]);
         let updated_plugin_config = plugin_config.add_plugins(&new_plugins);
@@ -323,6 +359,8 @@ mod tests {
                     "New Plugin".to_string(),
                     "1.0.0".to_string(),
                     "GPL-3.0".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
             (
@@ -332,6 +370,8 @@ mod tests {
                     "Awesome Plugin".to_string(),
                     "1.0.0".to_string(),
                     "MIT".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
             (
@@ -341,6 +381,8 @@ mod tests {
                     "Super Plugin".to_string(),
                     "2.1.3".to_string(),
                     "Apache-2.0".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
         ]);
@@ -372,6 +414,8 @@ mod tests {
                 "Super Plugin".to_string(),
                 "2.1.3".to_string(),
                 "Apache-2.0".to_string(),
+                vec![],
+                true,
             ),
         )]);
         let actual = updated_plugin_config.plugins.clone();
@@ -416,6 +460,8 @@ mod tests {
             "Awesome Plugin".to_string(),
             "1.0.0".to_string(),
             "MIT".to_string(),
+            vec![],
+            true,
         );
         assert_eq!(plugin, Some(expected_plugin));
     }
