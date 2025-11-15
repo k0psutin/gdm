@@ -16,6 +16,17 @@ mod outdated_command_tests {
     }
 
     #[test]
+    fn test_outdated_without_project_godot_should_fail() {
+        let (mut cmd, _temp_dir) = setup::get_bin();
+        cmd.arg("outdated")
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains(
+                "No project.godot file found in the current directory",
+            ));
+    }
+
+    #[test]
     fn test_outdated_without_gdm_json_should_fail() {
         let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
 

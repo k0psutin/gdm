@@ -10,9 +10,12 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use clap_verbosity_flag::{OffLevel, Verbosity};
 
-use crate::commands::{
-    add::AddArgs, install::InstallArgs, outdated::OutdatedArgs, remove::RemoveArgs,
-    search::SearchArgs, update::UpdateArgs,
+use crate::{
+    commands::{
+        add::AddArgs, install::InstallArgs, outdated::OutdatedArgs, remove::RemoveArgs,
+        search::SearchArgs, update::UpdateArgs,
+    },
+    godot_config_repository::{DefaultGodotConfigRepository, GodotConfigRepository},
 };
 
 #[derive(Parser)]
@@ -36,6 +39,8 @@ pub enum Commands {
 }
 
 pub async fn handle(command: &Commands) -> Result<()> {
+    DefaultGodotConfigRepository::default().validate_project_file()?;
+
     match command {
         Commands::Add(add_args) => {
             add::handle(add_args).await?;

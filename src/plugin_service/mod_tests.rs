@@ -24,6 +24,7 @@ mod tests {
         asset_id: &str,
         plugin_name: &str,
         installed_version: Option<&str>,
+        return_version: &str,
         search_name: Option<&str>,
     ) -> DefaultPluginService {
         let mut godot_config_repository = MockDefaultGodotConfigRepository::default();
@@ -50,11 +51,11 @@ mod tests {
                 installed_version_clone.as_ref().map(|version| {
                     Plugin::new(
                         asset_id_clone.clone(),
+                        Some(format!("addons/{}/plugin.cfg", plugin_name_clone).into()),
                         plugin_name_clone.clone(),
                         version.clone(),
                         String::from("MIT"),
                         vec![],
-                        true,
                     )
                 })
             });
@@ -148,18 +149,20 @@ mod tests {
             });
 
         // Setup extract service
+        let extract_asset_version = return_version.to_string();
+        let extract_asset_id = asset_id.to_string();
         extract_service
             .expect_extract_asset()
-            .returning(|_file_path, _pb| {
+            .returning(move |_file_path, _pb| {
                 Ok((
                     String::from("test_plugin"),
                     Plugin::new(
-                        "1234".to_string(),        // asset_id from AssetResponse in test
+                        extract_asset_id.clone(),
+                        Some("addons/test_plugin/plugin.cfg".into()),
                         "Test Plugin".to_string(), // title from AssetResponse in test
-                        "1.1.1".to_string(),       // version from AssetResponse in test
+                        extract_asset_version.clone(), // version from AssetResponse in test
                         "MIT".to_string(),         // license from AssetResponse in test
                         vec![],
-                        true,
                     ),
                 ))
             });
@@ -332,6 +335,7 @@ mod tests {
             "1234",
             "some_non_existent_plugin_name",
             Some("1.0.0"),
+            "1.0.0",
             None,
         );
         let name = "some_non_existent_plugin_name";
@@ -442,11 +446,11 @@ mod tests {
                     String::from("test_plugin"),
                     Plugin::new(
                         "1234".to_string(),
+                        Some("addons/test_plugin/plugin.cfg".into()),
                         "Test Plugin".to_string(),
                         "1.1.1".to_string(),
                         "MIT".to_string(),
                         vec![],
-                        true,
                     ),
                 ))
             });
@@ -455,11 +459,11 @@ mod tests {
                 String::from("test_plugin"),
                 Plugin::new(
                     String::from("1234"),
+                    Some("addons/test_plugin/plugin.cfg".into()),
                     String::from("Test Plugin"),
                     String::from("1.1.1"),
                     String::from("MIT"),
                     vec![],
-                    true,
                 ),
             )]))
         });
@@ -568,11 +572,11 @@ mod tests {
             String::from("test_plugin"),
             Plugin::new(
                 String::from("1234"),
+                Some("addons/test_plugin/plugin.cfg".into()),
                 String::from("Test Plugin"),
                 String::from("1.1.1"),
                 String::from("MIT"),
                 vec![],
-                true,
             ),
         )]);
 
@@ -595,11 +599,11 @@ mod tests {
             String::from("test_plugin"),
             Plugin::new(
                 String::from("1234"),
+                Some("addons/test_plugin/plugin.cfg".into()),
                 String::from("Test Plugin"),
                 String::from("1.1.1"),
                 String::from("MIT"),
                 vec![],
-                true,
             ),
         )]);
 
@@ -630,11 +634,11 @@ mod tests {
             String::from("test_plugin"),
             Plugin::new(
                 String::from("1234"),
+                Some("addons/test_plugin/plugin.cfg".into()),
                 String::from("Test Plugin"),
                 String::from("1.1.1"),
                 String::from("MIT"),
                 vec![],
-                true,
             ),
         )]);
         assert_eq!(installed_plugins, expected_plugins);
@@ -654,11 +658,11 @@ mod tests {
             String::from("test_plugin"),
             Plugin::new(
                 String::from("1234"),
+                Some("addons/test_plugin/plugin.cfg".into()),
                 String::from("Test Plugin"),
                 String::from("1.1.1"),
                 String::from("MIT"),
                 vec![],
-                true,
             ),
         )]);
         assert_eq!(installed_plugins, expected_plugins);
@@ -704,7 +708,8 @@ mod tests {
             "1234",
             "Test Plugin",
             Some("2.0.0"), // Already installed version (newer)
-            None,          // No name search needed
+            "1.5.0",
+            None, // No name search needed
         );
 
         let result = plugin_service.install_plugin("", "1234", "1.5.0").await;
@@ -721,7 +726,8 @@ mod tests {
             "1234",
             "Test Plugin",
             Some("1.0.0"), // Already installed version (older)
-            None,          // No name search needed
+            "2.0.0",
+            None, // No name search needed
         );
 
         let result = plugin_service.install_plugin("", "1234", "2.0.0").await;
@@ -738,7 +744,8 @@ mod tests {
             "1234",
             "Test Plugin",
             Some("1.5.0"), // Already installed version
-            None,          // No name search needed
+            "1.5.0",
+            None, // No name search needed
         );
 
         let result = plugin_service.install_plugin("", "1234", "1.5.0").await;
@@ -755,6 +762,7 @@ mod tests {
             "1234",
             "Test Plugin",
             None, // Not installed
+            "1.2.3",
             None, // No name search needed
         );
 
@@ -772,7 +780,8 @@ mod tests {
             "1234",
             "Test Plugin",
             Some("1.0.0-beta"), // Already installed prerelease version
-            None,               // No name search needed
+            "1.0.0",
+            None, // No name search needed
         );
 
         let result = plugin_service.install_plugin("", "1234", "1.0.0").await;
@@ -790,7 +799,8 @@ mod tests {
         let plugin_service = setup_plugin_service_with_versions(
             "1709",
             "GUT - Godot Unit Testing (Godot 4)",
-            None,                       // Not installed
+            None, // Not installed
+            "9.1.0",
             Some("Godot Unit Testing"), // Enable name search
         );
 
@@ -815,7 +825,8 @@ mod tests {
         let plugin_service = setup_plugin_service_with_versions(
             "1709",
             "GUT - Godot Unit Testing (Godot 4)",
-            Some("9.5.0"),              // Already installed newer version
+            Some("9.5.0"), // Already installed newer version
+            "9.1.0",
             Some("Godot Unit Testing"), // Enable name search
         );
 
@@ -836,7 +847,8 @@ mod tests {
         let plugin_service = setup_plugin_service_with_versions(
             "1709",
             "GUT - Godot Unit Testing (Godot 4)",
-            Some("9.0.0"),              // Already installed older version
+            Some("9.0.0"), // Already installed older version
+            "9.1.0",
             Some("Godot Unit Testing"), // Enable name search
         );
 
@@ -857,6 +869,7 @@ mod tests {
             "31231",
             "Some Plugin Name",
             None, // Not installed
+            "0.0.1",
             None, // Enable name search
         );
         let name = "Some Plugin Name";
@@ -982,18 +995,19 @@ mod tests {
 
         let file_service = Arc::new(MockDefaultFileService::default());
 
+        let extract_asset_version = update_plugin_version.to_string();
         extract_service
             .expect_extract_asset()
-            .returning(|_file_path, _pb| {
+            .returning(move |_file_path, _pb| {
                 Ok((
                     String::from("test_plugin"),
                     Plugin::new(
-                        "mock_asset_id".to_string(),
+                        "1234".to_string(),
+                        Some("addons/test_plugin/plugin.cfg".into()),
                         "test_plugin".to_string(),
-                        "1.0.0".to_string(),
+                        extract_asset_version.clone(),
                         "MIT".to_string(),
                         vec![],
-                        true,
                     ),
                 ))
             });
@@ -1005,11 +1019,11 @@ mod tests {
                     String::from("test_plugin"),
                     Plugin::new(
                         String::from("1234"),
+                        Some("addons/test_plugin/plugin.cfg".into()),
                         String::from("Test Plugin"),
                         current_plugin_version.clone(),
                         String::from("MIT"),
                         vec![],
-                        true,
                     ),
                 )]))
             }
@@ -1098,11 +1112,11 @@ mod tests {
             String::from("test_plugin"),
             Plugin::new(
                 String::from("1234"),
+                Some("addons/test_plugin/plugin.cfg".into()),
                 String::from("Test Plugin"),
                 String::from("1.2.0"),
                 String::from("MIT"),
                 vec![],
-                true,
             ),
         )]);
         assert_eq!(updated_plugins, expected_updated_plugins);
@@ -1119,11 +1133,11 @@ mod tests {
             String::from("test_plugin"),
             Plugin::new(
                 String::from("1234"),
+                Some("addons/test_plugin/plugin.cfg".into()),
                 String::from("Test Plugin"),
                 String::from("1.1.12"),
                 String::from("MIT"),
                 vec![],
-                true,
             ),
         )]);
         assert_eq!(updated_plugins, expected_updated_plugins);
@@ -1331,11 +1345,11 @@ mod tests {
             "test_plugin".to_string(),
             Plugin::new(
                 "1234".to_string(),
+                Some("addons/test_plugin/plugin.cfg".into()),
                 "Test Plugin".to_string(),
                 "1.0.0".to_string(),
                 "MIT".to_string(),
                 vec![],
-                true,
             ),
         )]);
 
@@ -1370,11 +1384,11 @@ mod tests {
             "test_plugin".to_string(),
             Plugin::new(
                 "1234".to_string(),
+                Some("addons/test_plugin/plugin.cfg".into()),
                 "Test Plugin".to_string(),
                 "1.0.0".to_string(),
                 "MIT".to_string(),
                 vec![],
-                true,
             ),
         )]);
 

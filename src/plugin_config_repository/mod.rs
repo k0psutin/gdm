@@ -138,9 +138,11 @@ mod tests {
 
     use super::*;
     use mockall::predicate::*;
+    use serde_json::json;
 
     use crate::app_config::DefaultAppConfig;
     use crate::file_service::{DefaultFileService, MockDefaultFileService};
+    use crate::plugin_config_repository::plugin::Plugin;
 
     // load
 
@@ -180,35 +182,13 @@ mod tests {
         assert_eq!(config.plugins.len(), 2);
 
         let mock_plugins = BTreeMap::from([
-            (
-                "plugin_1".to_string(),
-                Plugin::new(
-                    "54321".to_string(),
-                    "Awesome Plugin".to_string(),
-                    "1.0.0".to_string(),
-                    "MIT".to_string(),
-                    vec![],
-                    true,
-                ),
-            ),
-            (
-                "plugin_2".to_string(),
-                Plugin::new(
-                    "12345".to_string(),
-                    "Super Plugin".to_string(),
-                    "2.1.3".to_string(),
-                    "MIT".to_string(),
-                    vec![],
-                    true,
-                ),
-            ),
+            ("plugin_1".to_string(), Plugin::create_mock_plugin_1()),
+            ("plugin_2".to_string(), Plugin::create_mock_plugin_2()),
         ]);
 
         let expected_plugin_config = DefaultPluginConfig::new(mock_plugins);
         assert_eq!(config, expected_plugin_config);
     }
-
-    // get_plugins
 
     #[test]
     fn test_get_plugins_should_return_correct_plugins() {
@@ -222,36 +202,15 @@ mod tests {
         let plugin_config_repository =
             DefaultPluginConfigRepository::new(app_config, Arc::new(DefaultFileService));
         let plugins = plugin_config_repository.get_plugins();
-        println!("{:?}", plugins);
         assert!(plugins.is_ok());
         let plugins = plugins.unwrap();
         assert_eq!(plugins.len(), 2);
 
-        let expected_plugin_config = BTreeMap::from([
-            (
-                "plugin_1".to_string(),
-                Plugin::new(
-                    "54321".to_string(),
-                    "Awesome Plugin".to_string(),
-                    "1.0.0".to_string(),
-                    "MIT".to_string(),
-                    vec![],
-                    true,
-                ),
-            ),
-            (
-                "plugin_2".to_string(),
-                Plugin::new(
-                    "12345".to_string(),
-                    "Super Plugin".to_string(),
-                    "2.1.3".to_string(),
-                    "MIT".to_string(),
-                    vec![],
-                    true,
-                ),
-            ),
+        let expected_plugins = BTreeMap::from([
+            ("plugin_1".to_string(), Plugin::create_mock_plugin_1()),
+            ("plugin_2".to_string(), Plugin::create_mock_plugin_2()),
         ]);
-        assert_eq!(plugins, expected_plugin_config);
+        assert_eq!(plugins, expected_plugins);
     }
 
     // add_plugins
@@ -290,55 +249,16 @@ mod tests {
         let plugin_config_repository =
             setup_mock_plugin_config_repository_for_add_and_remove_plugins();
 
-        let new_plugins = BTreeMap::from([(
-            "plugin_3".to_string(),
-            Plugin::new(
-                "67890".to_string(),
-                "Mega Plugin".to_string(),
-                "0.9.0".to_string(),
-                "MIT".to_string(),
-                vec![],
-                true,
-            ),
-        )]);
+        let new_plugins =
+            BTreeMap::from([("plugin_3".to_string(), Plugin::create_mock_plugin_3())]);
         let result = plugin_config_repository.add_plugins(&new_plugins);
         assert!(result.is_ok());
         let updated_config = result.unwrap();
 
         let expected_plugins = BTreeMap::from([
-            (
-                "plugin_1".to_string(),
-                Plugin::new(
-                    "54321".to_string(),
-                    "Awesome Plugin".to_string(),
-                    "1.0.0".to_string(),
-                    "MIT".to_string(),
-                    vec![],
-                    true,
-                ),
-            ),
-            (
-                "plugin_2".to_string(),
-                Plugin::new(
-                    "12345".to_string(),
-                    "Super Plugin".to_string(),
-                    "2.1.3".to_string(),
-                    "MIT".to_string(),
-                    vec![],
-                    true,
-                ),
-            ),
-            (
-                "plugin_3".to_string(),
-                Plugin::new(
-                    "67890".to_string(),
-                    "Mega Plugin".to_string(),
-                    "0.9.0".to_string(),
-                    "MIT".to_string(),
-                    vec![],
-                    true,
-                ),
-            ),
+            ("plugin_1".to_string(), Plugin::create_mock_plugin_1()),
+            ("plugin_2".to_string(), Plugin::create_mock_plugin_2()),
+            ("plugin_3".to_string(), Plugin::create_mock_plugin_3()),
         ]);
 
         assert_eq!(updated_config.plugins, expected_plugins);
@@ -395,11 +315,11 @@ mod tests {
             "plugin_2".to_string(),
             Plugin::new(
                 "12345".to_string(),
+                Some("addons/super_plugin/plugin.cfg".into()),
                 "Super Plugin".to_string(),
                 "2.1.3".to_string(),
                 "MIT".to_string(),
                 vec![],
-                true,
             ),
         )]);
 
@@ -418,28 +338,8 @@ mod tests {
         let updated_config = result.unwrap();
 
         let expected_plugins = BTreeMap::from([
-            (
-                "plugin_1".to_string(),
-                Plugin::new(
-                    "54321".to_string(),
-                    "Awesome Plugin".to_string(),
-                    "1.0.0".to_string(),
-                    "MIT".to_string(),
-                    vec![],
-                    true,
-                ),
-            ),
-            (
-                "plugin_2".to_string(),
-                Plugin::new(
-                    "12345".to_string(),
-                    "Super Plugin".to_string(),
-                    "2.1.3".to_string(),
-                    "MIT".to_string(),
-                    vec![],
-                    true,
-                ),
-            ),
+            ("plugin_1".to_string(), Plugin::create_mock_plugin_1()),
+            ("plugin_2".to_string(), Plugin::create_mock_plugin_2()),
         ]);
 
         assert_eq!(updated_config.plugins, expected_plugins);
@@ -477,33 +377,13 @@ mod tests {
     }
 
     #[test]
-    fn test_save_should_return_correct_string_content_with_plugins() {
+    fn test_save_should_return_correct_json_with_plugins() {
         let plugin_config_repository =
             setup_mock_plugin_config_repository_for_add_and_remove_plugins();
 
         let plugins = BTreeMap::from([
-            (
-                "plugin_1".to_string(),
-                Plugin::new(
-                    "54321".to_string(),
-                    "Awesome Plugin".to_string(),
-                    "1.0.0".to_string(),
-                    "MIT".to_string(),
-                    vec![],
-                    true,
-                ),
-            ),
-            (
-                "plugin_2".to_string(),
-                Plugin::new(
-                    "12345".to_string(),
-                    "Super Plugin".to_string(),
-                    "2.1.3".to_string(),
-                    "MIT".to_string(),
-                    vec![],
-                    true,
-                ),
-            ),
+            ("plugin_1".to_string(), Plugin::create_mock_plugin_1()),
+            ("plugin_2".to_string(), Plugin::create_mock_plugin_2()),
         ]);
 
         let plugin_config = DefaultPluginConfig::new(plugins);
@@ -511,12 +391,59 @@ mod tests {
         let result = plugin_config_repository.save(&plugin_config);
         assert!(result.is_ok());
 
-        assert_eq!(
-            result.unwrap(),
-            String::from(
-                "{\n  \"plugins\": {\n    \"plugin_1\": {\n      \"asset_id\": \"54321\",\n      \"title\": \"Awesome Plugin\",\n      \"version\": \"1.0.0\",\n      \"license\": \"MIT\"\n    },\n    \"plugin_2\": {\n      \"asset_id\": \"12345\",\n      \"title\": \"Super Plugin\",\n      \"version\": \"2.1.3\",\n      \"license\": \"MIT\"\n    }\n  }\n}"
-            )
-        );
+        let expected = json!({
+            "plugins": {
+                "plugin_1": {
+                    "asset_id": "54321",
+                    "title": "Awesome Plugin",
+                    "version": "1.0.0",
+                    "license": "MIT",
+                    "sub_assets": []
+                },
+                "plugin_2": {
+                    "asset_id": "12345",
+                    "title": "Super Plugin",
+                    "version": "2.1.3",
+                    "license": "MIT",
+                    "sub_assets": []
+                }
+            }
+        });
+
+        let saved = result.unwrap();
+        let saved_json: serde_json::Value = serde_json::from_str(&saved).unwrap();
+        assert_eq!(saved_json, expected);
+    }
+
+    #[test]
+    fn test_save_should_return_correct_json_with_plugins_with_sub_assets() {
+        let plugin_config_repository =
+            setup_mock_plugin_config_repository_for_add_and_remove_plugins();
+
+        let plugins = BTreeMap::from([("plugin_1".to_string(), Plugin::create_mock_plugin_3())]);
+
+        let plugin_config = DefaultPluginConfig::new(plugins);
+
+        let result = plugin_config_repository.save(&plugin_config);
+        assert!(result.is_ok());
+
+        let expected = json!({
+            "plugins": {
+                "plugin_1": {
+                    "asset_id": "345678",
+                    "title": "Some Library",
+                    "version": "3.3.3",
+                    "sub_assets": [
+                        "sub_asset1",
+                        "sub_asset2"
+                    ],
+                    "license": "MIT"
+                }
+            }
+        });
+        let saved = result.unwrap();
+        let saved_json: serde_json::Value = serde_json::from_str(&saved).unwrap();
+        assert_eq!(saved_json, expected);
     }
 
     // has_installed_plugins

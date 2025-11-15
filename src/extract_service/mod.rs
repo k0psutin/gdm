@@ -193,58 +193,34 @@ impl ExtractService for DefaultExtractService {
             .map(|p| p.to_string_lossy().to_string())
             .collect::<Vec<String>>();
 
-        // Check if best match has a plugin.cfg file
-        let filtered_plugin_cfg_paths = paths
+        let filtered_plugin_cfg_paths = plugin_cfgs
             .iter()
+            .by_ref()
             .map(|p| {
-                let index = p.iter().position(|comp| comp == "addons");
+                let index = p.iter().position(|comp| comp == addons_folder.as_os_str());
                 if let Some(index) = index {
-                    p.iter()
-                        .by_ref()
-                        .skip(index + 1)
-                        .take(1)
-                        .collect::<PathBuf>()
+                    p.iter().by_ref().skip(index).collect::<PathBuf>()
                 } else {
-                    p.iter().by_ref().skip(1).take(1).collect::<PathBuf>()
+                    p.iter().by_ref().collect::<PathBuf>()
                 }
             })
             .collect::<HashSet<_>>();
 
-        let has_plugin_cfg = filtered_plugin_cfg_paths.contains(&main_plugin_folder);
+        let plugin_cfg_path = filtered_plugin_cfg_paths
+            .iter()
+            .by_ref()
+            .find(|p| p.starts_with(addons_folder.join(&main_plugin_folder)))
+            .cloned();
 
-        Ok((
-            main_plugin_folder,
-            Plugin::new(
-                asset.asset_response.asset_id.clone(),
-                asset.asset_response.title.clone(),
-                asset.asset_response.version.clone(),
-                asset.asset_response.cost.clone(),
-                sub_addons,
-                has_plugin_cfg,
-            ),
-        ))
+        let mut plugin = Plugin::from(asset.asset_response.clone());
+        // Set plugin config path, if any
+        plugin.plugin_cfg_path = plugin_cfg_path;
+        // Set sub assets, if any
+        plugin.sub_assets = sub_addons.clone();
+
+        Ok((main_plugin_folder, plugin))
     }
 
-    /// Extracts a downloaded plugin zip file to the Godot project's addons folder and removes the zip file afterwards.
-    ///
-    /// # Arguments
-    ///
-    /// * `file_path` - Path to the plugin zip file to extract.
-    /// * `pb_task` - ProgressBar instance for reporting extraction progress.
-    ///
-    /// # Returns
-    ///
-    /// Returns a tuple containing the plugin folder name (as a String) and the constructed `Plugin` struct.
-    ///
-    /// # Side Effects
-    ///
-    /// - Removes the old plugin folder if it already exists in the addons directory.
-    /// - Extracts the contents of the zip file into the addons directory.
-    /// - Deletes the original zip file after extraction.
-    ///
-    /// # Panics
-    ///
-    /// Returns an error if extraction fails, the zip file is invalid, or the plugin folder cannot be determined.
     async fn extract_asset(&self, asset: &Asset, pb_task: ProgressBar) -> Result<(String, Plugin)> {
         let (main_plugin_folder, plugin) = self.create_plugin_from_asset_archive(asset)?;
         let plugin_folder = self
@@ -292,7 +268,7 @@ mod tests {
             asset_response: AssetResponse {
                 asset_id: "test_id".to_string(),
                 title: title.to_string(),
-                version: "1.0.0".to_string(),
+                version: "17".to_string(),
                 version_string: "1.0.0".to_string(),
                 godot_version: "4.0".to_string(),
                 rating: "5".to_string(),
@@ -337,11 +313,14 @@ mod tests {
         let (main_folder, plugin) = result.unwrap();
         assert_eq!(main_folder, PathBuf::from("some_plugin"));
         assert_eq!(plugin.title, asset.asset_response.title);
+        assert_eq!(
+            plugin.plugin_cfg_path,
+            Some("addons/some_plugin/plugin.cfg".into())
+        );
         assert_eq!(plugin.asset_id, asset.asset_response.asset_id);
-        assert_eq!(plugin.get_version(), asset.asset_response.version);
+        assert_eq!(plugin.get_version(), asset.asset_response.version_string);
         assert_eq!(plugin.license, asset.asset_response.cost);
         assert_eq!(plugin.sub_assets.len(), 0);
-        assert!(plugin.has_plugin_cfg);
     }
 
     #[test]
@@ -371,7 +350,7 @@ mod tests {
         let result = extract.create_plugin_from_asset_archive(&asset);
         assert!(result.is_ok());
         let (_main_folder, plugin) = result.unwrap();
-        assert!(plugin.has_plugin_cfg);
+        assert_eq!(plugin.plugin_cfg_path, None);
     }
 
     #[test]
@@ -504,11 +483,11 @@ mod tests {
         );
     }
 
-    // extract_plugin
+    // extract_asset
 
     #[tokio::test]
     #[serial]
-    async fn test_extract_plugin() {
+    async fn test_extract_asset() {
         let mut mock_file_service = MockDefaultFileService::new();
         mock_file_service
             .expect_directory_exists()
@@ -552,12 +531,22 @@ mod tests {
         let pb_task = ProgressBar::no_length();
         let asset = make_mock_asset(
             "tests/mocks/zip_files/test_with_addons_folder.zip",
-            "SomePlugin",
+            "Some Plugin",
         );
         let result = extract.extract_asset(&asset, pb_task).await;
         assert!(result.is_ok());
         let (_plugin_folder, _plugin) = result.unwrap();
         assert_eq!(_plugin_folder, PathBuf::from("some_plugin"));
+        // Assert that plugin has all the right data
+        assert_eq!(_plugin.title, asset.asset_response.title);
+        assert_eq!(
+            _plugin.plugin_cfg_path,
+            Some("tests/addons/some_plugin/plugin.cfg".into())
+        );
+        assert_eq!(_plugin.asset_id, asset.asset_response.asset_id);
+        assert_eq!(_plugin.get_version(), asset.asset_response.version_string);
+        assert_eq!(_plugin.license, asset.asset_response.cost);
+        assert_eq!(_plugin.sub_assets.len(), 0);
         fs::remove_dir_all("tests/addons").unwrap();
     }
 }
