@@ -2,7 +2,6 @@ use anyhow::Result;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 
 use super::operation::Operation;
-use crate::plugin_config_repository::plugin::Plugin;
 
 pub struct OperationManager {
     multi_progress: MultiProgress,
@@ -48,10 +47,11 @@ impl OperationManager {
         &self,
         index: usize,
         total: usize,
-        plugin: &Plugin,
+        title: &str,
+        version: &str,
     ) -> Result<ProgressBar> {
         self.operation
-            .create_progress_bar(&self.multi_progress, index, total, plugin)
+            .create_progress_bar(&self.multi_progress, index, total, title, version)
     }
 }
 
@@ -110,72 +110,36 @@ mod tests {
     #[test]
     fn test_add_progress_bar_install() {
         let manager = OperationManager::new(Operation::Install).unwrap();
-        let plugin = Plugin::new(
-            "test-plugin".to_string(),
-            "Test Plugin".to_string(),
-            "1.0.0".to_string(),
-            "MIT".to_string(),
-        );
-        let result = manager.add_progress_bar(1, 5, &plugin);
+        let result = manager.add_progress_bar(1, 5, "Test Plugin", "1.0.0");
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_add_progress_bar_update() {
         let manager = OperationManager::new(Operation::Update).unwrap();
-        let plugin = Plugin::new(
-            "update-plugin".to_string(),
-            "Update Plugin".to_string(),
-            "2.0.0".to_string(),
-            "Apache-2.0".to_string(),
-        );
-        let result = manager.add_progress_bar(2, 10, &plugin);
+        let result = manager.add_progress_bar(2, 10, "Update Plugin", "2.0.0");
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_add_progress_bar_extract() {
         let manager = OperationManager::new(Operation::Extract).unwrap();
-        let plugin = Plugin::new(
-            "extract-plugin".to_string(),
-            "Extract Plugin".to_string(),
-            "1.5.0".to_string(),
-            "BSD-3-Clause".to_string(),
-        );
-        let result = manager.add_progress_bar(3, 7, &plugin);
+        let result = manager.add_progress_bar(3, 7, "Extract Plugin", "1.5.0");
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_add_progress_bar_finished() {
         let manager = OperationManager::new(Operation::Finished).unwrap();
-        let plugin = Plugin::new(
-            "finished-plugin".to_string(),
-            "Finished Plugin".to_string(),
-            "3.0.0".to_string(),
-            "GPL-3.0".to_string(),
-        );
-        let result = manager.add_progress_bar(1, 1, &plugin);
+        let result = manager.add_progress_bar(1, 1, "Finished Plugin", "3.0.0");
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_add_multiple_progress_bars() {
         let manager = OperationManager::new(Operation::Install).unwrap();
-        let plugin1 = Plugin::new(
-            "plugin1".to_string(),
-            "Plugin 1".to_string(),
-            "1.0.0".to_string(),
-            "MIT".to_string(),
-        );
-        let plugin2 = Plugin::new(
-            "plugin2".to_string(),
-            "Plugin 2".to_string(),
-            "2.0.0".to_string(),
-            "MIT".to_string(),
-        );
-        let result1 = manager.add_progress_bar(1, 2, &plugin1);
-        let result2 = manager.add_progress_bar(2, 2, &plugin2);
+        let result1 = manager.add_progress_bar(1, 2, "Plugin 1", "1.0.0");
+        let result2 = manager.add_progress_bar(2, 2, "Plugin 2", "2.0.0");
         assert!(result1.is_ok());
         assert!(result2.is_ok());
     }
@@ -189,13 +153,9 @@ mod tests {
     #[test]
     fn test_operation_manager_workflow() {
         let manager = OperationManager::new(Operation::Install).unwrap();
-        let plugin = Plugin::new(
-            "workflow-plugin".to_string(),
-            "Workflow Plugin".to_string(),
-            "1.0.0".to_string(),
-            "MIT".to_string(),
-        );
-        let pb = manager.add_progress_bar(1, 1, &plugin).unwrap();
+        let pb = manager
+            .add_progress_bar(1, 1, "Workflow Plugin", "1.0.0")
+            .unwrap();
         pb.finish();
         manager.finish();
     }

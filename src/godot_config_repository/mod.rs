@@ -551,6 +551,8 @@ renderer/rendering_method="gl_compatibility"
                 "Test Plugin".to_string(),
                 "1.0.0".to_string(),
                 "MIT".to_string(),
+                vec![],
+                true,
             ),
         );
         let plugin_config = DefaultPluginConfig::new(plugins);
@@ -630,6 +632,8 @@ enabled=PackedStringArray("res://addons/test_plugin/plugin.cfg")
                 "Test Plugin".to_string(),
                 "1.0.0".to_string(),
                 "MIT".to_string(),
+                vec![],
+                true,
             ),
         );
         let plugin_config = DefaultPluginConfig::new(plugins);
@@ -679,6 +683,8 @@ enabled=PackedStringArray("res://addons/test_plugin/plugin.cfg")
                 "New Plugin".to_string(),
                 "1.0.0".to_string(),
                 "MIT".to_string(),
+                vec![],
+                true,
             ),
         );
         let plugin_config = DefaultPluginConfig::new(plugins);
@@ -908,6 +914,8 @@ enabled=PackedStringArray("res://addons/test_plugin/plugin.cfg")
                 "Test Plugin".to_string(),
                 "1.0.0".to_string(),
                 "MIT".to_string(),
+                vec![],
+                true,
             ),
         );
         let plugin_config = DefaultPluginConfig::new(plugins);

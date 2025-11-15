@@ -1,4 +1,4 @@
-GET https://godotengine.org/asset-library/api/asset/1709
+GET https://godotengine.org/asset-library/api/asset/4107
 
 # Example response
 {

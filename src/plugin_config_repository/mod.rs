@@ -187,6 +187,8 @@ mod tests {
                     "Awesome Plugin".to_string(),
                     "1.0.0".to_string(),
                     "MIT".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
             (
@@ -196,6 +198,8 @@ mod tests {
                     "Super Plugin".to_string(),
                     "2.1.3".to_string(),
                     "MIT".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
         ]);
@@ -231,6 +235,8 @@ mod tests {
                     "Awesome Plugin".to_string(),
                     "1.0.0".to_string(),
                     "MIT".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
             (
@@ -240,6 +246,8 @@ mod tests {
                     "Super Plugin".to_string(),
                     "2.1.3".to_string(),
                     "MIT".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
         ]);
@@ -289,6 +297,8 @@ mod tests {
                 "Mega Plugin".to_string(),
                 "0.9.0".to_string(),
                 "MIT".to_string(),
+                vec![],
+                true,
             ),
         )]);
         let result = plugin_config_repository.add_plugins(&new_plugins);
@@ -303,6 +313,8 @@ mod tests {
                     "Awesome Plugin".to_string(),
                     "1.0.0".to_string(),
                     "MIT".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
             (
@@ -312,6 +324,8 @@ mod tests {
                     "Super Plugin".to_string(),
                     "2.1.3".to_string(),
                     "MIT".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
             (
@@ -321,6 +335,8 @@ mod tests {
                     "Mega Plugin".to_string(),
                     "0.9.0".to_string(),
                     "MIT".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
         ]);
@@ -382,6 +398,8 @@ mod tests {
                 "Super Plugin".to_string(),
                 "2.1.3".to_string(),
                 "MIT".to_string(),
+                vec![],
+                true,
             ),
         )]);
 
@@ -407,6 +425,8 @@ mod tests {
                     "Awesome Plugin".to_string(),
                     "1.0.0".to_string(),
                     "MIT".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
             (
@@ -416,6 +436,8 @@ mod tests {
                     "Super Plugin".to_string(),
                     "2.1.3".to_string(),
                     "MIT".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
         ]);
@@ -467,6 +489,8 @@ mod tests {
                     "Awesome Plugin".to_string(),
                     "1.0.0".to_string(),
                     "MIT".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
             (
@@ -476,6 +500,8 @@ mod tests {
                     "Super Plugin".to_string(),
                     "2.1.3".to_string(),
                     "MIT".to_string(),
+                    vec![],
+                    true,
                 ),
             ),
         ]);
