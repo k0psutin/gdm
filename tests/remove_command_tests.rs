@@ -101,7 +101,6 @@ mod remove_command_tests {
     #[test]
     fn test_remove_should_remove_all_sub_asset_folders() {
         let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
-
         cmd.arg("add")
             .arg("Godot Mod Loader")
             .arg("--version")
@@ -109,7 +108,7 @@ mod remove_command_tests {
             .assert()
             .success();
 
-        let addons_path = _temp_dir.child("addons");
+        let addons_path = &_temp_dir.child("addons");
         let mod_loader_path = addons_path.join("mod_loader");
         let sub_asset_path = addons_path.join("JSON_Schema_Validator");
 
@@ -122,7 +121,7 @@ mod remove_command_tests {
             "Sub-asset folder exists"
         );
 
-        setup::get_cmd(_temp_dir)
+        setup::get_cmd(&_temp_dir)
             .arg("remove")
             .arg("mod_loader")
             .assert()
