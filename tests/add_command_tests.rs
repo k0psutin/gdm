@@ -3,6 +3,7 @@ mod setup;
 mod add_command_tests {
     use crate::setup;
     use predicates::prelude::*;
+    use serde_json::json;
 
     #[test]
     fn test_add_command_help() {
@@ -105,6 +106,78 @@ mod add_command_tests {
         assert!(
             addons_path.exists(),
             "Plugin should be extracted to addons/gut folder"
+        );
+    }
+
+    #[test]
+    fn test_add_plugin_with_sub_assets_should_show_correct_gdm_json() {
+        let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
+        cmd.arg("add")
+            .arg("Godot Mod Loader")
+            .arg("--version")
+            .arg("7.0.1")
+            .assert()
+            .success();
+
+        let gdm_json_path = _temp_dir.path().join("gdm.json");
+        assert!(gdm_json_path.exists(), "gdm.json should be created");
+
+        let expected_gdm_json = json!({
+                "plugins": {
+        "mod_loader": {
+          "asset_id": "4107",
+          "title": "Godot Mod Loader",
+          "plugin_cfg_path": "addons/mod_loader/_export_plugin/plugin.cfg",
+          "version": "7.0.1",
+          "sub_assets": [
+            "JSON_Schema_Validator"
+          ],
+          "license": "CC0"
+        }
+                }
+            });
+
+        let gdm_content = std::fs::read_to_string(&gdm_json_path).expect("Failed to read gdm.json");
+        let gdm_json = serde_json::from_str::<serde_json::Value>(&gdm_content)
+            .expect("Failed to parse gdm.json");
+        assert_eq!(gdm_json, expected_gdm_json);
+
+        let addons_path = _temp_dir.child("addons");
+        let mod_loader_path = addons_path.join("mod_loader");
+        let sub_asset_path = addons_path.join("JSON_Schema_Validator");
+        assert!(
+            mod_loader_path.try_exists().unwrap(),
+            "Plugin folder should exists"
+        );
+        assert!(
+            sub_asset_path.try_exists().unwrap(),
+            "Sub-asset folder exists"
+        );
+    }
+
+    #[test]
+    fn test_add_plugin_with_sub_assets_should_show_not_add_files_to_addons_root_directory() {
+        let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
+        cmd.arg("add")
+            .arg("Godot Mod Loader")
+            .arg("--version")
+            .arg("7.0.1")
+            .assert()
+            .success();
+
+        let addons_path = _temp_dir.child("addons");
+        // get all files in addons directory
+        let mut files = vec![];
+        let entries = std::fs::read_dir(&addons_path).expect("Failed to read addons directory");
+        for entry in entries {
+            let entry = entry.expect("Failed to get directory entry");
+            if entry.path().is_file() {
+                files.push(entry.path());
+            }
+        }
+        assert!(
+            files.is_empty(),
+            "No files should be added to the addons root directory"
         );
     }
 

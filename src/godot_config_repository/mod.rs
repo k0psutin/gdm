@@ -1,6 +1,6 @@
 pub mod godot_config;
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::HashMap;
 
 use anyhow::{Result, bail};
 use tracing::{debug, error, info};
@@ -8,8 +8,8 @@ use tracing::{debug, error, info};
 use crate::app_config::{AppConfig, DefaultAppConfig};
 use crate::file_service::{DefaultFileService, FileService};
 use crate::godot_config_repository::godot_config::DefaultGodotConfig;
+use crate::plugin_config_repository::plugin::Plugin;
 use crate::plugin_config_repository::plugin_config::{DefaultPluginConfig, PluginConfig};
-use crate::utils::Utils;
 
 pub struct DefaultGodotConfigRepository {
     pub file_service: Box<dyn FileService + Send + Sync + 'static>,
@@ -50,27 +50,19 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
         Ok(godot_version)
     }
 
-    fn plugin_root_folder_to_resource_path(&self, plugin_path: String) -> String {
-        let addon_folder_path = self
-            .app_config
-            .get_addon_folder_path()
-            .display()
-            .to_string();
-        Utils::plugin_folder_to_resource_path(format!("{}/{}", addon_folder_path, plugin_path))
-    }
-
-    fn plugins_to_packed_string_array(&self, plugins: HashSet<String>) -> String {
-        let joined = BTreeSet::from_iter(plugins)
+    fn plugins_to_packed_string_array(&self, plugins: Vec<Plugin>) -> String {
+        let plugin_paths = plugins
             .iter()
-            .map(|s| {
+            .filter(|plugin| plugin.plugin_cfg_path.is_some())
+            .map(move |plugin| {
                 format!(
-                    "\"{}\"",
-                    self.plugin_root_folder_to_resource_path(s.to_string())
+                    "\"res://{}\"",
+                    plugin.plugin_cfg_path.clone().unwrap_or_default().display()
                 )
             })
             .collect::<Vec<String>>()
             .join(", ");
-        let packed_string_array = format!("PackedStringArray({})", joined);
+        let packed_string_array = format!("PackedStringArray({})", plugin_paths);
         info!(
             "Converted plugins to PackedStringArray: {}",
             packed_string_array
@@ -115,7 +107,10 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
     /// ```
     fn update_project_file(&self, plugin_config: DefaultPluginConfig) -> Result<Vec<String>> {
         let plugin_config_plugins = plugin_config.get_plugins(true);
-        let _plugins = HashSet::from_iter(plugin_config_plugins.keys().cloned());
+        let _plugins = plugin_config_plugins
+            .values()
+            .cloned()
+            .collect::<Vec<Plugin>>();
 
         let mut contents = self.load_project_file()?;
 
@@ -301,8 +296,7 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
 }
 pub trait GodotConfigRepository {
     fn get_godot_version_from_project(&self) -> Result<String>;
-    fn plugin_root_folder_to_resource_path(&self, plugin_path: String) -> String;
-    fn plugins_to_packed_string_array(&self, plugins: HashSet<String>) -> String;
+    fn plugins_to_packed_string_array(&self, plugins: Vec<Plugin>) -> String;
     fn validate_project_file(&self) -> Result<()>;
     fn save(&self, plugin_config: DefaultPluginConfig) -> Result<()>;
     fn load(&self) -> Result<DefaultGodotConfig>;
@@ -321,26 +315,6 @@ mod tests {
 
     use super::*;
 
-    // plugin_root_folder_to_resource_path
-
-    #[test]
-    fn test_plugin_root_folder_to_resource_path() {
-        let app_config = DefaultAppConfig::new(
-            None,
-            None,
-            None,
-            Some(String::from(
-                "tests/mocks/project_with_plugins_and_version.godot",
-            )),
-            Some(String::from("tests/mocks/addons")),
-        );
-
-        let mock_file_service = MockDefaultFileService::default();
-        let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
-        let result = repository.plugin_root_folder_to_resource_path("my_plugin".to_string());
-        assert_eq!("res://tests/mocks/addons/my_plugin/plugin.cfg", result);
-    }
-
     // plugins_to_packed_string_array
 
     #[test]
@@ -357,14 +331,14 @@ mod tests {
 
         let mock_file_service = MockDefaultFileService::default();
         let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
-        let result = repository.plugins_to_packed_string_array(HashSet::from([
-            "my_plugin".to_string(),
-            "another_plugin".to_string(),
-        ]));
+        let result = repository.plugins_to_packed_string_array(vec![
+            Plugin::create_mock_plugin_1(),
+            Plugin::create_mock_plugin_2(),
+        ]);
         assert_eq!(
             result,
             String::from(
-                "PackedStringArray(\"res://tests/mocks/addons/another_plugin/plugin.cfg\", \"res://tests/mocks/addons/my_plugin/plugin.cfg\")"
+                "PackedStringArray(\"res://addons/awesome_plugin/plugin.cfg\", \"res://addons/super_plugin/plugin.cfg\")"
             )
         );
     }
@@ -604,7 +578,7 @@ config/features=PackedStringArray("4.5")
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/some_plugin/plugin.cfg")
+enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
 
 "#;
 
@@ -616,7 +590,7 @@ enabled=PackedStringArray("res://addons/some_plugin/plugin.cfg")
         let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
 
         let mut plugins = BTreeMap::new();
-        plugins.insert("some_plugin".to_string(), Plugin::create_mock_plugin_2());
+        plugins.insert("super_plugin".to_string(), Plugin::create_mock_plugin_2());
         let plugin_config = DefaultPluginConfig::new(plugins);
 
         let result = repository.update_project_file(plugin_config);

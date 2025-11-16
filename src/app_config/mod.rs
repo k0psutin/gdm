@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Application configuration settings
 #[derive(Debug, Clone, Deserialize)]
@@ -63,8 +63,8 @@ impl AppConfig for DefaultAppConfig {
         Path::new(&self.cache_folder_path)
     }
 
-    fn get_addon_folder_path(&self) -> &Path {
-        Path::new(&self.addon_folder_path)
+    fn get_addon_folder_path(&self) -> PathBuf {
+        PathBuf::from(self.addon_folder_path.as_str())
     }
 }
 
@@ -79,5 +79,5 @@ pub trait AppConfig: Send + Sync + 'static {
     fn get_godot_project_file_path(&self) -> &Path;
     fn get_config_file_path(&self) -> &Path;
     fn get_cache_folder_path(&self) -> &Path;
-    fn get_addon_folder_path(&self) -> &Path;
+    fn get_addon_folder_path(&self) -> PathBuf;
 }

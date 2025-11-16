@@ -225,7 +225,7 @@ impl PluginService for DefaultPluginService {
                 index,
                 plugins.len(),
                 &asset_response.title,
-                &asset_response.version,
+                &asset_response.version_string,
             )?;
             let extract_service = self.extract_service.clone();
             let asset = downloaded_asset.clone();
@@ -234,9 +234,8 @@ impl PluginService for DefaultPluginService {
         }
 
         let mut installed_plugins = BTreeMap::new();
-        if let Some(res) = extract_service_tasks.join_next().await {
+        while let Some(res) = extract_service_tasks.join_next().await {
             let (main_plugin_folder, plugin) = res??;
-            // Use the root folder name as the key, matching test expectations
             installed_plugins.insert(main_plugin_folder, plugin);
         }
 
@@ -368,18 +367,18 @@ impl PluginService for DefaultPluginService {
             bail!("No plugins installed.");
         }
 
-        let installed_plugin = self.plugin_config_repository.get_plugin_key_by_name(name);
+        let installed_plugin = self.plugin_config_repository.get_plugin_by_name(name);
         let addon_folder = self.app_config.get_addon_folder_path();
 
         match installed_plugin {
-            Some(plugin_name) => {
+            Some((plugin_name, plugin)) => {
                 let plugin_folder_path = Utils::plugin_name_to_addon_folder_path(
-                    addon_folder,
+                    &addon_folder,
                     Path::new(plugin_name.as_str()),
                 );
 
                 // Remove plugin directory if it exists
-                if self.file_service.file_exists(&plugin_folder_path)? {
+                if self.file_service.directory_exists(&plugin_folder_path) {
                     println!(
                         "Removing plugin folder: {}",
                         plugin_folder_path.clone().display()
@@ -387,6 +386,23 @@ impl PluginService for DefaultPluginService {
                     self.file_service.remove_dir_all(&plugin_folder_path)?
                 } else {
                     println!("Plugin folder does not exist, trying to remove from gdm config");
+                }
+
+                // Remove plugin sub_assets if they exist
+                let sub_assets = plugin.sub_assets.clone();
+                for asset in sub_assets {
+                    let plugin_folder_path = Utils::plugin_name_to_addon_folder_path(
+                        &addon_folder,
+                        Path::new(asset.as_str()),
+                    );
+
+                    if self.file_service.directory_exists(&plugin_folder_path) {
+                        println!(
+                            "Removing sub-asset folder: {}",
+                            plugin_folder_path.clone().display()
+                        );
+                        self.file_service.remove_dir_all(&plugin_folder_path)?
+                    }
                 }
 
                 // Remove plugin from plugin config
