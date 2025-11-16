@@ -7,7 +7,6 @@ use std::fs;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
-use tracing::info;
 
 use crate::api::asset::Asset;
 use crate::app_config::DefaultAppConfig;
@@ -51,8 +50,6 @@ impl ExtractService for DefaultExtractService {
     fn create_extract_path(&self, root: PathBuf, file_path: Option<PathBuf>) -> Option<PathBuf> {
         let addons_folder_path = self.app_config.get_addon_folder_path();
         let path = file_path?;
-        info!("Creating extract path for {:?}", path);
-        info!("With root {:?}", root);
         let index = path.iter().skip(1).position(|p| p == addons_folder_path);
         match index {
             Some(i) => {
@@ -65,6 +62,14 @@ impl ExtractService for DefaultExtractService {
                 let components: Vec<_> = path.iter().skip(1).collect();
                 let mut new_path = root;
                 new_path.extend(components);
+
+                // This means that the index was not found, so the path does not contain any subdir, e.g.
+                // /addons/<asset>. If we have a "stray" file, e.g. /addons/file.txt, we should skip it.
+                if let Some(parent) = new_path.parent()
+                    && parent == addons_folder_path.as_path()
+                {
+                    return None;
+                }
                 Some(new_path)
             }
         }
@@ -92,9 +97,6 @@ impl ExtractService for DefaultExtractService {
             let extract_path = outpath.as_path();
 
             if !file.is_dir() && extract_path.is_dir() {
-                // If we have a file that is outside the expected structure, skip it
-                // E.g., .zip file contains file /some-file.txt at root level.
-                // See [create_extract_path] TODO comment
                 continue;
             }
 
@@ -143,10 +145,11 @@ impl ExtractService for DefaultExtractService {
                 if outpath == addons_folder || outpath.as_os_str().is_empty() {
                     continue;
                 }
-                paths.insert(outpath);
             } else if file.name().ends_with("plugin.cfg") {
-                plugin_cfgs.insert(outpath);
+                plugin_cfgs.insert(outpath.clone());
             }
+
+            paths.insert(outpath);
         }
         if paths.is_empty() {
             bail!("No directories found in the archive")
@@ -335,7 +338,7 @@ mod tests {
         let extract = DefaultExtractService::default();
         let asset = make_mock_asset(
             "tests/mocks/zip_files/test_with_addons_folder_with_subaddons.zip",
-            "MultiPlugin",
+            "Another Plugin",
         );
         let result = extract.create_plugin_from_asset_archive(&asset);
         assert!(result.is_ok());
