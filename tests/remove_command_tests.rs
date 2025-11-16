@@ -97,4 +97,44 @@ mod remove_command_tests {
             )))
             .stdout(predicate::str::contains("Plugin gut removed successfully."));
     }
+
+    #[test]
+    fn test_remove_should_remove_all_sub_asset_folders() {
+        let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
+
+        cmd.arg("add")
+            .arg("Godot Mod Loader")
+            .arg("--version")
+            .arg("7.0.1")
+            .assert()
+            .success();
+
+        let addons_path = _temp_dir.child("addons");
+        let mod_loader_path = addons_path.join("mod_loader");
+        let sub_asset_path = addons_path.join("JSON_Schema_Validator");
+
+        assert!(
+            mod_loader_path.try_exists().unwrap(),
+            "Plugin folder should exists"
+        );
+        assert!(
+            sub_asset_path.try_exists().unwrap(),
+            "Sub-asset folder exists"
+        );
+
+        setup::get_cmd(_temp_dir)
+            .arg("remove")
+            .arg("mod_loader")
+            .assert()
+            .success();
+
+        assert!(
+            !mod_loader_path.try_exists().unwrap(),
+            "Plugin folder should be removed"
+        );
+        assert!(
+            !sub_asset_path.try_exists().unwrap(),
+            "Sub-asset folder should be removed"
+        );
+    }
 }

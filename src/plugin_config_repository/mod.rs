@@ -58,13 +58,13 @@ impl PluginConfigRepository for DefaultPluginConfigRepository {
         Ok(updated_plugin_config)
     }
 
-    fn get_plugin_key_by_name(&self, name: &str) -> Option<String> {
+    fn get_plugin_by_name(&self, name: &str) -> Option<(String, Plugin)> {
         let plugin_config = self.load().ok()?;
-        let plugin = plugin_config.get_plugin_by_name(name);
-        match plugin {
-            Some(_) => Some(name.to_string()),
-            _ => None,
+        let plugin: Option<Plugin> = plugin_config.get_plugin_by_name(name);
+        if let Some(p) = plugin {
+            return Some((name.to_string(), p));
         }
+        None
     }
 
     fn get_plugin_by_asset_id(&self, asset_id: &str) -> Option<Plugin> {
@@ -124,7 +124,7 @@ impl PluginConfigRepository for DefaultPluginConfigRepository {
 pub trait PluginConfigRepository {
     fn add_plugins(&self, plugins: &BTreeMap<String, Plugin>) -> Result<DefaultPluginConfig>;
     fn get_plugin_by_asset_id(&self, asset_id: &str) -> Option<Plugin>;
-    fn get_plugin_key_by_name(&self, name: &str) -> Option<String>;
+    fn get_plugin_by_name(&self, name: &str) -> Option<(String, Plugin)>;
     fn get_plugins(&self) -> Result<BTreeMap<String, Plugin>>;
     fn has_installed_plugins(&self) -> Result<bool>;
     fn load(&self) -> Result<DefaultPluginConfig>;
@@ -264,10 +264,10 @@ mod tests {
         assert_eq!(updated_config.plugins, expected_plugins);
     }
 
-    // get_plugin_key_by_name
+    // get_plugin_by_name
 
     #[test]
-    fn test_get_plugin_key_by_name_should_return_key_if_plugin_exists() {
+    fn test_get_plugin_by_name_should_return_plugin_if_exists() {
         let app_config = DefaultAppConfig::new(
             None,
             Some(String::from("tests/mocks/gdm.json")),
@@ -278,12 +278,15 @@ mod tests {
         let plugin_config_repository =
             DefaultPluginConfigRepository::new(app_config, Arc::new(DefaultFileService));
         let plugin_key = "plugin_1";
-        let key = plugin_config_repository.get_plugin_key_by_name(plugin_key);
-        assert_eq!(key, Some(plugin_key.to_string()));
+        let key = plugin_config_repository.get_plugin_by_name(plugin_key);
+        assert_eq!(
+            key,
+            Some((plugin_key.to_string(), Plugin::create_mock_plugin_1()))
+        );
     }
 
     #[test]
-    fn test_get_plugin_key_by_name_should_return_none_if_plugin_does_not_exist() {
+    fn test_get_plugin_by_name_should_return_none_if_plugin_does_not_exist() {
         let app_config = DefaultAppConfig::new(
             None,
             Some(String::from("tests/mocks/gdm.json")),
@@ -294,7 +297,7 @@ mod tests {
         let plugin_config_repository =
             DefaultPluginConfigRepository::new(app_config, Arc::new(DefaultFileService));
         let plugin_key = "nonexistent_plugin";
-        let key = plugin_config_repository.get_plugin_key_by_name(plugin_key);
+        let key = plugin_config_repository.get_plugin_by_name(plugin_key);
         assert_eq!(key, None);
     }
 
@@ -398,6 +401,7 @@ mod tests {
                     "title": "Awesome Plugin",
                     "version": "1.0.0",
                     "license": "MIT",
+                    "plugin_cfg_path": "addons/awesome_plugin/plugin.cfg",
                     "sub_assets": []
                 },
                 "plugin_2": {
@@ -405,6 +409,7 @@ mod tests {
                     "title": "Super Plugin",
                     "version": "2.1.3",
                     "license": "MIT",
+                    "plugin_cfg_path": "addons/super_plugin/plugin.cfg",
                     "sub_assets": []
                 }
             }
@@ -437,7 +442,8 @@ mod tests {
                         "sub_asset1",
                         "sub_asset2"
                     ],
-                    "license": "MIT"
+                    "license": "MIT",
+                    "plugin_cfg_path": null,
                 }
             }
         });

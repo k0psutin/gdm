@@ -1197,9 +1197,9 @@ mod tests {
 
         let mut plugin_config_repository = MockDefaultPluginConfigRepository::default();
         plugin_config_repository
-            .expect_get_plugin_key_by_name()
+            .expect_get_plugin_by_name()
             .with(eq("test_plugin"))
-            .returning(|_name| Some("test_plugin".to_string()));
+            .returning(|_name| Some(("test_plugin".to_string(), Plugin::create_mock_plugin_1())));
         plugin_config_repository
             .expect_remove_plugins()
             .returning(|_names| Ok(DefaultPluginConfig::default()));
@@ -1211,6 +1211,9 @@ mod tests {
         file_service
             .expect_file_exists()
             .returning(|_path| Ok(true));
+        file_service
+            .expect_directory_exists()
+            .returning(|_path| true);
         file_service
             .expect_remove_dir_all()
             .returning(|_path| Ok(()));
@@ -1237,7 +1240,7 @@ mod tests {
 
         let mut plugin_config_repository = MockDefaultPluginConfigRepository::default();
         plugin_config_repository
-            .expect_get_plugin_key_by_name()
+            .expect_get_plugin_by_name()
             .with(eq("nonexistent"))
             .returning(|_name| None);
 

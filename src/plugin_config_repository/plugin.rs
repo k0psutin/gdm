@@ -9,7 +9,7 @@ use crate::{api::asset_response::AssetResponse, utils::Utils};
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Plugin {
     pub asset_id: String,
-    #[serde(skip)]
+    #[serde(default = "Option::default")]
     pub plugin_cfg_path: Option<PathBuf>,
     pub title: String,
     #[serde(
