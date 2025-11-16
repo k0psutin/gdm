@@ -9,13 +9,14 @@ pub fn setup_test_dir() -> TempDir {
     TempDir::new().expect("Failed to create temp dir")
 }
 
-pub fn get_cmd(temp_dir: TempDir) -> Command {
+pub fn get_cmd(temp_dir: &TempDir) -> Command {
     let mut cmd = cargo::cargo_bin_cmd!(pkg_name!());
     cmd.env("API_BASE_URL", "https://godotengine.org/asset-library/api")
         .env("CONFIG_FILE_PATH", temp_dir.child("gdm.json"))
         .env("CACHE_FOLDER_PATH", temp_dir.child(".gdm"))
         .env("GODOT_PROJECT_FILE_PATH", temp_dir.child("project.godot"))
-        .env("ADDON_FOLDER_PATH", temp_dir.child("addons"));
+        .env("ADDON_FOLDER_PATH", temp_dir.child("addons"))
+        .current_dir(temp_dir);
     cmd
 }
 
