@@ -12,7 +12,7 @@ rust-version = "1.91.0"
 [dependencies]
 anyhow = "1.0.100"
 async-trait = "0.1.89"
-bytes = "1.10.1"
+bytes = "1.11.0"
 clap = { version = "4.5.52", features = ["derive", "error-context", "help", "std", "usage"], default-features = false }
 clap-verbosity-flag = { version = "3.0.4", default-features = false, features = ["tracing"] }
 futures = "0.3.31"
