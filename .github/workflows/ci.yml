@@ -33,7 +33,7 @@ jobs:
           uses: taiki-e/install-action@cargo-llvm-cov
         - name: Show coverage report if dependabot PR
           if: github.actor == 'dependabot[bot]'
-          run: cargo llvm-cov --show-report
+          run: cargo llvm-cov -q --summary-only
         - name: Exit early if dependabot PR
           if: github.actor == 'dependabot[bot]'
           run: exit 0
