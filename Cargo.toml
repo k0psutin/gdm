@@ -16,7 +16,7 @@ bytes = "1.10.1"
 clap = { version = "4.5.51", features = ["derive", "error-context", "help", "std", "usage"], default-features = false }
 clap-verbosity-flag = { version = "3.0.4", default-features = false, features = ["tracing"] }
 futures = "0.3.31"
-indicatif = "0.18.2"
+indicatif = "0.18.3"
 regex = { version = "1.12.2", default-features = false, features = ["std", "unicode-perl"] }
 reqwest = { version = "0.12.24", features = ["json", "rustls-tls"], default-features = false }
 semver = "1.0.27"
