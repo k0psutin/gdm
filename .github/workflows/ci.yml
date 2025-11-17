@@ -34,12 +34,11 @@ jobs:
         - name: Show coverage report if dependabot PR
           if: github.actor == 'dependabot[bot]'
           run: cargo llvm-cov -q --summary-only
-        - name: Exit early if dependabot PR
-          if: github.actor == 'dependabot[bot]'
-          run: exit 0
         - name: Generate code coverage
+          if: github.actor != 'dependabot[bot]'
           run: cargo llvm-cov -q --lcov --output-path lcov.info
         - name: Get previous coverage from Gist
+          if: github.actor != 'dependabot[bot]'
           id: gist_content
           uses: gorgbus/gist-actions@main
           env:
@@ -49,8 +48,10 @@ jobs:
             gist_id: "02a7627bd5ba7bdaaf0063e02cadcfde"
             file_name: "gdm_coverage.json"
         - name: Setup LCOV
+          if: github.actor != 'dependabot[bot]'
           uses: hrishikesh-kadam/setup-lcov@v1
         - name: Report code coverage
+          if: github.actor != 'dependabot[bot]'
           uses: zgosalvez/github-actions-report-lcov@v4
           with:
             coverage-files: lcov.info
