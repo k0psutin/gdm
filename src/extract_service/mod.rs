@@ -223,11 +223,11 @@ impl ExtractService for DefaultExtractService {
             .find(|p| p.starts_with(addons_folder.join(&main_plugin_folder)))
             .cloned();
 
-        let mut plugin = Plugin::from(asset.asset_response.clone());
-        // Set plugin config path, if any
-        plugin.plugin_cfg_path = plugin_cfg_path;
-        // Set sub assets, if any
-        plugin.sub_assets = sub_addons.clone();
+        let plugin = Plugin::from_asset_response_with_plugin_cfg_and_sub_assets(
+            asset.asset_response.clone(),
+            plugin_cfg_path.clone(),
+            sub_addons.clone(),
+        );
 
         Ok((main_plugin_folder, plugin))
     }

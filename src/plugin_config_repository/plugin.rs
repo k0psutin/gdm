@@ -9,8 +9,9 @@ use crate::{api::asset_response::AssetResponse, utils::Utils};
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Plugin {
     pub asset_id: String,
+    /// Path to the plugin.cfg file within the Godot project, using Unix-style separators.
     #[serde(default = "Option::default")]
-    pub plugin_cfg_path: Option<PathBuf>,
+    pub plugin_cfg_path: Option<String>,
     pub title: String,
     #[serde(
         serialize_with = "serialize_version",
@@ -73,14 +74,36 @@ impl Plugin {
         license: String,
         sub_assets: Vec<String>,
     ) -> Plugin {
+        // Convert PathBuf to Unix-style string path
+        let _plugin_cfg_path = plugin_cfg_path.map(|p| {
+            p.iter()
+                .map(|s| s.to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/")
+        });
         Plugin {
             asset_id,
-            plugin_cfg_path,
+            plugin_cfg_path: _plugin_cfg_path,
             title,
             version: Utils::parse_semantic_version(version.as_str()),
             license,
             sub_assets,
         }
+    }
+
+    pub fn from_asset_response_with_plugin_cfg_and_sub_assets(
+        asset_response: AssetResponse,
+        plugin_cfg_path: Option<PathBuf>,
+        sub_assets: Vec<String>,
+    ) -> Self {
+        Plugin::new(
+            asset_response.asset_id,
+            plugin_cfg_path,
+            asset_response.title,
+            asset_response.version_string,
+            asset_response.cost,
+            sub_assets,
+        )
     }
 
     pub fn get_version(&self) -> String {
@@ -152,7 +175,7 @@ mod tests {
         assert_eq!(plugin.sub_assets, vec!["sub1", "sub2"]);
         assert_eq!(
             plugin.plugin_cfg_path,
-            Some(PathBuf::from("path/to/plugin.cfg"))
+            Some("path/to/plugin.cfg".to_string())
         );
     }
 
@@ -172,7 +195,11 @@ mod tests {
             "2023-01-01".to_string(),
             "https://example.com/old.zip".to_string(),
         );
-        let plugin = Plugin::from(asset_response.clone());
+        let plugin = Plugin::from_asset_response_with_plugin_cfg_and_sub_assets(
+            asset_response.clone(),
+            None,
+            vec![],
+        );
         assert_eq!(plugin.asset_id, "456");
         assert_eq!(plugin.title, "Test Asset");
         assert_eq!(plugin.get_version(), "0.0.1");
@@ -473,7 +500,7 @@ mod tests {
     fn test_plugin_serialize_deserialize_roundtrip() {
         let original = Plugin {
             asset_id: "789".to_string(),
-            plugin_cfg_path: Some(PathBuf::from("roundtrip/plugin.cfg")),
+            plugin_cfg_path: Some("roundtrip/plugin.cfg".to_string()),
             title: "Roundtrip Plugin".to_string(),
             version: Version::parse("3.2.1-alpha").unwrap(),
             license: "GPL-3.0".to_string(),

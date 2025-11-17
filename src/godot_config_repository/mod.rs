@@ -54,12 +54,7 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
         let plugin_paths = plugins
             .iter()
             .filter(|plugin| plugin.plugin_cfg_path.is_some())
-            .map(move |plugin| {
-                format!(
-                    "\"res://{}\"",
-                    plugin.plugin_cfg_path.clone().unwrap_or_default().display()
-                )
-            })
+            .map(|plugin| format!("\"res://{}\"", plugin.plugin_cfg_path.as_ref().unwrap()))
             .collect::<Vec<String>>()
             .join(", ");
         let packed_string_array = format!("PackedStringArray({})", plugin_paths);
