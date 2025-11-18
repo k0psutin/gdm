@@ -2,14 +2,18 @@
   "plugins": {
     "dialogue_manager": {
       "asset_id": "3654",
+      "plugin_cfg_path": "addons/dialogue_manager/plugin.cfg",
       "title": "Dialogue Manager 3",
       "version": "3.2.0",
+      "sub_assets": [],
       "license": "MIT"
     },
     "gut": {
       "asset_id": "1709",
+      "plugin_cfg_path": "addons/gut/plugin.cfg",
       "title": "GUT - Godot Unit Testing (Godot 4)",
       "version": "9.1.0",
+      "sub_assets": [],
       "license": "MIT"
     }
   }

@@ -10,7 +10,7 @@ use crate::{api::asset_response::AssetResponse, utils::Utils};
 pub struct Plugin {
     pub asset_id: String,
     /// Path to the plugin.cfg file within the Godot project, using Unix-style separators.
-    #[serde(default = "Option::default")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub plugin_cfg_path: Option<String>,
     pub title: String,
     #[serde(
