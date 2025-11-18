@@ -74,6 +74,9 @@ jobs:
       
       - name: Build the executable
         run: cargo build --release --target x86_64-pc-windows-gnu
+        
+      - name: Zip windows binary
+        run: Compress-Archive -Path .\\target\\x86_64-pc-windows-gnu\\release\\gdm.exe -DestinationPath gdm-windows.zip
     build-linux:
       name: build (ubuntu-latest)
       needs: checks
@@ -93,6 +96,9 @@ jobs:
       
       - name: Build the executable
         run: cargo build --release --target x86_64-unknown-linux-musl
+
+      - name: Tar x86_64 binary
+        run: tar -czvf gdm-linux-x86_64.tar.gz -C target/x86_64-unknown-linux-musl/release gdm
     build-macos:
       name: build (macos-latest)
       needs: checks
@@ -110,3 +116,6 @@ jobs:
 
       - name: Build the executable
         run: cargo build --release --target=x86_64-apple-darwin --target=aarch64-apple-darwin
+      
+      - name: Tar aarch64 binary
+        run: tar -czvf gdm-macos-aarch64.tar.gz -C target/aarch64-apple-darwin/release gdm
