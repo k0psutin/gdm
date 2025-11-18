@@ -443,7 +443,6 @@ mod tests {
                         "sub_asset2"
                     ],
                     "license": "MIT",
-                    "plugin_cfg_path": null,
                 }
             }
         });
