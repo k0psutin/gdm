@@ -6,6 +6,10 @@
 
 **GD Manager** (`gdm`) is a CLI tool for managing Godot plugin dependencies.
 
+## Migrating from 1.0.1 to 1.1.0
+- Version 1.1.0 introduces internal changes to plugin resolution.
+  - Before adding new plugins, run `gdm install` to update `gdm.json` - otherwise plugins might not install correctly.
+
 ## Supported Godot versions
 
 - 3.6.x
@@ -28,8 +32,9 @@ When using `gdm`, all plugin additions and removals should be performed through 
 
 > There is no way to migrate previously installed plugins to `gdm`. Suggested way is to reinstall all plugins via `gdm` to keep `gdm.json` and `project.godot` in sync.
 
-> **Warning about assets containing multiple addons:**  
-> Currently, `gdm` assumes each plugin asset provides a single addon folder. Assets with multiple addon folders can lead to unexpected behavior or incomplete plugin management. If a downloaded asset contains multiple folders under `/addons` (e.g., `/addons/addon1`, `/addons/addon2`), `gdm` may not work as expected.
+### Plugins with multiple assets
+
+If the downloaded asset contains multiple folders in `/addons`, GD Manager tries to determine the main plugin which will be used in `gdm.json`. Rest of the assets will be marked as `sub_addons`.
 
 ## Features
 
