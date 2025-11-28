@@ -13,7 +13,7 @@ mod tests {
     use crate::file_service::MockDefaultFileService;
     use crate::godot_config_repository::MockDefaultGodotConfigRepository;
     use crate::plugin_config_repository::MockDefaultPluginConfigRepository;
-    use crate::plugin_config_repository::plugin::Plugin;
+    use crate::plugin_config_repository::plugin::{Plugin, PluginSource};
     use crate::plugin_config_repository::plugin_config::DefaultPluginConfig;
     use crate::plugin_service::operation::Operation;
     use crate::plugin_service::{DefaultPluginService, PluginService};
@@ -49,7 +49,7 @@ mod tests {
             .expect_get_plugin_by_asset_id()
             .returning(move |_| {
                 installed_version_clone.as_ref().map(|version| {
-                    Plugin::new(
+                    Plugin::new_asset_store_plugin(
                         asset_id_clone.clone(),
                         Some(format!("addons/{}/plugin.cfg", plugin_name_clone).into()),
                         plugin_name_clone.clone(),
@@ -156,7 +156,7 @@ mod tests {
             .returning(move |_file_path, _pb| {
                 Ok((
                     String::from("test_plugin"),
-                    Plugin::new(
+                    Plugin::new_asset_store_plugin(
                         extract_asset_id.clone(),
                         Some("addons/test_plugin/plugin.cfg".into()),
                         "Test Plugin".to_string(), // title from AssetResponse in test
@@ -444,7 +444,7 @@ mod tests {
             .returning(|_file_path, _pb| {
                 Ok((
                     String::from("test_plugin"),
-                    Plugin::new(
+                    Plugin::new_asset_store_plugin(
                         "1234".to_string(),
                         Some("addons/test_plugin/plugin.cfg".into()),
                         "Test Plugin".to_string(),
@@ -457,7 +457,7 @@ mod tests {
         plugin_config_repository.expect_get_plugins().returning(|| {
             Ok(BTreeMap::from([(
                 String::from("test_plugin"),
-                Plugin::new(
+                Plugin::new_asset_store_plugin(
                     String::from("1234"),
                     Some("addons/test_plugin/plugin.cfg".into()),
                     String::from("Test Plugin"),
@@ -570,7 +570,7 @@ mod tests {
 
         let expected_plugins = BTreeMap::from([(
             String::from("test_plugin"),
-            Plugin::new(
+            Plugin::new_asset_store_plugin(
                 String::from("1234"),
                 Some("addons/test_plugin/plugin.cfg".into()),
                 String::from("Test Plugin"),
@@ -597,7 +597,7 @@ mod tests {
 
         let expected_plugins = BTreeMap::from([(
             String::from("test_plugin"),
-            Plugin::new(
+            Plugin::new_asset_store_plugin(
                 String::from("1234"),
                 Some("addons/test_plugin/plugin.cfg".into()),
                 String::from("Test Plugin"),
@@ -632,7 +632,7 @@ mod tests {
         let installed_plugins = result.unwrap();
         let expected_plugins = BTreeMap::from([(
             String::from("test_plugin"),
-            Plugin::new(
+            Plugin::new_asset_store_plugin(
                 String::from("1234"),
                 Some("addons/test_plugin/plugin.cfg".into()),
                 String::from("Test Plugin"),
@@ -656,7 +656,7 @@ mod tests {
         let installed_plugins = result.unwrap();
         let expected_plugins = BTreeMap::from([(
             String::from("test_plugin"),
-            Plugin::new(
+            Plugin::new_asset_store_plugin(
                 String::from("1234"),
                 Some("addons/test_plugin/plugin.cfg".into()),
                 String::from("Test Plugin"),
@@ -815,7 +815,12 @@ mod tests {
 
         // Verify the correct version was installed
         let plugin = installed_plugins.get("test_plugin").unwrap();
-        assert_eq!(plugin.asset_id, "1709");
+        assert_eq!(
+            plugin.source,
+            Some(PluginSource::AssetLibrary {
+                asset_id: "1709".to_string(),
+            })
+        );
         assert_eq!(plugin.get_version(), "9.1.0");
     }
 
@@ -957,10 +962,15 @@ mod tests {
         assert_eq!(extracted_plugins.len(), 1);
 
         let plugin = extracted_plugins.get("test_plugin").unwrap();
-        assert_eq!(plugin.asset_id, "1234");
+        assert_eq!(
+            plugin.source,
+            Some(PluginSource::AssetLibrary {
+                asset_id: "1234".to_string(),
+            })
+        );
         assert_eq!(plugin.title, "Test Plugin");
         assert_eq!(plugin.get_version(), "1.1.1");
-        assert_eq!(plugin.license, "MIT");
+        assert_eq!(plugin.license, Some("MIT".to_string()));
     }
 
     // update_plugins
@@ -1001,7 +1011,7 @@ mod tests {
             .returning(move |_file_path, _pb| {
                 Ok((
                     String::from("test_plugin"),
-                    Plugin::new(
+                    Plugin::new_asset_store_plugin(
                         "1234".to_string(),
                         Some("addons/test_plugin/plugin.cfg".into()),
                         "test_plugin".to_string(),
@@ -1017,7 +1027,7 @@ mod tests {
             move || {
                 Ok(BTreeMap::from([(
                     String::from("test_plugin"),
-                    Plugin::new(
+                    Plugin::new_asset_store_plugin(
                         String::from("1234"),
                         Some("addons/test_plugin/plugin.cfg".into()),
                         String::from("Test Plugin"),
@@ -1110,7 +1120,7 @@ mod tests {
         let updated_plugins = result.unwrap();
         let expected_updated_plugins = BTreeMap::from([(
             String::from("test_plugin"),
-            Plugin::new(
+            Plugin::new_asset_store_plugin(
                 String::from("1234"),
                 Some("addons/test_plugin/plugin.cfg".into()),
                 String::from("Test Plugin"),
@@ -1131,7 +1141,7 @@ mod tests {
         let updated_plugins = result.unwrap();
         let expected_updated_plugins = BTreeMap::from([(
             String::from("test_plugin"),
-            Plugin::new(
+            Plugin::new_asset_store_plugin(
                 String::from("1234"),
                 Some("addons/test_plugin/plugin.cfg".into()),
                 String::from("Test Plugin"),
@@ -1346,7 +1356,7 @@ mod tests {
 
         let plugins = BTreeMap::from([(
             "test_plugin".to_string(),
-            Plugin::new(
+            Plugin::new_asset_store_plugin(
                 "1234".to_string(),
                 Some("addons/test_plugin/plugin.cfg".into()),
                 "Test Plugin".to_string(),
@@ -1385,7 +1395,7 @@ mod tests {
 
         let plugins = BTreeMap::from([(
             "test_plugin".to_string(),
-            Plugin::new(
+            Plugin::new_asset_store_plugin(
                 "1234".to_string(),
                 Some("addons/test_plugin/plugin.cfg".into()),
                 "Test Plugin".to_string(),

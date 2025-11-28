@@ -1,14 +1,46 @@
-use std::path::PathBuf;
-
-use serde::{Deserialize, Serialize};
-
+use anyhow::Result;
 use semver::Version;
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
-use crate::{api::asset_response::AssetResponse, utils::Utils};
+use crate::{
+    api::asset_response::AssetResponse,
+    file_service::{DefaultFileService, FileService},
+    utils::Utils,
+};
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum PluginSource {
+    AssetLibrary { asset_id: String },      // Optionally store asset ID
+    Git { url: String, reference: String }, // Optionally store git URL and ref
+}
+
+impl PartialEq for PluginSource {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                PluginSource::AssetLibrary { asset_id: id1 },
+                PluginSource::AssetLibrary { asset_id: id2 },
+            ) => id1 == id2,
+            (
+                PluginSource::Git {
+                    url: url1,
+                    reference: ref1,
+                },
+                PluginSource::Git {
+                    url: url2,
+                    reference: ref2,
+                },
+            ) => url1 == url2 && ref1 == ref2,
+            _ => false,
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Plugin {
-    pub asset_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<PluginSource>,
     /// Path to the plugin.cfg file within the Godot project, using Unix-style separators.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plugin_cfg_path: Option<String>,
@@ -20,8 +52,12 @@ pub struct Plugin {
     version: Version,
     #[serde(default = "Vec::new")]
     pub sub_assets: Vec<String>,
-    pub license: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub license: Option<String>,
 }
+
+// TODO: Create an enum for source (?) GIT / AssetLibrary
+// TODO: Add git_url and ref fields for git source plugins
 
 fn serialize_version<S>(version: &Version, serializer: S) -> Result<S::Ok, S::Error>
 where
@@ -42,7 +78,7 @@ impl Eq for Plugin {}
 
 impl PartialEq for Plugin {
     fn eq(&self, other: &Self) -> bool {
-        self.asset_id == other.asset_id && self.version == other.version
+        self.source == other.source && self.version == other.version
     }
 }
 
@@ -52,14 +88,29 @@ impl PartialOrd for Plugin {
     }
 }
 
+impl Default for Plugin {
+    fn default() -> Self {
+        Plugin {
+            source: None,
+            plugin_cfg_path: None,
+            title: String::new(),
+            version: Version::new(0, 0, 0),
+            license: None,
+            sub_assets: Vec::new(),
+        }
+    }
+}
+
 impl From<AssetResponse> for Plugin {
     fn from(asset_response: AssetResponse) -> Self {
         Plugin::new(
-            asset_response.asset_id,
+            Some(PluginSource::AssetLibrary {
+                asset_id: asset_response.asset_id,
+            }),
             None,
             asset_response.title,
             asset_response.version_string,
-            asset_response.cost,
+            Some(asset_response.cost),
             Vec::new(),
         )
     }
@@ -67,11 +118,11 @@ impl From<AssetResponse> for Plugin {
 
 impl Plugin {
     pub fn new(
-        asset_id: String,
+        source: Option<PluginSource>,
         plugin_cfg_path: Option<PathBuf>,
         title: String,
         version: String,
-        license: String,
+        license: Option<String>,
         sub_assets: Vec<String>,
     ) -> Plugin {
         // Convert PathBuf to Unix-style string path
@@ -82,7 +133,7 @@ impl Plugin {
                 .join("/")
         });
         Plugin {
-            asset_id,
+            source,
             plugin_cfg_path: _plugin_cfg_path,
             title,
             version: Utils::parse_semantic_version(version.as_str()),
@@ -91,17 +142,63 @@ impl Plugin {
         }
     }
 
+    pub fn new_asset_store_plugin(
+        asset_id: String,
+        plugin_cfg_path: Option<PathBuf>,
+        title: String,
+        version: String,
+        license: String,
+        sub_assets: Vec<String>,
+    ) -> Plugin {
+        Plugin::new(
+            Some(PluginSource::AssetLibrary {
+                asset_id: asset_id.to_string(),
+            }),
+            plugin_cfg_path,
+            title.to_string(),
+            version.to_string(),
+            Some(license.to_string()),
+            sub_assets,
+        )
+    }
+
+    pub fn from_path(path: &Path, plugin_source: PluginSource) -> Result<Self> {
+        let file_service = DefaultFileService::default();
+        let content = file_service.read_file_cached(path)?;
+        let mut title = String::new();
+        let mut version = String::new();
+
+        for line in content.lines() {
+            if line.starts_with("name=") {
+                title = line["name=".len()..].trim_matches('"').to_string();
+            } else if line.starts_with("version=") {
+                version = line["version=".len()..].trim_matches('"').to_string();
+            }
+        }
+
+        Ok(Plugin::new(
+            Some(plugin_source),
+            Some(path.to_path_buf()),
+            title,
+            version,
+            None,
+            vec![],
+        ))
+    }
+
     pub fn from_asset_response_with_plugin_cfg_and_sub_assets(
         asset_response: AssetResponse,
         plugin_cfg_path: Option<PathBuf>,
         sub_assets: Vec<String>,
     ) -> Self {
         Plugin::new(
-            asset_response.asset_id,
+            Some(PluginSource::AssetLibrary {
+                asset_id: asset_response.asset_id,
+            }),
             plugin_cfg_path,
             asset_response.title,
             asset_response.version_string,
-            asset_response.cost,
+            Some(asset_response.cost),
             sub_assets,
         )
     }
@@ -113,11 +210,13 @@ impl Plugin {
     #[cfg(test)]
     pub fn create_mock_plugin_1() -> Plugin {
         Plugin::new(
-            "54321".to_string(),
+            Some(PluginSource::AssetLibrary {
+                asset_id: "54321".to_string(),
+            }),
             Some("addons/awesome_plugin/plugin.cfg".into()),
             "Awesome Plugin".to_string(),
             "1.0.0".to_string(),
-            "MIT".to_string(),
+            Some("MIT".to_string()),
             vec![],
         )
     }
@@ -125,11 +224,13 @@ impl Plugin {
     #[cfg(test)]
     pub fn create_mock_plugin_2() -> Plugin {
         Plugin::new(
-            "12345".to_string(),
+            Some(PluginSource::AssetLibrary {
+                asset_id: "12345".to_string(),
+            }),
             Some("addons/super_plugin/plugin.cfg".into()),
             "Super Plugin".to_string(),
             "2.1.3".to_string(),
-            "MIT".to_string(),
+            Some("MIT".to_string()),
             vec![],
         )
     }
@@ -137,11 +238,13 @@ impl Plugin {
     #[cfg(test)]
     pub fn create_mock_plugin_3() -> Plugin {
         Plugin::new(
-            "345678".to_string(),
+            Some(PluginSource::AssetLibrary {
+                asset_id: "345678".to_string(),
+            }),
             None,
             "Some Library".to_string(),
             "3.3.3".to_string(),
-            "MIT".to_string(),
+            Some("MIT".to_string()),
             vec!["sub_asset1".to_string(), "sub_asset2".to_string()],
         )
     }
@@ -156,11 +259,13 @@ mod tests {
 
     fn setup_test_plugin() -> Plugin {
         Plugin::new(
-            "123".to_string(),
+            Some(PluginSource::AssetLibrary {
+                asset_id: "123".to_string(),
+            }),
             Some(PathBuf::from("path/to/plugin.cfg")),
             "Sample Plugin".to_string(),
             "1.0.0".to_string(),
-            "MIT".to_string(),
+            Some("MIT".to_string()),
             vec!["sub1".to_string(), "sub2".to_string()],
         )
     }
@@ -168,10 +273,15 @@ mod tests {
     #[test]
     fn test_plugin_creation() {
         let plugin = setup_test_plugin();
-        assert_eq!(plugin.asset_id, "123");
+        assert_eq!(
+            plugin.source,
+            Some(PluginSource::AssetLibrary {
+                asset_id: "123".to_string()
+            })
+        );
         assert_eq!(plugin.title, "Sample Plugin");
         assert_eq!(plugin.get_version(), "1.0.0");
-        assert_eq!(plugin.license, "MIT");
+        assert_eq!(plugin.license, Some("MIT".to_string()));
         assert_eq!(plugin.sub_assets, vec!["sub1", "sub2"]);
         assert_eq!(
             plugin.plugin_cfg_path,
@@ -200,17 +310,22 @@ mod tests {
             None,
             vec![],
         );
-        assert_eq!(plugin.asset_id, "456");
+        assert_eq!(
+            plugin.source,
+            Some(PluginSource::AssetLibrary {
+                asset_id: "456".to_string()
+            })
+        );
         assert_eq!(plugin.title, "Test Asset");
         assert_eq!(plugin.get_version(), "0.0.1");
-        assert_eq!(plugin.license, "MIT");
+        assert_eq!(plugin.license, Some("MIT".to_string()));
         assert_eq!(plugin.sub_assets, Vec::<String>::new());
         assert_eq!(plugin.plugin_cfg_path, None);
     }
 
     #[test]
     fn test_plugin_partial_eq() {
-        let plugin1 = Plugin::new(
+        let plugin1 = Plugin::new_asset_store_plugin(
             "id1".to_string(),
             None,
             "Plugin One".to_string(),
@@ -218,7 +333,7 @@ mod tests {
             "MIT".to_string(),
             vec!["sub1".to_string()],
         );
-        let plugin2 = Plugin::new(
+        let plugin2 = Plugin::new_asset_store_plugin(
             "id1".to_string(),
             None,
             "Plugin One".to_string(),
@@ -226,7 +341,7 @@ mod tests {
             "MIT".to_string(),
             vec!["sub1".to_string()],
         );
-        let plugin3 = Plugin::new(
+        let plugin3 = Plugin::new_asset_store_plugin(
             "id2".to_string(),
             None,
             "Plugin Three".to_string(),
@@ -234,7 +349,7 @@ mod tests {
             "GPL".to_string(),
             vec!["sub2".to_string()],
         );
-        let plugin4 = Plugin::new(
+        let plugin4 = Plugin::new_asset_store_plugin(
             "id1".to_string(),
             None,
             "Plugin One".to_string(),
@@ -242,7 +357,7 @@ mod tests {
             "MIT".to_string(),
             vec!["sub1".to_string()], // different sub_assets
         );
-        let plugin5 = Plugin::new(
+        let plugin5 = Plugin::new_asset_store_plugin(
             "id5".to_string(),
             Some(PathBuf::from("other/path/plugin.cfg")),
             "Plugin One".to_string(),
@@ -258,7 +373,7 @@ mod tests {
 
     #[test]
     fn test_plugin_partial_ord_semver_numeric_comparison() {
-        let plugin_2_new = Plugin::new(
+        let plugin_2_new = Plugin::new_asset_store_plugin(
             "id2".to_string(),
             None,
             "Plugin 2".to_string(),
@@ -266,7 +381,7 @@ mod tests {
             "MIT".to_string(),
             vec![],
         );
-        let plugin_2_old = Plugin::new(
+        let plugin_2_old = Plugin::new_asset_store_plugin(
             "id2".to_string(),
             None,
             "Plugin 2".to_string(),
@@ -279,7 +394,7 @@ mod tests {
 
     #[test]
     fn test_plugin_partial_ord_semver_different_length_versions_with_same_major_should_be_same() {
-        let plugin_short = Plugin::new(
+        let plugin_short = Plugin::new_asset_store_plugin(
             "id".to_string(),
             None,
             "Plugin Long".to_string(),
@@ -287,7 +402,7 @@ mod tests {
             "MIT".to_string(),
             vec![],
         );
-        let plugin_long = Plugin::new(
+        let plugin_long = Plugin::new_asset_store_plugin(
             "id".to_string(),
             None,
             "Plugin Long".to_string(),
@@ -300,7 +415,7 @@ mod tests {
 
     #[test]
     fn test_plugin_partial_ord_semver_pre_release_versions() {
-        let plugin_pre = Plugin::new(
+        let plugin_pre = Plugin::new_asset_store_plugin(
             "idPre".to_string(),
             None,
             "Plugin Pre".to_string(),
@@ -308,7 +423,7 @@ mod tests {
             "MIT".to_string(),
             vec![],
         );
-        let plugin_release = Plugin::new(
+        let plugin_release = Plugin::new_asset_store_plugin(
             "idRel".to_string(),
             None,
             "Plugin Release".to_string(),
@@ -321,7 +436,7 @@ mod tests {
 
     #[test]
     fn test_plugin_partial_ord_semver_empty_version_string() {
-        let plugin_empty = Plugin::new(
+        let plugin_empty = Plugin::new_asset_store_plugin(
             "idE".to_string(),
             None,
             "Plugin Empty".to_string(),
@@ -329,7 +444,7 @@ mod tests {
             "MIT".to_string(),
             vec![],
         );
-        let plugin_nonempty = Plugin::new(
+        let plugin_nonempty = Plugin::new_asset_store_plugin(
             "idNE".to_string(),
             None,
             "Plugin NonEmpty".to_string(),
@@ -342,7 +457,7 @@ mod tests {
 
     #[test]
     fn test_plugin_partial_ord_semver_identical_versions() {
-        let plugin_same1 = Plugin::new(
+        let plugin_same1 = Plugin::new_asset_store_plugin(
             "idSame1".to_string(),
             None,
             "Plugin Same".to_string(),
@@ -350,7 +465,7 @@ mod tests {
             "MIT".to_string(),
             vec![],
         );
-        let plugin_same2 = Plugin::new(
+        let plugin_same2 = Plugin::new_asset_store_plugin(
             "idSame2".to_string(),
             None,
             "Plugin Same".to_string(),
@@ -366,7 +481,7 @@ mod tests {
 
     #[test]
     fn test_plugin_partial_ord_version_with_letters() {
-        let plugin_a = Plugin::new(
+        let plugin_a = Plugin::new_asset_store_plugin(
             "idA".to_string(),
             None,
             "Plugin A".to_string(),
@@ -374,7 +489,7 @@ mod tests {
             "MIT".to_string(),
             vec![],
         );
-        let plugin_b = Plugin::new(
+        let plugin_b = Plugin::new_asset_store_plugin(
             "idB".to_string(),
             None,
             "Plugin B".to_string(),
@@ -384,7 +499,7 @@ mod tests {
         );
         assert!(plugin_a < plugin_b);
 
-        let plugin_num = Plugin::new(
+        let plugin_num = Plugin::new_asset_store_plugin(
             "idNum".to_string(),
             None,
             "Plugin Num".to_string(),
@@ -397,7 +512,7 @@ mod tests {
 
     #[test]
     fn test_plugin_partial_ord_version_with_leading_zeros() {
-        let plugin_leading_zero = Plugin::new(
+        let plugin_leading_zero = Plugin::new_asset_store_plugin(
             "idLZ".to_string(),
             None,
             "Plugin LeadingZero".to_string(),
@@ -405,7 +520,7 @@ mod tests {
             "MIT".to_string(),
             vec![],
         );
-        let plugin_normal = Plugin::new(
+        let plugin_normal = Plugin::new_asset_store_plugin(
             "idN".to_string(),
             None,
             "Plugin Normal".to_string(),
@@ -418,7 +533,7 @@ mod tests {
 
     #[test]
     fn test_plugin_partial_ord_version_single_vs_double_segment() {
-        let plugin_leading_zero = Plugin::new(
+        let plugin_leading_zero = Plugin::new_asset_store_plugin(
             "idLZ".to_string(),
             None,
             "Plugin LeadingZero".to_string(),
@@ -426,7 +541,7 @@ mod tests {
             "MIT".to_string(),
             vec![],
         );
-        let plugin_normal = Plugin::new(
+        let plugin_normal = Plugin::new_asset_store_plugin(
             "idN".to_string(),
             None,
             "Plugin Normal".to_string(),
@@ -439,7 +554,7 @@ mod tests {
 
     #[test]
     fn test_plugin_partial_ord_version_three_vs_two_segment() {
-        let plugin_three_segment = Plugin::new(
+        let plugin_three_segment = Plugin::new_asset_store_plugin(
             "idLZ".to_string(),
             None,
             "Plugin LeadingZero".to_string(),
@@ -447,7 +562,7 @@ mod tests {
             "MIT".to_string(),
             vec![],
         );
-        let plugin_two_segment = Plugin::new(
+        let plugin_two_segment = Plugin::new_asset_store_plugin(
             "idN".to_string(),
             None,
             "Plugin Normal".to_string(),
@@ -460,14 +575,14 @@ mod tests {
 
     #[test]
     fn test_plugin_serialize_to_json() {
-        let plugin = Plugin {
-            asset_id: "123".to_string(),
-            plugin_cfg_path: None,
-            title: "Test Plugin".to_string(),
-            version: Version::new(1, 0, 0),
-            license: "MIT".to_string(),
-            sub_assets: vec!["sub1".to_string()],
-        };
+        let plugin = Plugin::new_asset_store_plugin(
+            "123".to_string(),
+            None,
+            "Test Plugin".to_string(),
+            "1.0.0".to_string(),
+            "MIT".to_string(),
+            vec!["sub1".to_string()],
+        );
         let json = serde_json::to_string(&plugin).unwrap();
         // Version should be serialized as a string
         assert!(json.contains("\"version\":\"1.0.0\""));
@@ -488,24 +603,29 @@ mod tests {
             "sub_assets": ["subA", "subB"]
         }"#;
         let plugin: Plugin = serde_json::from_str(json).unwrap();
-        assert_eq!(plugin.asset_id, "456");
+        assert_eq!(
+            plugin.source,
+            Some(PluginSource::AssetLibrary {
+                asset_id: "456".to_string()
+            })
+        );
         assert_eq!(plugin.title, "Deserialize Plugin");
         assert_eq!(plugin.version, Version::new(2, 1, 3));
-        assert_eq!(plugin.license, "Apache-2.0");
+        assert_eq!(plugin.license, Some("Apache-2.0".to_string()));
         assert_eq!(plugin.sub_assets, vec!["subA", "subB"]);
         // plugin_cfg_path is None by default
     }
 
     #[test]
     fn test_plugin_serialize_deserialize_roundtrip() {
-        let original = Plugin {
-            asset_id: "789".to_string(),
-            plugin_cfg_path: Some("roundtrip/plugin.cfg".to_string()),
-            title: "Roundtrip Plugin".to_string(),
-            version: Version::parse("3.2.1-alpha").unwrap(),
-            license: "GPL-3.0".to_string(),
-            sub_assets: vec!["subX".to_string()],
-        };
+        let original = Plugin::new_asset_store_plugin(
+            "789".to_string(),
+            Some(PathBuf::from("roundtrip/plugin.cfg")),
+            "Roundtrip Plugin".to_string(),
+            "3.2.1-alpha".to_string(),
+            "GPL-3.0".to_string(),
+            vec!["subX".to_string()],
+        );
         let json = serde_json::to_string(&original).unwrap();
         let deserialized: Plugin = serde_json::from_str(&json).unwrap();
         assert_eq!(original, deserialized);

@@ -316,7 +316,7 @@ mod tests {
 
         let expected_plugins = BTreeMap::from([(
             "plugin_2".to_string(),
-            Plugin::new(
+            Plugin::new_asset_store_plugin(
                 "12345".to_string(),
                 Some("addons/super_plugin/plugin.cfg".into()),
                 "Super Plugin".to_string(),
