@@ -10,8 +10,9 @@ use crate::api::{AssetStoreAPI, DefaultAssetStoreAPI};
 use crate::app_config::{AppConfig, DefaultAppConfig};
 use crate::extract_service::{DefaultExtractService, ExtractService};
 use crate::file_service::{DefaultFileService, FileService};
+use crate::git_service::{DefaultGitService, GitService};
 use crate::godot_config_repository::{DefaultGodotConfigRepository, GodotConfigRepository};
-use crate::plugin_config_repository::plugin::Plugin;
+use crate::plugin_config_repository::plugin::{Plugin, PluginSource};
 use crate::plugin_config_repository::{DefaultPluginConfigRepository, PluginConfigRepository};
 use crate::plugin_service::operation::Operation;
 use crate::plugin_service::operation_manager::OperationManager;
@@ -28,6 +29,7 @@ use tracing::{error, info, warn};
 pub struct DefaultPluginService {
     pub godot_config_repository: Box<dyn GodotConfigRepository>,
     pub asset_store_api: Arc<dyn AssetStoreAPI + Send + Sync>,
+    pub git_service: Arc<dyn GitService + Send + Sync>,
     pub plugin_config_repository: Box<dyn PluginConfigRepository>,
     pub app_config: DefaultAppConfig,
     pub extract_service: Arc<dyn ExtractService + Send + Sync>,
@@ -39,6 +41,7 @@ impl Default for DefaultPluginService {
         Self {
             godot_config_repository: Box::new(DefaultGodotConfigRepository::default()),
             asset_store_api: Arc::new(DefaultAssetStoreAPI::default()),
+            git_service: Arc::new(DefaultGitService::default()),
             plugin_config_repository: Box::new(DefaultPluginConfigRepository::default()),
             app_config: DefaultAppConfig::default(),
             extract_service: Arc::new(DefaultExtractService::default()),
@@ -53,6 +56,7 @@ impl DefaultPluginService {
         godot_config_repository: Box<dyn GodotConfigRepository>,
         asset_store_api: Arc<dyn AssetStoreAPI + Send + Sync>,
         plugin_config_repository: Box<dyn PluginConfigRepository>,
+        git_service: Arc<dyn GitService + Send + Sync>,
         app_config: DefaultAppConfig,
         extract_service: Arc<dyn ExtractService + Send + Sync>,
         file_service: Arc<dyn FileService + Send + Sync>,
@@ -60,6 +64,7 @@ impl DefaultPluginService {
         Self {
             godot_config_repository,
             asset_store_api,
+            git_service,
             plugin_config_repository,
             app_config,
             extract_service,
@@ -259,6 +264,52 @@ impl PluginService for DefaultPluginService {
         Ok(())
     }
 
+    async fn add_plugin_by_git_url_and_reference(
+        &self,
+        git_url: String,
+        git_reference: Option<String>,
+    ) -> Result<()> {
+        let plugin = self
+            .git_service
+            .download_plugin(&git_url, git_reference.as_deref())?;
+
+        let installed_plugins = BTreeMap::from([(plugin.0.clone(), plugin.1.clone())]);
+        self.add_plugins(&installed_plugins)?;
+        info!(
+            "Plugins installed successfully: {:?}",
+            installed_plugins.keys().collect::<Vec<_>>()
+        );
+        Ok(())
+    }
+
+    async fn add_plugin(
+        &self,
+        asset_id: Option<String>,
+        name: Option<String>,
+        version: Option<String>,
+        git_url: Option<String>,
+        git_reference: Option<String>,
+    ) -> Result<()> {
+        let is_asset_based = asset_id.is_some() || name.is_some() || version.is_some();
+        let is_git_based = git_url.is_some() || git_reference.is_some();
+        if is_asset_based && is_git_based {
+            bail!("Cannot specify name, asset_id or version together with git URL or reference.")
+        }
+        if is_asset_based {
+            self.add_plugin_by_id_or_name_and_version(asset_id, name, version)
+                .await?
+        } else if is_git_based {
+            let git_url = git_url.ok_or_else(|| {
+                anyhow::anyhow!("Git URL must be provided when using git reference.")
+            })?;
+            self.add_plugin_by_git_url_and_reference(git_url, git_reference)
+                .await?
+        } else {
+            bail!("Either name, asset_id or version or git URL/reference must be provided.")
+        }
+        Ok(())
+    }
+
     async fn add_plugin_by_id_or_name_and_version(
         &self,
         asset_id: Option<String>,
@@ -442,10 +493,19 @@ impl PluginService for DefaultPluginService {
         let mut assets = Vec::new();
 
         for plugin in plugins.values() {
-            let asset_id = plugin.asset_id.to_string();
-            let version = plugin.get_version();
-            let asset_request = self.find_plugin_by_asset_id_and_version(asset_id, version);
-            assets.push(asset_request);
+            match plugin.source.clone() {
+                Some(source) => match source {
+                    PluginSource::AssetLibrary { asset_id } => {
+                        let asset_request = self
+                            .find_plugin_by_asset_id_and_version(asset_id, plugin.get_version());
+                        assets.push(asset_request);
+                    }
+                    PluginSource::Git { url, reference } => {
+                        // TODO
+                    }
+                },
+                None => continue,
+            };
         }
 
         let fetched_assets: Vec<AssetResponse> = try_join_all(assets)
@@ -466,9 +526,20 @@ impl PluginService for DefaultPluginService {
         let mut assets = Vec::new();
 
         for plugin in plugins.values() {
-            let asset_id = plugin.asset_id.as_str();
-            let asset_request = self.find_plugin_by_id_or_name(asset_id, "");
-            assets.push(asset_request);
+            match plugin.source.clone() {
+                Some(source) => match source {
+                    PluginSource::AssetLibrary { asset_id } => {
+                        let _asset_id = asset_id.clone();
+                        assets.push(
+                            async move { self.find_plugin_by_id_or_name(&_asset_id, "").await },
+                        );
+                    }
+                    PluginSource::Git { url, reference } => {
+                        // TODO
+                    }
+                },
+                None => continue,
+            };
         }
 
         let fetched_assets: Vec<AssetResponse> = try_join_all(assets)
@@ -491,8 +562,6 @@ impl PluginService for DefaultPluginService {
             bail!("No plugins installed.");
         }
 
-        let plugins = self.plugin_config_repository.get_plugins()?;
-
         let installed_plugins = self.fetch_latest_assets().await?;
 
         println!("Checking for outdated plugins");
@@ -502,7 +571,9 @@ impl PluginService for DefaultPluginService {
 
         println!("{0: <40} {1: <20} {2: <20}", "Plugin", "Current", "Latest");
         for asset in installed_plugins {
-            let current_plugin = plugins.values().find(|p| p.asset_id == asset.asset_id);
+            let current_plugin = self
+                .plugin_config_repository
+                .get_plugin_by_asset_id(&asset.asset_id);
             if current_plugin.is_none() {
                 warn!(
                     "Installed plugin with asset ID {} not found in plugin config repository",
@@ -514,7 +585,7 @@ impl PluginService for DefaultPluginService {
             let curr = current_plugin.unwrap();
             let other = Plugin::from(asset);
 
-            let has_an_update = &other > curr;
+            let has_an_update = other > curr;
 
             if has_an_update {
                 plugins_to_update.push(other.clone());
@@ -562,7 +633,9 @@ impl PluginService for DefaultPluginService {
         let mut plugins_to_update = Vec::new();
 
         for asset in installed_plugins {
-            let current_plugin = plugins.values().find(|p| p.asset_id == asset.asset_id);
+            let current_plugin = self
+                .plugin_config_repository
+                .get_plugin_by_asset_id(&asset.asset_id);
             if current_plugin.is_none() {
                 warn!(
                     "Installed plugin with asset ID {} not found in plugin config repository",
@@ -572,7 +645,7 @@ impl PluginService for DefaultPluginService {
             }
             let curr = current_plugin.unwrap();
             let other = Plugin::from(asset.clone());
-            let has_an_update = &other > curr;
+            let has_an_update = other > curr;
 
             if has_an_update {
                 plugins_to_update.push(asset);
@@ -685,6 +758,20 @@ pub trait PluginService {
     ) -> Result<BTreeMap<String, Plugin>>;
     fn finish_plugins_operation(&self, plugins: &BTreeMap<String, Plugin>) -> Result<()>;
 
+    async fn add_plugin(
+        &self,
+        asset_id: Option<String>,
+        name: Option<String>,
+        version: Option<String>,
+        git_url: Option<String>,
+        git_reference: Option<String>,
+    ) -> Result<()>;
+
+    async fn add_plugin_by_git_url_and_reference(
+        &self,
+        git_url: String,
+        git_reference: Option<String>,
+    ) -> Result<()>;
     async fn add_plugin_by_id_or_name_and_version(
         &self,
         asset_id: Option<String>,

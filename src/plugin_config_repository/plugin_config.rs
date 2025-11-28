@@ -1,4 +1,4 @@
-use crate::plugin_config_repository::plugin::Plugin;
+use crate::plugin_config_repository::plugin::{Plugin, PluginSource};
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
@@ -27,7 +27,13 @@ impl PluginConfig for DefaultPluginConfig {
     fn get_plugin_by_asset_id(&self, asset_id: &str) -> Option<Plugin> {
         self.plugins
             .iter()
-            .find(|(_, p)| p.asset_id == asset_id)
+            .find(|(_, p)| {
+                if let Some(PluginSource::AssetLibrary { asset_id: id }) = &p.source {
+                    id == asset_id
+                } else {
+                    false
+                }
+            })
             .map(|(_, p)| p.clone())
     }
 
@@ -130,7 +136,7 @@ mod tests {
         let plugin_config = setup_test_plugin_config();
         let new_plugins = BTreeMap::from([(
             "plugin_3".to_string(),
-            Plugin::new(
+            Plugin::new_asset_store_plugin(
                 "67890".to_string(),
                 Some("addons/super_plugin/plugin.cfg".into()),
                 "New Plugin".to_string(),
@@ -148,7 +154,7 @@ mod tests {
             ("plugin_2".to_string(), Plugin::create_mock_plugin_2()),
             (
                 "plugin_3".to_string(),
-                Plugin::new(
+                Plugin::new_asset_store_plugin(
                     "67890".to_string(),
                     Some("addons/super_plugin/plugin.cfg".into()),
                     "New Plugin".to_string(),
@@ -168,7 +174,7 @@ mod tests {
         let new_plugins = BTreeMap::from([
             (
                 "plugin_1".to_string(),
-                Plugin::new(
+                Plugin::new_asset_store_plugin(
                     "54321".to_string(),
                     Some("addons/awesome_plugin/plugin.cfg".into()),
                     "Awesome Plugin".to_string(),
@@ -179,7 +185,7 @@ mod tests {
             ),
             (
                 "plugin_2".to_string(),
-                Plugin::new(
+                Plugin::new_asset_store_plugin(
                     "12345".to_string(),
                     Some("addons/super_plugin/plugin.cfg".into()),
                     "Super Plugin".to_string(),
@@ -196,7 +202,7 @@ mod tests {
         let expected = BTreeMap::from([
             (
                 "plugin_1".to_string(),
-                Plugin::new(
+                Plugin::new_asset_store_plugin(
                     "54321".to_string(),
                     Some("addons/awesome_plugin/plugin.cfg".into()),
                     "Awesome Plugin".to_string(),
@@ -207,7 +213,7 @@ mod tests {
             ),
             (
                 "plugin_2".to_string(),
-                Plugin::new(
+                Plugin::new_asset_store_plugin(
                     "12345".to_string(),
                     Some("addons/super_plugin/plugin.cfg".into()),
                     "Super Plugin".to_string(),
@@ -227,7 +233,7 @@ mod tests {
         let new_plugins = BTreeMap::from([
             (
                 "plugin_1".to_string(),
-                Plugin::new(
+                Plugin::new_asset_store_plugin(
                     "54321".to_string(),
                     Some("addons/awesome_plugin/plugin.cfg".into()),
                     "Awesome Plugin".to_string(),
@@ -238,7 +244,7 @@ mod tests {
             ),
             (
                 "plugin_1".to_string(),
-                Plugin::new(
+                Plugin::new_asset_store_plugin(
                     "54321".to_string(),
                     Some("addons/awesome_plugin/plugin.cfg".into()),
                     "Awesome Plugin".to_string(),
@@ -249,7 +255,7 @@ mod tests {
             ),
             (
                 "plugin_2".to_string(),
-                Plugin::new(
+                Plugin::new_asset_store_plugin(
                     "12345".to_string(),
                     Some("addons/super_plugin/plugin.cfg".into()),
                     "Super Plugin".to_string(),
@@ -266,7 +272,7 @@ mod tests {
         let expected = BTreeMap::from([
             (
                 "plugin_1".to_string(),
-                Plugin::new(
+                Plugin::new_asset_store_plugin(
                     "54321".to_string(),
                     Some("addons/awesome_plugin/plugin.cfg".into()),
                     "Awesome Plugin".to_string(),
@@ -277,7 +283,7 @@ mod tests {
             ),
             (
                 "plugin_2".to_string(),
-                Plugin::new(
+                Plugin::new_asset_store_plugin(
                     "12345".to_string(),
                     Some("addons/super_plugin/plugin.cfg".into()),
                     "Super Plugin".to_string(),
@@ -296,7 +302,7 @@ mod tests {
         let plugin_config = setup_test_plugin_config();
         let new_plugins = BTreeMap::from([(
             "a_plugin".to_string(),
-            Plugin::new(
+            Plugin::new_asset_store_plugin(
                 "67890".to_string(),
                 Some("addons/super_plugin/plugin.cfg".into()),
                 "New Plugin".to_string(),
@@ -311,7 +317,7 @@ mod tests {
         let expected = BTreeMap::from([
             (
                 "a_plugin".to_string(),
-                Plugin::new(
+                Plugin::new_asset_store_plugin(
                     "67890".to_string(),
                     Some("addons/super_plugin/plugin.cfg".into()),
                     "New Plugin".to_string(),
@@ -322,7 +328,7 @@ mod tests {
             ),
             (
                 "plugin_1".to_string(),
-                Plugin::new(
+                Plugin::new_asset_store_plugin(
                     "54321".to_string(),
                     Some("addons/awesome_plugin/plugin.cfg".into()),
                     "Awesome Plugin".to_string(),
@@ -333,7 +339,7 @@ mod tests {
             ),
             (
                 "plugin_2".to_string(),
-                Plugin::new(
+                Plugin::new_asset_store_plugin(
                     "12345".to_string(),
                     Some("addons/super_plugin/plugin.cfg".into()),
                     "Super Plugin".to_string(),
@@ -354,7 +360,12 @@ mod tests {
         let plugin_opt = plugin_config.get_plugin_by_name("plugin_1");
         assert!(plugin_opt.is_some());
         let plugin = plugin_opt.unwrap();
-        assert_eq!(plugin.asset_id, "54321".to_string());
+        assert_eq!(
+            plugin.source,
+            Some(PluginSource::AssetLibrary {
+                asset_id: "54321".to_string()
+            })
+        );
     }
 
     // remove_installed_plugin
@@ -366,7 +377,7 @@ mod tests {
         let updated_plugin_config = plugin_config.remove_plugins(plugins_to_remove);
         let expected = BTreeMap::from([(
             "plugin_2".to_string(),
-            Plugin::new(
+            Plugin::new_asset_store_plugin(
                 "12345".to_string(),
                 Some("addons/super_plugin/plugin.cfg".into()),
                 "Super Plugin".to_string(),
@@ -412,7 +423,7 @@ mod tests {
     fn test_get_plugin_by_asset_id_should_return_correct_plugin() {
         let plugin_config = setup_test_plugin_config();
         let plugin = plugin_config.get_plugin_by_asset_id("54321");
-        let expected_plugin = Plugin::new(
+        let expected_plugin = Plugin::new_asset_store_plugin(
             "54321".to_string(),
             Some("addons/awesome_plugin/plugin.cfg".into()),
             "Awesome Plugin".to_string(),

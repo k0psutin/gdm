@@ -5,6 +5,7 @@ mod app_config;
 mod commands;
 mod extract_service;
 mod file_service;
+mod git_service;
 mod godot_config_repository;
 mod http_client;
 mod plugin_config_repository;

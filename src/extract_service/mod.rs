@@ -290,7 +290,9 @@ mod tests {
             },
         }
     }
-    use crate::file_service::MockDefaultFileService;
+    use crate::{
+        file_service::MockDefaultFileService, plugin_config_repository::plugin::PluginSource,
+    };
 
     use super::*;
     use serial_test::serial;
@@ -326,9 +328,14 @@ mod tests {
             plugin.plugin_cfg_path,
             Some("addons/some_plugin/plugin.cfg".into())
         );
-        assert_eq!(plugin.asset_id, asset.asset_response.asset_id);
+        assert_eq!(
+            plugin.source,
+            Some(PluginSource::AssetLibrary {
+                asset_id: asset.asset_response.asset_id.clone()
+            })
+        );
         assert_eq!(plugin.get_version(), asset.asset_response.version_string);
-        assert_eq!(plugin.license, asset.asset_response.cost);
+        assert_eq!(plugin.license, Some(asset.asset_response.cost));
         assert_eq!(plugin.sub_assets.len(), 0);
     }
 
@@ -561,9 +568,14 @@ mod tests {
             _plugin.plugin_cfg_path,
             Some("addons/some_plugin/plugin.cfg".into())
         );
-        assert_eq!(_plugin.asset_id, asset.asset_response.asset_id);
+        assert_eq!(
+            _plugin.source,
+            Some(PluginSource::AssetLibrary {
+                asset_id: asset.asset_response.asset_id.clone()
+            })
+        );
         assert_eq!(_plugin.get_version(), asset.asset_response.version_string);
-        assert_eq!(_plugin.license, asset.asset_response.cost);
+        assert_eq!(_plugin.license, Some(asset.asset_response.cost));
         assert_eq!(_plugin.sub_assets.len(), 0);
         fs::remove_dir_all("addons").unwrap();
 

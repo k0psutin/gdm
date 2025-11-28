@@ -14,15 +14,24 @@ pub struct AddArgs {
     asset_id: Option<String>,
     #[arg(long, help = "Version of the plugin, e.g. \"1.0.0\"")]
     version: Option<String>,
+    #[arg(
+        long,
+        help = "Git URL of the plugin, e.g. \"https://github.com/user/repo.git\""
+    )]
+    git: Option<String>,
+    #[arg(long = "ref", help = "Git reference of the plugin, e.g. \"main\"")]
+    reference: Option<String>,
 }
 
 pub async fn handle(args: &AddArgs) -> Result<()> {
     let plugin_service = DefaultPluginService::default();
     plugin_service
-        .add_plugin_by_id_or_name_and_version(
+        .add_plugin(
             args.asset_id.clone(),
             args.name.clone(),
             args.version.clone(),
+            args.git.clone(),
+            args.reference.clone(),
         )
         .await?;
     Ok(())
