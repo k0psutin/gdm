@@ -71,7 +71,7 @@ mod remove_command_tests {
             .assert()
             .success()
             .stdout(predicate::str::contains(
-                "Plugin folder does not exist, trying to remove from gdm config",
+                "Plugin folder does not exist, removing from config only.",
             ))
             .stdout(predicate::str::contains("Plugin gut removed successfully."));
     }

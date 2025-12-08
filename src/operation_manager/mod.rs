@@ -1,7 +1,9 @@
+pub mod operation;
+
 use anyhow::Result;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 
-use super::operation::Operation;
+use crate::operation_manager::operation::Operation;
 
 pub struct OperationManager {
     multi_progress: MultiProgress,
@@ -29,9 +31,7 @@ impl OperationManager {
 
     fn get_main_message_by_operation(operation: &Operation) -> String {
         match operation {
-            Operation::Extract => "Extracting plugins".to_string(),
             Operation::Install => "Installing plugins".to_string(),
-            Operation::Update => "Updating plugins".to_string(),
             Operation::Finished => "Installation complete".to_string(),
         }
     }
@@ -66,39 +66,15 @@ mod tests {
     }
 
     #[test]
-    fn test_new_operation_manager_update() {
-        let result = OperationManager::new(Operation::Update);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_new_operation_manager_extract() {
-        let result = OperationManager::new(Operation::Extract);
-        assert!(result.is_ok());
-    }
-
-    #[test]
     fn test_new_operation_manager_finished() {
         let result = OperationManager::new(Operation::Finished);
         assert!(result.is_ok());
     }
 
     #[test]
-    fn test_get_main_message_by_operation_extract() {
-        let message = OperationManager::get_main_message_by_operation(&Operation::Extract);
-        assert_eq!(message, "Extracting plugins");
-    }
-
-    #[test]
     fn test_get_main_message_by_operation_install() {
         let message = OperationManager::get_main_message_by_operation(&Operation::Install);
         assert_eq!(message, "Installing plugins");
-    }
-
-    #[test]
-    fn test_get_main_message_by_operation_update() {
-        let message = OperationManager::get_main_message_by_operation(&Operation::Update);
-        assert_eq!(message, "Updating plugins");
     }
 
     #[test]
@@ -111,20 +87,6 @@ mod tests {
     fn test_add_progress_bar_install() {
         let manager = OperationManager::new(Operation::Install).unwrap();
         let result = manager.add_progress_bar(1, 5, "Test Plugin", "1.0.0");
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_add_progress_bar_update() {
-        let manager = OperationManager::new(Operation::Update).unwrap();
-        let result = manager.add_progress_bar(2, 10, "Update Plugin", "2.0.0");
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_add_progress_bar_extract() {
-        let manager = OperationManager::new(Operation::Extract).unwrap();
-        let result = manager.add_progress_bar(3, 7, "Extract Plugin", "1.5.0");
         assert!(result.is_ok());
     }
 

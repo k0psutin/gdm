@@ -18,7 +18,7 @@ use indicatif::ProgressBar;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
-use tracing::error;
+use tracing::{error, info};
 use url::Url;
 
 pub struct DefaultAssetStoreAPI {
@@ -82,6 +82,20 @@ impl Default for DefaultAssetStoreAPI {
 /// - `download_file`: Downloads a file from a given URL.
 /// - `download_asset`: Downloads an asset and reports progress via a progress bar.
 pub trait AssetStoreAPI: Send + Sync {
+    async fn find_asset_by_asset_name_and_version_and_godot_version(
+        &self,
+        name: &str,
+        version: &str,
+        godot_version: &str,
+    ) -> Result<AssetResponse>;
+
+    async fn find_asset_by_id_or_name_and_version(
+        &self,
+        asset_id: &str,
+        name: &str,
+        godot_version: &str,
+    ) -> Result<AssetResponse>;
+
     /// Fetches an asset by its ID.
     async fn get_asset_by_id(&self, asset_id: &str) -> Result<AssetResponse>;
 
@@ -112,6 +126,57 @@ pub trait AssetStoreAPI: Send + Sync {
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
 impl AssetStoreAPI for DefaultAssetStoreAPI {
+    async fn find_asset_by_asset_name_and_version_and_godot_version(
+        &self,
+        name: &str,
+        version: &str,
+        godot_version: &str,
+    ) -> Result<AssetResponse> {
+        if !name.is_empty() && !version.is_empty() {
+            let asset = self
+                .find_asset_by_id_or_name_and_version("", name, godot_version)
+                .await?;
+            self.get_asset_by_id_and_version(&asset.asset_id, version)
+                .await
+        } else {
+            error!("Asset name or version is empty");
+            bail!("Both asset name and version must be provided to search by version.")
+        }
+    }
+
+    async fn find_asset_by_id_or_name_and_version(
+        &self,
+        asset_id: &str,
+        name: &str,
+        godot_version: &str,
+    ) -> Result<AssetResponse> {
+        if !asset_id.is_empty() {
+            let asset = self.get_asset_by_id(asset_id).await?;
+            Ok(asset)
+        } else if !name.is_empty() {
+            let params = HashMap::from([
+                ("filter".to_string(), name.to_string()),
+                ("godot_version".to_string(), godot_version.to_string()),
+            ]);
+            let asset_results = self.get_assets(params).await?;
+
+            if asset_results.result.len() != 1 {
+                bail!(
+                    "Expected to find exactly one asset matching \"{}\", but found {}. Please refine your search or use --asset-id.",
+                    name,
+                    asset_results.result.len()
+                )
+            }
+            let asset = asset_results.result.first().unwrap();
+            let asset = self.get_asset_by_id(&asset.asset_id).await?;
+
+            info!("Found asset: {}", asset.title);
+            Ok(asset)
+        } else {
+            bail!("No name or asset ID provided")
+        }
+    }
+
     async fn get_asset_by_id(&self, asset_id: &str) -> Result<AssetResponse> {
         match self
             .http_client
@@ -145,6 +210,9 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
         asset_id: &str,
         version: &str,
     ) -> Result<AssetResponse> {
+        if asset_id.is_empty() || version.is_empty() {
+            bail!("Both asset ID and version must be provided to search by version.")
+        }
         let mut page = 0;
         loop {
             let edits_response = self.get_asset_edits_by_asset_id(asset_id, page).await?;

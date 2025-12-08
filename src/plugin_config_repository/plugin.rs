@@ -10,6 +10,7 @@ use crate::{
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(untagged)]
 pub enum PluginSource {
     AssetLibrary { asset_id: String },      // Optionally store asset ID
     Git { url: String, reference: String }, // Optionally store git URL and ref
@@ -49,15 +50,12 @@ pub struct Plugin {
         serialize_with = "serialize_version",
         deserialize_with = "deserialize_version"
     )]
-    version: Version,
+    pub version: Version,
     #[serde(default = "Vec::new")]
     pub sub_assets: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
 }
-
-// TODO: Create an enum for source (?) GIT / AssetLibrary
-// TODO: Add git_url and ref fields for git source plugins
 
 fn serialize_version<S>(version: &Version, serializer: S) -> Result<S::Ok, S::Error>
 where
@@ -142,6 +140,7 @@ impl Plugin {
         }
     }
 
+    #[cfg(test)]
     pub fn new_asset_store_plugin(
         asset_id: String,
         plugin_cfg_path: Option<PathBuf>,
@@ -163,16 +162,16 @@ impl Plugin {
     }
 
     pub fn from_path(path: &Path, plugin_source: PluginSource) -> Result<Self> {
-        let file_service = DefaultFileService::default();
+        let file_service = DefaultFileService;
         let content = file_service.read_file_cached(path)?;
         let mut title = String::new();
         let mut version = String::new();
 
         for line in content.lines() {
-            if line.starts_with("name=") {
-                title = line["name=".len()..].trim_matches('"').to_string();
-            } else if line.starts_with("version=") {
-                version = line["version=".len()..].trim_matches('"').to_string();
+            if let Some(name) = line.strip_prefix("name=") {
+                title = name.trim_matches('"').to_string();
+            } else if let Some(_version) = line.strip_prefix("version=") {
+                version = _version.trim_matches('"').to_string();
             }
         }
 
@@ -596,7 +595,9 @@ mod tests {
     #[test]
     fn test_plugin_deserialize_from_json() {
         let json = r#"{
-            "asset_id": "456",
+            "source": {
+                "asset_id": "456"
+            },
             "title": "Deserialize Plugin",
             "version": "2.1.3",
             "license": "Apache-2.0",

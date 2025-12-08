@@ -9,7 +9,6 @@ pub struct DefaultPluginConfig {
     pub plugins: BTreeMap<String, Plugin>,
 }
 
-// TODO Change to hashmap again?
 impl DefaultPluginConfig {
     pub fn new(plugins: BTreeMap<String, Plugin>) -> DefaultPluginConfig {
         DefaultPluginConfig { plugins }

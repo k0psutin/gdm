@@ -5,20 +5,15 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 /// and messages. These enums are also used to customize function behaviors based on operation type.
 #[derive(Debug, Clone)]
 pub enum Operation {
-    Extract,
     Install,
     Finished,
-    Update,
 }
 
 impl Operation {
     pub fn progress_bar_style(&self) -> Result<ProgressStyle> {
         let template = match self {
-            Operation::Install | Operation::Update => {
+            Operation::Install => {
                 "{spinner:.green} {prefix} {msg} [{elapsed_precise}] {bytes} ({bytes_per_sec}) [{eta}]"
-            }
-            Operation::Extract => {
-                "{spinner:.green} {prefix} {msg} [{elapsed_precise}] [{bar:.cyan/blue}] {pos:>7}/{len:7} ({eta})"
             }
             Operation::Finished => "{prefix} {msg}",
         };
@@ -30,8 +25,7 @@ impl Operation {
 
     pub fn action_verb(&self) -> &'static str {
         match self {
-            Operation::Extract => "Extracting",
-            Operation::Install | Operation::Update => "Downloading",
+            Operation::Install => "Downloading",
             Operation::Finished => "Installed",
         }
     }
@@ -75,20 +69,6 @@ mod tests {
     }
 
     #[test]
-    fn test_progress_bar_style_update() {
-        let operation = Operation::Update;
-        let style = operation.progress_bar_style();
-        assert!(style.is_ok());
-    }
-
-    #[test]
-    fn test_progress_bar_style_extract() {
-        let operation = Operation::Extract;
-        let style = operation.progress_bar_style();
-        assert!(style.is_ok());
-    }
-
-    #[test]
     fn test_progress_bar_style_finished() {
         let operation = Operation::Finished;
         let style = operation.progress_bar_style();
@@ -96,20 +76,8 @@ mod tests {
     }
 
     #[test]
-    fn test_action_verb_extract() {
-        let operation = Operation::Extract;
-        assert_eq!(operation.action_verb(), "Extracting");
-    }
-
-    #[test]
     fn test_action_verb_install() {
         let operation = Operation::Install;
-        assert_eq!(operation.action_verb(), "Downloading");
-    }
-
-    #[test]
-    fn test_action_verb_update() {
-        let operation = Operation::Update;
         assert_eq!(operation.action_verb(), "Downloading");
     }
 
@@ -132,18 +100,6 @@ mod tests {
     }
 
     #[test]
-    fn test_default_progress_bar_length_update() {
-        let operation = Operation::Update;
-        assert_eq!(operation.default_progress_bar_length(), 500);
-    }
-
-    #[test]
-    fn test_default_progress_bar_length_extract() {
-        let operation = Operation::Extract;
-        assert_eq!(operation.default_progress_bar_length(), 500);
-    }
-
-    #[test]
     fn test_progress_chars() {
         let operation = Operation::Install;
         assert_eq!(operation.progress_chars(), "#>-");
@@ -154,26 +110,6 @@ mod tests {
         let operation = Operation::Install;
         let m = MultiProgress::new();
         let result = operation.create_progress_bar(&m, 1, 5, "Test Plugin", "1.0.0");
-        assert!(result.is_ok());
-        let pb = result.unwrap();
-        assert_eq!(pb.length().unwrap(), 500);
-    }
-
-    #[test]
-    fn test_create_progress_bar_update() {
-        let operation = Operation::Update;
-        let m = MultiProgress::new();
-        let result = operation.create_progress_bar(&m, 2, 10, "Update Plugin", "2.0.0");
-        assert!(result.is_ok());
-        let pb = result.unwrap();
-        assert_eq!(pb.length().unwrap(), 500);
-    }
-
-    #[test]
-    fn test_create_progress_bar_extract() {
-        let operation = Operation::Extract;
-        let m = MultiProgress::new();
-        let result = operation.create_progress_bar(&m, 3, 7, "Extract Plugin", "1.5.0");
         assert!(result.is_ok());
         let pb = result.unwrap();
         assert_eq!(pb.length().unwrap(), 500);
@@ -194,12 +130,5 @@ mod tests {
         let operation = Operation::Install;
         let cloned = operation.clone();
         assert_eq!(operation.action_verb(), cloned.action_verb());
-    }
-
-    #[test]
-    fn test_operation_debug() {
-        let operation = Operation::Extract;
-        let debug_str = format!("{:?}", operation);
-        assert_eq!(debug_str, "Extract");
     }
 }
