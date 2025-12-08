@@ -67,9 +67,9 @@ impl PluginConfigRepository for DefaultPluginConfigRepository {
         None
     }
 
-    fn get_plugin_by_asset_id(&self, asset_id: &str) -> Option<Plugin> {
-        let plugin_config = self.load().ok()?;
-        plugin_config.get_plugin_by_asset_id(asset_id)
+    fn get_plugin_by_asset_id(&self, asset_id: &str) -> Result<Option<Plugin>> {
+        let plugin_config = self.load()?;
+        Ok(plugin_config.get_plugin_by_asset_id(asset_id))
     }
 
     /// Returns a sorted list of plugins in a tuple of (key, Plugin)
@@ -123,7 +123,7 @@ impl PluginConfigRepository for DefaultPluginConfigRepository {
 
 pub trait PluginConfigRepository {
     fn add_plugins(&self, plugins: &BTreeMap<String, Plugin>) -> Result<DefaultPluginConfig>;
-    fn get_plugin_by_asset_id(&self, asset_id: &str) -> Option<Plugin>;
+    fn get_plugin_by_asset_id(&self, asset_id: &str) -> Result<Option<Plugin>>;
     fn get_plugin_by_name(&self, name: &str) -> Option<(String, Plugin)>;
     fn get_plugins(&self) -> Result<BTreeMap<String, Plugin>>;
     fn has_installed_plugins(&self) -> Result<bool>;
@@ -301,8 +301,6 @@ mod tests {
         assert_eq!(key, None);
     }
 
-    // remove_plugins
-    // TODO Mock file service to avoid actual file writes
     #[test]
     fn test_remove_plugins_should_remove_specified_plugins() {
         let plugin_config_repository =
@@ -397,7 +395,9 @@ mod tests {
         let expected = json!({
             "plugins": {
                 "plugin_1": {
-                    "asset_id": "54321",
+                    "source": {
+                      "asset_id": "54321"
+                    },
                     "title": "Awesome Plugin",
                     "version": "1.0.0",
                     "license": "MIT",
@@ -405,7 +405,9 @@ mod tests {
                     "sub_assets": []
                 },
                 "plugin_2": {
-                    "asset_id": "12345",
+                    "source": {
+                        "asset_id": "12345"
+                    },
                     "title": "Super Plugin",
                     "version": "2.1.3",
                     "license": "MIT",
@@ -435,7 +437,9 @@ mod tests {
         let expected = json!({
             "plugins": {
                 "plugin_1": {
-                    "asset_id": "345678",
+                    "source": {
+                        "asset_id": "345678",
+                    },
                     "title": "Some Library",
                     "version": "3.3.3",
                     "sub_assets": [

@@ -23,7 +23,7 @@ mod add_command_tests {
             .assert()
             .failure()
             .stderr(predicate::str::contains(
-                "Either name or asset ID must be provided",
+                "Either name, asset_id, version OR git URL/reference must be provided.",
             ));
     }
 
@@ -125,7 +125,9 @@ mod add_command_tests {
         let expected_gdm_json = json!({
                 "plugins": {
         "mod_loader": {
-          "asset_id": "4107",
+          "source": {
+            "asset_id": "4107"
+          },
           "title": "Godot Mod Loader",
           "plugin_cfg_path": "addons/mod_loader/_export_plugin/plugin.cfg",
           "version": "7.0.1",

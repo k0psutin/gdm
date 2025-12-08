@@ -74,10 +74,14 @@ pub const EMPTY_GDM_JSON: &str = r#"{
 pub const GDM_JSON_WITH_ONE_PLUGIN: &str = r#"{
   "plugins": {
     "gut": {
-      "asset_id": "1709",
+      "source": {
+        "asset_id": "1709"
+      },
+      "plugin_cfg_path": "addons/gut/plugin.cfg",
       "title": "GUT - Godot Unit Testing (Godot 4)",
       "version": "9.1.0",
-      "license": "MIT"
+      "license": "MIT",
+      "sub_assets": []
     }
   }
 }"#;

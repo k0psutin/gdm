@@ -8,6 +8,7 @@ mod file_service;
 mod git_service;
 mod godot_config_repository;
 mod http_client;
+mod operation_manager;
 mod plugin_config_repository;
 mod plugin_service;
 mod utils;
