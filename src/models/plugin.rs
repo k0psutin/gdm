@@ -1,11 +1,10 @@
 use anyhow::Result;
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::{
-    api::asset_response::AssetResponse,
-    file_service::{DefaultFileService, FileService},
+    api::AssetResponse,
     utils::Utils,
 };
 
@@ -161,30 +160,6 @@ impl Plugin {
         )
     }
 
-    pub fn from_path(path: &Path, plugin_source: PluginSource) -> Result<Self> {
-        let file_service = DefaultFileService;
-        let content = file_service.read_file_cached(path)?;
-        let mut title = String::new();
-        let mut version = String::new();
-
-        for line in content.lines() {
-            if let Some(name) = line.strip_prefix("name=") {
-                title = name.trim_matches('"').to_string();
-            } else if let Some(_version) = line.strip_prefix("version=") {
-                version = _version.trim_matches('"').to_string();
-            }
-        }
-
-        Ok(Plugin::new(
-            Some(plugin_source),
-            Some(path.to_path_buf()),
-            title,
-            version,
-            None,
-            vec![],
-        ))
-    }
-
     pub fn from_asset_response_with_plugin_cfg_and_sub_assets(
         asset_response: AssetResponse,
         plugin_cfg_path: Option<PathBuf>,
@@ -253,8 +228,7 @@ impl Plugin {
 mod tests {
     use super::*;
 
-    use crate::api::asset_response::AssetResponse;
-    use serde_json;
+    use crate::api::AssetResponse;
 
     fn setup_test_plugin() -> Plugin {
         Plugin::new(

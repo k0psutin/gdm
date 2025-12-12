@@ -1,16 +1,12 @@
 #![forbid(unsafe_code)]
 
 mod api;
-mod app_config;
 mod commands;
-mod extract_service;
-mod file_service;
-mod git_service;
-mod godot_config_repository;
-mod http_client;
-mod operation_manager;
-mod plugin_config_repository;
-mod plugin_service;
+mod config;
+mod installers;
+mod models;
+mod services;
+mod ui;
 mod utils;
 
 use crate::commands::Cli;

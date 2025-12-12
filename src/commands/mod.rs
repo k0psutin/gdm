@@ -15,7 +15,7 @@ use crate::{
         add::AddArgs, install::InstallArgs, outdated::OutdatedArgs, remove::RemoveArgs,
         search::SearchArgs, update::UpdateArgs,
     },
-    godot_config_repository::{DefaultGodotConfigRepository, GodotConfigRepository},
+    config::{DefaultGodotConfig, GodotConfig},
 };
 
 #[derive(Parser)]
@@ -39,7 +39,7 @@ pub enum Commands {
 }
 
 pub async fn handle(command: &Commands) -> Result<()> {
-    DefaultGodotConfigRepository::default().validate_project_file()?;
+    DefaultGodotConfig::default().validate_project_file()?;
 
     match command {
         Commands::Add(add_args) => {

@@ -297,4 +297,46 @@ mod add_command_tests {
             .failure()
             .stderr(predicate::str::contains("a value is required"));
     }
+
+    // Git tests
+
+    #[test]
+    fn test_add_plugin_with_git_flag_and_url() {
+        let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
+        cmd.arg("add")
+            .arg("--git")
+            .arg("https://github.com/bitwes/Gut")
+            .assert()
+            .success();
+
+        let gdm_json_path = _temp_dir.path().join("gdm.json");
+        assert!(gdm_json_path.exists(), "gdm.json should be created");
+
+        let expected_gdm_json = json!({
+                      "plugins": {
+                "gut": {
+          "source": {
+            "url": "https://github.com/bitwes/Gut",
+            "reference": "main"
+          },
+          "plugin_cfg_path": "addons/gut/plugin.cfg",
+          "title": "Gut",
+          "version": "9.5.1",
+          "sub_assets": []
+        },
+                      }
+                  });
+
+        let gdm_content = std::fs::read_to_string(&gdm_json_path).expect("Failed to read gdm.json");
+        let gdm_json = serde_json::from_str::<serde_json::Value>(&gdm_content)
+            .expect("Failed to parse gdm.json");
+        assert_eq!(gdm_json, expected_gdm_json);
+
+        let addons_path = _temp_dir.child("addons");
+        let gut_path = addons_path.join("gut");
+        assert!(
+            gut_path.try_exists().unwrap(),
+            "Plugin folder should exists"
+        );
+    }
 }

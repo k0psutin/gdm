@@ -7,23 +7,23 @@ use tracing::{error, info};
 use url::Url;
 
 #[derive(Debug, Clone)]
-pub struct DefaultHttpClient {}
+pub struct DefaultHttpService {}
 
-impl DefaultHttpClient {
-    pub fn new() -> DefaultHttpClient {
-        DefaultHttpClient {}
+impl DefaultHttpService {
+    pub fn new() -> DefaultHttpService {
+        DefaultHttpService {}
     }
 }
 
-impl Default for DefaultHttpClient {
+impl Default for DefaultHttpService {
     fn default() -> Self {
-        DefaultHttpClient::new()
+        DefaultHttpService::new()
     }
 }
 
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
-impl HttpClient for DefaultHttpClient {
+impl HttpService for DefaultHttpService {
     async fn get(&self, url: String, params: HashMap<String, String>) -> Result<Value> {
         let _url = Url::parse_with_params(&url, params)?;
         match reqwest::get(_url.as_str()).await {
@@ -74,7 +74,7 @@ impl HttpClient for DefaultHttpClient {
 }
 
 #[async_trait::async_trait]
-pub trait HttpClient: Send + Sync {
+pub trait HttpService: Send + Sync {
     async fn get(&self, url: String, params: HashMap<String, String>) -> Result<Value>;
 
     async fn get_file(&self, url: String) -> Result<Response>;
