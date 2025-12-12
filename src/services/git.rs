@@ -122,7 +122,9 @@ impl GitService for DefaultGitService {
             ));
         }
 
-        Ok((dst_addons_path, file_count))
+        // Return the repo root (dst), not the addons subdirectory (dst_addons_path)
+        // The staging workflow expects staging_dir to be the root, and it will join "addons"
+        Ok((dst, file_count))
     }
 
     fn extract_tree<'a>(

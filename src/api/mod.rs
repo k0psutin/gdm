@@ -83,6 +83,7 @@ impl Default for DefaultAssetStoreAPI {
 /// # Downloading
 /// - `download_file`: Downloads a file from a given URL.
 /// - `download_asset`: Downloads an asset and reports progress via a progress bar.
+#[cfg_attr(test, mockall::automock)]
 pub trait AssetStoreAPI: Send + Sync {
     async fn find_asset_by_asset_name_and_version_and_godot_version(
         &self,
