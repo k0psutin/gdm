@@ -41,14 +41,36 @@ impl PluginParser {
     }
 
     /// Finds all plugin.cfg files in addon folders and creates Plugin instances
+    ///
+    /// # Arguments
+    /// * `plugin_source` - The source of the plugin
+    /// * `addon_folders` - List of addon folder names
+    /// * `base_dir` - Optional base directory. If provided, looks for addons in `base_dir/addons/<folder>`.
+    ///   If None, looks for addons in `addons/<folder>` relative to CWD.
     pub fn create_plugins_from_addon_folders(
         &self,
         plugin_source: &PluginSource,
         addon_folders: &[PathBuf],
     ) -> Result<Vec<(PathBuf, Plugin)>> {
+        self.create_plugins_from_addon_folders_with_base(plugin_source, addon_folders, None)
+    }
+
+    /// Finds all plugin.cfg files in addon folders and creates Plugin instances
+    /// with an optional base directory
+    pub fn create_plugins_from_addon_folders_with_base(
+        &self,
+        plugin_source: &PluginSource,
+        addon_folders: &[PathBuf],
+        base_dir: Option<&Path>,
+    ) -> Result<Vec<(PathBuf, Plugin)>> {
         let mut plugins: Vec<(PathBuf, Plugin)> = vec![];
         for folder in addon_folders {
-            let path = PathBuf::from("addons").join(folder);
+            let path = if let Some(base) = base_dir {
+                base.join("addons").join(folder)
+            } else {
+                PathBuf::from("addons").join(folder)
+            };
+
             if let Some(plugin_cfg_path) = self.file_service.find_plugin_cfg_file_greedy(&path)? {
                 plugins.push((
                     folder.clone(),

@@ -6,6 +6,7 @@ use crate::installers::{AssetLibraryInstaller, GitInstaller, PluginInstaller};
 use crate::models::{Plugin, PluginSource};
 use crate::services::{
     DefaultExtractService, DefaultFileService, DefaultGitService, FileService, PluginParser,
+    StagingService,
 };
 use crate::ui::{Operation, OperationManager};
 use crate::utils::Utils;
@@ -38,13 +39,30 @@ impl Default for DefaultPluginService {
         let file_service = Arc::new(DefaultFileService);
         let parser = Arc::new(PluginParser::new(file_service.clone()));
 
-        let asset_installer = AssetLibraryInstaller::new(asset_store_api.clone(), extract_service);
-        let git_installer = GitInstaller::new(git_service, parser.clone());
+        // Create app config for staging service
+        let app_config = DefaultAppConfig::default();
+
+        // Create staging service for unified workflow
+        let staging_service = Arc::new(StagingService::new(
+            file_service.clone(),
+            parser.clone(),
+            &app_config,
+        ));
+
+        // Create installers WITH staging support
+        let asset_installer = AssetLibraryInstaller::with_staging(
+            asset_store_api.clone(),
+            extract_service,
+            staging_service.clone(),
+        );
+
+        let git_installer =
+            GitInstaller::with_staging(git_service, parser.clone(), staging_service);
 
         Self {
             godot_config: Box::new(DefaultGodotConfig::default()),
             gdm_config: Box::new(DefaultGdmConfig::default()),
-            app_config: DefaultAppConfig::default(),
+            app_config,
             parser: parser.as_ref().clone(),
             file_service,
             asset_store_api,

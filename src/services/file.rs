@@ -172,6 +172,20 @@ impl FileService for DefaultFileService {
         }
         Ok(None)
     }
+
+    fn rename(&self, from: &Path, to: &Path) -> Result<()> {
+        debug!("Renaming {} to {}", from.display(), to.display());
+        std::fs::rename(from, to)
+            .with_context(|| format!("Failed to rename {} to {}", from.display(), to.display()))?;
+        info!("Renamed {} to {}", from.display(), to.display());
+        Ok(())
+    }
+
+    fn read_dir(&self, dir_path: &Path) -> Result<fs::ReadDir> {
+        debug!("Reading directory: {}", dir_path.display());
+        fs::read_dir(dir_path)
+            .with_context(|| format!("Failed to read directory: {}", dir_path.display()))
+    }
 }
 
 #[async_trait::async_trait]
@@ -188,6 +202,8 @@ pub trait FileService: Send + Sync + 'static {
     fn remove_file(&self, file_path: &Path) -> Result<()>;
     async fn write_all_async(&self, file: &mut tokio::fs::File, chunk: &Bytes) -> Result<()>;
     fn find_plugin_cfg_file_greedy(&self, dir: &Path) -> Result<Option<PathBuf>>;
+    fn rename(&self, from: &Path, to: &Path) -> Result<()>;
+    fn read_dir(&self, dir_path: &Path) -> Result<fs::ReadDir>;
 }
 
 #[cfg(test)]
@@ -247,5 +263,146 @@ mod tests {
 
         // Clean up
         std::fs::remove_file(test_file_path).unwrap();
+    }
+
+    // Tests for new rename and read_dir methods
+
+    #[test]
+    #[serial]
+    fn test_rename_file_success() {
+        let file_service = DefaultFileService;
+        let source_path = Path::new("tests/mocks/test_rename_source.txt");
+        let dest_path = Path::new("tests/mocks/test_rename_dest.txt");
+
+        // Create source file
+        std::fs::write(source_path, "Test content").unwrap();
+
+        // Rename it
+        let result = file_service.rename(source_path, dest_path);
+        assert!(result.is_ok());
+
+        // Verify destination exists and source doesn't
+        assert!(dest_path.exists());
+        assert!(!source_path.exists());
+
+        // Cleanup
+        std::fs::remove_file(dest_path).unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn test_rename_directory_success() {
+        let file_service = DefaultFileService;
+        let source_dir = Path::new("tests/mocks/test_rename_dir_source");
+        let dest_dir = Path::new("tests/mocks/test_rename_dir_dest");
+
+        // Create source directory with a file
+        std::fs::create_dir_all(source_dir).unwrap();
+        std::fs::write(source_dir.join("file.txt"), "Test").unwrap();
+
+        // Rename directory
+        let result = file_service.rename(source_dir, dest_dir);
+        assert!(result.is_ok());
+
+        // Verify destination exists and source doesn't
+        assert!(dest_dir.exists());
+        assert!(dest_dir.join("file.txt").exists());
+        assert!(!source_dir.exists());
+
+        // Cleanup
+        std::fs::remove_dir_all(dest_dir).unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn test_rename_nonexistent_source_fails() {
+        let file_service = DefaultFileService;
+        let source_path = Path::new("tests/mocks/nonexistent_source.txt");
+        let dest_path = Path::new("tests/mocks/test_rename_dest2.txt");
+
+        let result = file_service.rename(source_path, dest_path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    #[serial]
+    fn test_read_dir_success() {
+        let file_service = DefaultFileService;
+        let test_dir = Path::new("tests/mocks/test_read_dir");
+
+        // Create test directory with files
+        std::fs::create_dir_all(test_dir).unwrap();
+        std::fs::write(test_dir.join("file1.txt"), "Test1").unwrap();
+        std::fs::write(test_dir.join("file2.txt"), "Test2").unwrap();
+        std::fs::create_dir_all(test_dir.join("subdir")).unwrap();
+
+        // Read directory
+        let result = file_service.read_dir(test_dir);
+        assert!(result.is_ok());
+
+        let entries: Vec<_> = result.unwrap().collect();
+        assert_eq!(entries.len(), 3); // 2 files + 1 directory
+
+        // Cleanup
+        std::fs::remove_dir_all(test_dir).unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn test_read_dir_empty_directory() {
+        let file_service = DefaultFileService;
+        let test_dir = Path::new("tests/mocks/test_read_dir_empty");
+
+        // Create empty directory
+        std::fs::create_dir_all(test_dir).unwrap();
+
+        // Read directory
+        let result = file_service.read_dir(test_dir);
+        assert!(result.is_ok());
+
+        let entries: Vec<_> = result.unwrap().collect();
+        assert_eq!(entries.len(), 0);
+
+        // Cleanup
+        std::fs::remove_dir_all(test_dir).unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn test_read_dir_nonexistent_fails() {
+        let file_service = DefaultFileService;
+        let test_dir = Path::new("tests/mocks/nonexistent_dir");
+
+        let result = file_service.read_dir(test_dir);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    #[serial]
+    fn test_read_dir_filters_correctly() {
+        let file_service = DefaultFileService;
+        let test_dir = Path::new("tests/mocks/test_read_dir_filter");
+
+        // Create test directory
+        std::fs::create_dir_all(test_dir).unwrap();
+        std::fs::write(test_dir.join("file1.txt"), "Test1").unwrap();
+        std::fs::write(test_dir.join("file2.md"), "Test2").unwrap();
+        std::fs::create_dir_all(test_dir.join("subdir1")).unwrap();
+        std::fs::create_dir_all(test_dir.join("subdir2")).unwrap();
+
+        // Read and filter for directories only
+        let result = file_service.read_dir(test_dir);
+        assert!(result.is_ok());
+
+        let dir_count = result
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().is_dir())
+            .count();
+
+        assert_eq!(dir_count, 2); // Only subdirectories
+
+        // Cleanup
+        std::fs::remove_dir_all(test_dir).unwrap();
     }
 }
