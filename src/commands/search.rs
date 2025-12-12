@@ -1,4 +1,4 @@
-use crate::plugin_service::{DefaultPluginService, PluginService};
+use crate::services::{DefaultPluginService, PluginService};
 
 use anyhow::Result;
 use clap::Args;

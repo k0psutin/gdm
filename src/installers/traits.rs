@@ -1,5 +1,5 @@
-use crate::operation_manager::OperationManager;
-use crate::plugin_config_repository::plugin::{Plugin, PluginSource};
+use crate::models::{Plugin, PluginSource};
+use crate::ui::OperationManager;
 use anyhow::Result;
 use async_trait::async_trait;
 use std::collections::BTreeMap;

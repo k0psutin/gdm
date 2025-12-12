@@ -1,12 +1,59 @@
-mod cache;
-
 use anyhow::{Context, Result};
 use bytes::Bytes;
-use cache::Cache;
-use std::{fs::File, path::Path};
+use std::{
+    collections::HashMap,
+    fs::{self, File},
+    path::{Path, PathBuf},
+    sync::{Mutex, OnceLock},
+};
 use tracing::{debug, info};
 
-use crate::file_service::cache::DefaultCache;
+pub struct DefaultCache {
+    pub cache: Mutex<HashMap<String, String>>,
+}
+
+impl DefaultCache {
+    pub fn new<'a>() -> &'a DefaultCache {
+        let cache: Mutex<HashMap<String, String>> = {
+            let mut _cache = HashMap::new();
+            Mutex::new(_cache)
+        };
+        static INSTANCE: OnceLock<DefaultCache> = OnceLock::new();
+        INSTANCE.get_or_init(|| DefaultCache { cache })
+    }
+}
+
+#[cfg_attr(test, mockall::automock)]
+impl Cache for DefaultCache {
+    fn has_key(&self, key: &str) -> bool {
+        self.cache.lock().unwrap().contains_key(key)
+    }
+
+    fn get(&self, key: &str) -> Option<String> {
+        self.cache.lock().unwrap().get(key).cloned()
+    }
+
+    fn insert(&self, key: &str, value: &str) {
+        self.cache
+            .lock()
+            .unwrap()
+            .insert(key.to_string(), value.to_string());
+    }
+
+    #[cfg(test)]
+    fn clear(&self) {
+        self.cache.lock().unwrap().clear();
+    }
+}
+
+pub trait Cache {
+    fn has_key(&self, key: &str) -> bool;
+    fn get(&self, key: &str) -> Option<String>;
+    fn insert(&self, key: &str, value: &str);
+    #[cfg(test)]
+    #[allow(dead_code)]
+    fn clear(&self);
+}
 
 #[derive(Debug, Default, Clone)]
 pub struct DefaultFileService;
@@ -108,6 +155,23 @@ impl FileService for DefaultFileService {
         }
         Ok(())
     }
+
+    /// Recursively looks for a `plugin.cfg` file in directories.
+    /// Useful for repositories where the addon is nested (e.g. `src/addons/my_plugin`).
+    fn find_plugin_cfg_file_greedy(&self, dir: &Path) -> Result<Option<std::path::PathBuf>> {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                if let Some(found) = self.find_plugin_cfg_file_greedy(&path)? {
+                    return Ok(Some(found));
+                }
+            } else if entry.file_name() == std::ffi::OsStr::new("plugin.cfg") {
+                return Ok(Some(path));
+            }
+        }
+        Ok(None)
+    }
 }
 
 #[async_trait::async_trait]
@@ -123,12 +187,46 @@ pub trait FileService: Send + Sync + 'static {
     fn directory_exists(&self, dir_path: &Path) -> bool;
     fn remove_file(&self, file_path: &Path) -> Result<()>;
     async fn write_all_async(&self, file: &mut tokio::fs::File, chunk: &Bytes) -> Result<()>;
+    fn find_plugin_cfg_file_greedy(&self, dir: &Path) -> Result<Option<PathBuf>>;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serial_test::serial;
+
+    // Tests for DefaultCache
+
+    #[test]
+    #[serial]
+    fn test_cache_insert_and_get() {
+        let cache = DefaultCache::new();
+        cache.clear(); // Clear the singleton cache before test
+        cache.insert("key1", "value1");
+        assert_eq!(cache.get("key1"), Some("value1".to_string()));
+        assert!(cache.has_key("key1"));
+        assert!(!cache.has_key("key2"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_cache_get_should_return_none_for_missing_key() {
+        let cache = DefaultCache::new();
+        cache.clear(); // Clear the singleton cache before test
+        assert_eq!(cache.get("key1"), None);
+    }
+
+    #[test]
+    #[serial]
+    fn test_cache_insert_overwrites_existing_key() {
+        let cache = DefaultCache::new();
+        cache.clear(); // Clear the singleton cache before test
+        cache.insert("key1", "value1");
+        cache.insert("key1", "value2");
+        assert_eq!(cache.get("key1"), Some("value2".to_string()));
+    }
+
+    // Tests for DefaultFileService
 
     #[test]
     #[serial]

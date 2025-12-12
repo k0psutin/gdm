@@ -1,6 +1,5 @@
-use anyhow::Context;
 use anyhow::Result;
-use anyhow::bail;
+use anyhow::{Context, bail};
 use gix::bstr::BString;
 use gix::bstr::ByteSlice;
 use gix::object::{Kind, tree};
@@ -10,16 +9,14 @@ use std::fs;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 
-use crate::app_config::AppConfig;
-use crate::app_config::DefaultAppConfig;
-use crate::plugin_config_repository::plugin::Plugin;
-use crate::plugin_config_repository::plugin::PluginSource;
+use crate::config::{AppConfig, DefaultAppConfig};
 
 #[derive(Default)]
 pub struct DefaultGitService {
     pub app_config: DefaultAppConfig,
 }
 
+#[cfg_attr(test, mockall::automock)]
 pub trait GitService: Send + Sync + 'static {
     fn shallow_fetch_repository(
         &self,
@@ -27,135 +24,18 @@ pub trait GitService: Send + Sync + 'static {
         repo_ref: Option<String>,
     ) -> Result<(PathBuf, usize)>;
     fn move_downloaded_addons(&self, src: &Path, pb_task: ProgressBar) -> Result<Vec<PathBuf>>;
-    fn create_plugins_from_addons_paths(
-        &self,
-        plugin_source: &PluginSource,
-        addon_folders: &[PathBuf],
-    ) -> Result<Vec<(PathBuf, Plugin)>>;
-    fn extract_tree(
+    fn extract_tree<'a>(
         &self,
         repo: &gix::Repository,
-        tree: &gix::Tree,
+        tree: &gix::Tree<'a>,
         root: &Path,
         file_count: &mut usize,
     ) -> Result<()>;
-    fn find_plugin_cfg_file_greedy(&self, dir: &Path) -> Result<Option<PathBuf>>;
-    fn extract_main_plugin_name_from_src(&self, src: &Path) -> Result<String>;
-    fn determine_main_plugin_from_main_plugin_name_and_plugins(
-        &self,
-        plugins: &[(PathBuf, Plugin)],
-        main_plugin_name: &str,
-    ) -> Result<Plugin>;
-    fn add_sub_assets_to_plugin(
-        &self,
-        plugin: &Plugin,
-        plugins: &[(PathBuf, Plugin)],
-        addon_folders: &[PathBuf],
-    ) -> Result<Plugin>;
+    fn extract_repo_name_from_src(&self, src: &Path) -> Result<String>;
 }
 
 #[cfg_attr(test, mockall::automock)]
 impl GitService for DefaultGitService {
-    fn find_plugin_cfg_file_greedy(&self, dir: &Path) -> Result<Option<PathBuf>> {
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() {
-                if let Some(found) = self.find_plugin_cfg_file_greedy(&path)? {
-                    return Ok(Some(found));
-                }
-            } else if entry.file_name() == "plugin.cfg" {
-                return Ok(Some(path));
-            }
-        }
-        Ok(None)
-    }
-
-    fn create_plugins_from_addons_paths(
-        &self,
-        plugin_source: &PluginSource,
-        addon_folders: &[PathBuf],
-    ) -> Result<Vec<(PathBuf, Plugin)>> {
-        let mut plugins: Vec<(PathBuf, Plugin)> = vec![];
-        for folder in addon_folders {
-            let path = PathBuf::from("addons").join(folder);
-            if let Some(plugin_cfg_path) = self.find_plugin_cfg_file_greedy(&path)? {
-                plugins.push((
-                    folder.clone(),
-                    Plugin::from_path(&plugin_cfg_path, plugin_source.clone())?,
-                ));
-            }
-        }
-        Ok(plugins)
-    }
-
-    fn extract_main_plugin_name_from_src(&self, src: &Path) -> Result<String> {
-        src.iter()
-            .skip(1)
-            .nth(0)
-            .context("No main plugin folder found")?
-            .to_str()
-            .map(|s| s.to_string())
-            .context("Failed to convert main plugin folder to string")
-    }
-
-    fn determine_main_plugin_from_main_plugin_name_and_plugins(
-        &self,
-        plugins: &[(PathBuf, Plugin)],
-        main_plugin_name: &str,
-    ) -> Result<Plugin> {
-        let best_match = plugins.iter().fold(
-            (PathBuf::new(), Plugin::default(), 0.0),
-            |mut best, (path, plugin)| {
-                let folder_name = path.to_string_lossy().to_string();
-                let jaro_filename = strsim::jaro(
-                    &folder_name.to_lowercase(),
-                    &main_plugin_name.to_lowercase(),
-                );
-                let jaro_title =
-                    strsim::jaro(&folder_name.to_lowercase(), &plugin.title.to_lowercase());
-                let max_jaro = jaro_filename.max(jaro_title);
-                if max_jaro > best.2 {
-                    best = (PathBuf::from(path), plugin.clone(), max_jaro);
-                }
-                best
-            },
-        );
-        Ok(best_match.1)
-    }
-
-    fn add_sub_assets_to_plugin(
-        &self,
-        plugin: &Plugin,
-        plugins: &[(PathBuf, Plugin)],
-        addon_folders: &[PathBuf],
-    ) -> Result<Plugin> {
-        let main_plugin_folder = plugins
-            .iter()
-            .find(|(_, p)| p.title == plugin.title)
-            .map(|(path, _)| path)
-            .context("Main plugin folder not found")?;
-        let sub_assets: Vec<String> = addon_folders
-            .iter()
-            .filter_map(|folder| {
-                if folder != main_plugin_folder {
-                    Some(folder.to_string_lossy().to_string())
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        Ok(Plugin::new(
-            plugin.source.clone(),
-            plugin.plugin_cfg_path.as_ref().map(PathBuf::from),
-            plugin.title.clone(),
-            plugin.get_version(),
-            plugin.license.clone(),
-            sub_assets,
-        ))
-    }
-
     fn move_downloaded_addons(&self, src: &Path, pb_task: ProgressBar) -> Result<Vec<PathBuf>> {
         let dir = fs::read_dir(src)?;
         let dst = self.app_config.get_addon_folder_path();
@@ -274,5 +154,18 @@ impl GitService for DefaultGitService {
             }
         }
         Ok(())
+    }
+
+    /// Extracts the repository name from the cache path.
+    /// Assumes the path structure is `.../cache_folder/repo_name`.
+    fn extract_repo_name_from_src(&self, src: &Path) -> Result<String> {
+        // Based on your original logic: iterating and skipping to find the folder name.
+        // If src is "/tmp/.gdm/my-repo", file_name() usually gives "my-repo".
+        src.iter()
+            .nth(1)
+            .context("No main plugin folder found in path")?
+            .to_str()
+            .map(|s| s.to_string())
+            .context("Failed to convert main plugin folder to string")
     }
 }

@@ -1,19 +1,21 @@
-pub mod asset;
-pub mod asset_edit_list_response;
-pub mod asset_edit_response;
-pub mod asset_list_response;
-pub mod asset_response;
+mod asset;
+mod asset_edit_list_response;
+mod asset_edit_response;
+mod asset_list_response;
+mod asset_response;
 
-use crate::api::asset::Asset;
-use crate::api::asset_edit_list_response::AssetEditListResponse;
-use crate::api::asset_edit_response::AssetEditResponse;
-use crate::app_config::{AppConfig, DefaultAppConfig};
-use crate::file_service::{DefaultFileService, FileService};
-use crate::http_client::{DefaultHttpClient, HttpClient};
+pub use asset::Asset;
+pub use asset_edit_list_response::AssetEditListResponse;
+pub use asset_edit_response::AssetEditResponse;
+#[cfg(test)]
+pub use asset_list_response::AssetListItem;
+pub use asset_list_response::AssetListResponse;
+pub use asset_response::AssetResponse;
+
+use crate::config::{AppConfig, DefaultAppConfig};
+use crate::services::{DefaultFileService, DefaultHttpService, FileService, HttpService};
 
 use anyhow::{Result, bail};
-use asset_list_response::AssetListResponse;
-use asset_response::AssetResponse;
 use indicatif::ProgressBar;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -22,7 +24,7 @@ use tracing::{error, info};
 use url::Url;
 
 pub struct DefaultAssetStoreAPI {
-    pub http_client: Arc<dyn HttpClient + Send + Sync>,
+    pub http_service: Arc<dyn HttpService + Send + Sync>,
     pub app_config: DefaultAppConfig,
     pub file_service: Arc<dyn FileService + Send + Sync + 'static>,
 }
@@ -30,12 +32,12 @@ pub struct DefaultAssetStoreAPI {
 impl DefaultAssetStoreAPI {
     #[allow(unused)]
     pub fn new(
-        http_client: Arc<dyn HttpClient + Send + Sync>,
+        http_service: Arc<dyn HttpService + Send + Sync>,
         app_config: DefaultAppConfig,
         file_service: Arc<dyn FileService + Send + Sync + 'static>,
     ) -> DefaultAssetStoreAPI {
         DefaultAssetStoreAPI {
-            http_client,
+            http_service,
             app_config,
             file_service,
         }
@@ -49,7 +51,7 @@ impl DefaultAssetStoreAPI {
 impl Default for DefaultAssetStoreAPI {
     fn default() -> Self {
         DefaultAssetStoreAPI {
-            http_client: Arc::new(DefaultHttpClient::default()),
+            http_service: Arc::new(DefaultHttpService::default()),
             app_config: DefaultAppConfig::default(),
             file_service: Arc::new(DefaultFileService),
         }
@@ -64,7 +66,7 @@ impl Default for DefaultAssetStoreAPI {
 ///
 /// # Services
 /// - `get_extract_service`: Returns a reference to the extract service.
-/// - `http_client`: Returns an HTTP client for making requests.
+/// - `http_service`: Returns an HTTP client for making requests.
 /// - `get_file_service`: Returns a file service for file operations.
 /// - `get_base_url`: Returns the base URL of the asset store.
 /// - `get_cache_folder_path`: Returns the path to the cache folder.
@@ -179,7 +181,7 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
 
     async fn get_asset_by_id(&self, asset_id: &str) -> Result<AssetResponse> {
         match self
-            .http_client
+            .http_service
             .get(self.get_url(&format!("/asset/{}", asset_id)), [].into())
             .await
         {
@@ -193,7 +195,7 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
 
     async fn get_assets(&self, params: HashMap<String, String>) -> Result<AssetListResponse> {
         match self
-            .http_client
+            .http_service
             .get(self.get_url("/asset"), params.clone())
             .await
         {
@@ -249,7 +251,7 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
             ("page".to_string(), page.to_string()),
         ]);
         match self
-            .http_client
+            .http_service
             .get(self.get_url("/asset/edit"), params)
             .await
         {
@@ -263,7 +265,7 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
 
     async fn get_asset_edit_by_edit_id(&self, edit_id: &str) -> Result<AssetEditResponse> {
         match self
-            .http_client
+            .http_service
             .get(self.get_url(&format!("/asset/edit/{}", edit_id)), [].into())
             .await
         {
@@ -298,7 +300,7 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
             self.file_service.remove_file(&filepath)?;
         }
 
-        let mut res = self.http_client.get_file(download_url.to_string()).await?;
+        let mut res = self.http_service.get_file(download_url.to_string()).await?;
 
         pb_task.set_length(100);
 
@@ -323,7 +325,7 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
 mod tests {
     use std::path::PathBuf;
 
-    use crate::{file_service::MockDefaultFileService, http_client::MockDefaultHttpClient};
+    use crate::services::{MockDefaultFileService, MockDefaultHttpService};
 
     use super::*;
     use mockall::predicate::*;
@@ -439,8 +441,8 @@ mod tests {
     // download_asset
     #[tokio::test]
     async fn test_download_asset_should_download_to_cache_folder() {
-        let mut mock_http_client = MockDefaultHttpClient::new();
-        mock_http_client.expect_get_file().returning(|_url| {
+        let mut mock_http_service = MockDefaultHttpService::new();
+        mock_http_service.expect_get_file().returning(|_url| {
             let http_response = http::Response::builder().status(200).body("ok").unwrap();
             let something = reqwest::Response::from(http_response);
             Ok(something)
@@ -472,7 +474,7 @@ mod tests {
             .returning(|_file, _chunk| Ok(()));
 
         let api = DefaultAssetStoreAPI::new(
-            Arc::new(mock_http_client),
+            Arc::new(mock_http_service),
             DefaultAppConfig::new(
                 Some(String::from("http://mock")),
                 Some(String::from("tests/mocks/gdm.json")),

@@ -1,5 +1,5 @@
-use crate::app_config::AppConfig;
-use crate::plugin_config_repository::plugin::Plugin;
+use crate::config::{AppConfig, DefaultAppConfig};
+use crate::models::Plugin;
 use anyhow::{Result, bail};
 use indicatif::ProgressBar;
 use std::collections::HashSet;
@@ -8,9 +8,8 @@ use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 
-use crate::api::asset::Asset;
-use crate::app_config::DefaultAppConfig;
-use crate::file_service::{DefaultFileService, FileService};
+use crate::api::Asset;
+use crate::services::{DefaultFileService, FileService};
 
 pub struct DefaultExtractService {
     pub file_service: Box<dyn FileService + Send + Sync + 'static>,
@@ -271,7 +270,7 @@ pub trait ExtractService: Send + Sync + 'static {
 #[cfg(test)]
 mod tests {
     fn make_mock_asset<P: Into<std::path::PathBuf>>(zip_path: P, title: &str) -> Asset {
-        use crate::api::asset_response::AssetResponse;
+        use crate::api::AssetResponse;
         Asset {
             file_path: zip_path.into(),
             asset_response: AssetResponse {
@@ -290,9 +289,7 @@ mod tests {
             },
         }
     }
-    use crate::{
-        file_service::MockDefaultFileService, plugin_config_repository::plugin::PluginSource,
-    };
+    use crate::{models::PluginSource, services::MockDefaultFileService};
 
     use super::*;
     use serial_test::serial;

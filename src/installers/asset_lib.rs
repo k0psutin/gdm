@@ -1,10 +1,8 @@
-use crate::api::AssetStoreAPI;
-use crate::api::asset::Asset;
-use crate::api::asset_response::AssetResponse;
-use crate::extract_service::ExtractService;
-use crate::operation_manager::OperationManager;
-use crate::plugin_config_repository::plugin::{Plugin, PluginSource};
-use crate::plugin_service::PluginInstaller;
+use crate::api::{Asset, AssetResponse, AssetStoreAPI};
+use crate::installers::PluginInstaller;
+use crate::models::{Plugin, PluginSource};
+use crate::services::ExtractService;
+use crate::ui::OperationManager;
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;

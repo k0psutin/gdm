@@ -1,37 +1,81 @@
-pub mod godot_config;
-
 use std::collections::HashMap;
 
 use anyhow::{Result, bail};
+use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info};
 
-use crate::app_config::{AppConfig, DefaultAppConfig};
-use crate::file_service::{DefaultFileService, FileService};
-use crate::godot_config_repository::godot_config::DefaultGodotConfig;
-use crate::plugin_config_repository::plugin::Plugin;
-use crate::plugin_config_repository::plugin_config::{DefaultPluginConfig, PluginConfig};
+use crate::config::{AppConfig, DefaultAppConfig};
+use crate::config::{DefaultGdmConfigMetadata, GdmConfigMetadata};
+use crate::models::Plugin;
+use crate::services::{DefaultFileService, FileService};
 
-pub struct DefaultGodotConfigRepository {
+// TODO: Rename all repositories to configs and rename internal structs accordingly
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct GodotProjectMetadata {
+    config_version: usize,
+    godot_version: String,
+}
+
+impl GodotProjectMetadata {
+    pub fn new(config_version: usize, godot_version: String) -> Self {
+        Self {
+            config_version,
+            godot_version,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn get_config_version(&self) -> usize {
+        self.config_version
+    }
+
+    pub fn get_godot_version(&self) -> Result<String> {
+        if !self.godot_version.is_empty() {
+            return Ok(self.godot_version.clone());
+        }
+        self.get_default_godot_version()
+    }
+
+    fn get_default_godot_version(&self) -> Result<String> {
+        match self.config_version {
+            5 => Ok("4.5".to_string()),
+            4 => Ok("3.6".to_string()),
+            _ => bail!("Unsupported config_version: {}", self.config_version),
+        }
+    }
+}
+
+impl Default for GodotProjectMetadata {
+    fn default() -> Self {
+        Self {
+            config_version: 5,
+            godot_version: "4.5".to_string(),
+        }
+    }
+}
+
+pub struct DefaultGodotConfig {
     pub file_service: Box<dyn FileService + Send + Sync + 'static>,
     pub app_config: DefaultAppConfig,
 }
 
-impl Default for DefaultGodotConfigRepository {
+impl Default for DefaultGodotConfig {
     fn default() -> Self {
-        DefaultGodotConfigRepository {
+        DefaultGodotConfig {
             file_service: Box::new(DefaultFileService),
             app_config: DefaultAppConfig::default(),
         }
     }
 }
 
-impl DefaultGodotConfigRepository {
+impl DefaultGodotConfig {
     #[allow(unused)]
     pub fn new(
         file_service: Box<dyn FileService + Send + Sync + 'static>,
         app_config: DefaultAppConfig,
-    ) -> DefaultGodotConfigRepository {
-        DefaultGodotConfigRepository {
+    ) -> DefaultGodotConfig {
+        DefaultGodotConfig {
             file_service,
             app_config,
         }
@@ -39,7 +83,7 @@ impl DefaultGodotConfigRepository {
 }
 
 #[cfg_attr(test, mockall::automock)]
-impl GodotConfigRepository for DefaultGodotConfigRepository {
+impl GodotConfig for DefaultGodotConfig {
     fn get_godot_version_from_project(&self) -> Result<String> {
         let godot_config = self.load()?;
         let godot_version = godot_config.get_godot_version()?;
@@ -65,7 +109,7 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
         packed_string_array
     }
 
-    fn save(&self, plugin_config: DefaultPluginConfig) -> Result<()> {
+    fn save(&self, gdm_config: DefaultGdmConfigMetadata) -> Result<()> {
         let godot_project_file_path = self.app_config.get_godot_project_file_path();
         if !self.file_service.file_exists(godot_project_file_path)? {
             error!(
@@ -74,11 +118,11 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
             );
             bail!("No project.godot file found in the current directory");
         }
-        let lines = self.update_project_file(plugin_config)?;
+        let lines = self.update_project_file(gdm_config)?;
         self.save_project_file(lines)
     }
 
-    fn load(&self) -> Result<DefaultGodotConfig> {
+    fn load(&self) -> Result<GodotProjectMetadata> {
         let godot_project_file_path = self.app_config.get_godot_project_file_path();
         if !self.file_service.file_exists(godot_project_file_path)? {
             error!(
@@ -100,8 +144,11 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
     ///
     /// [<next section>]
     /// ```
-    fn update_project_file(&self, plugin_config: DefaultPluginConfig) -> Result<Vec<String>> {
-        let plugin_config_plugins = plugin_config.get_plugins(true);
+    fn update_project_file(
+        &self,
+        gdm_config_metadata: DefaultGdmConfigMetadata,
+    ) -> Result<Vec<String>> {
+        let plugin_config_plugins = gdm_config_metadata.get_plugins(true);
         let _plugins = plugin_config_plugins
             .values()
             .cloned()
@@ -140,7 +187,7 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
         if let Some(plugin_index) = plugin_index {
             debug!(
                 "Updating existing [editor_plugins] section with plugins: {:?}",
-                plugin_config.plugins.keys().cloned()
+                gdm_config_metadata.plugins.keys().cloned()
             );
             contents[plugin_index] =
                 format!("enabled={}", self.plugins_to_packed_string_array(_plugins));
@@ -199,7 +246,7 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
     ///
     /// ```
     ///
-    fn read_godot_project_file(&self) -> Result<DefaultGodotConfig> {
+    fn read_godot_project_file(&self) -> Result<GodotProjectMetadata> {
         let contents = self.load_project_file()?;
         let mut output: HashMap<String, Vec<String>> = HashMap::new();
         output.insert("config/plugins".to_string(), vec![]);
@@ -235,7 +282,7 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
             .and_then(|v| v.first())
             .cloned()
             .unwrap_or_default();
-        let godot_config = DefaultGodotConfig::new(config_version, godot_version);
+        let godot_config = GodotProjectMetadata::new(config_version, godot_version);
         info!("Parsed Godot config successfully");
         Ok(godot_config)
     }
@@ -289,26 +336,78 @@ impl GodotConfigRepository for DefaultGodotConfigRepository {
         Ok(())
     }
 }
-pub trait GodotConfigRepository {
+pub trait GodotConfig {
     fn get_godot_version_from_project(&self) -> Result<String>;
     fn plugins_to_packed_string_array(&self, plugins: Vec<Plugin>) -> String;
     fn validate_project_file(&self) -> Result<()>;
-    fn save(&self, plugin_config: DefaultPluginConfig) -> Result<()>;
-    fn load(&self) -> Result<DefaultGodotConfig>;
-    fn update_project_file(&self, plugin_config: DefaultPluginConfig) -> Result<Vec<String>>;
-    fn read_godot_project_file(&self) -> Result<DefaultGodotConfig>;
+    fn save(&self, gdm_config: DefaultGdmConfigMetadata) -> Result<()>;
+    fn load(&self) -> Result<GodotProjectMetadata>;
+    fn update_project_file(&self, gdm_config: DefaultGdmConfigMetadata) -> Result<Vec<String>>;
+    fn read_godot_project_file(&self) -> Result<GodotProjectMetadata>;
     fn load_project_file(&self) -> Result<Vec<String>>;
     fn save_project_file(&self, lines: Vec<String>) -> Result<()>;
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::file_service::MockDefaultFileService;
-    use crate::plugin_config_repository::plugin::Plugin;
+    use crate::models::Plugin;
+    use crate::services::{DefaultFileService, MockDefaultFileService};
     use std::collections::BTreeMap;
     use std::path::Path;
 
     use super::*;
+
+    // GodotConfig tests
+
+    #[test]
+    fn test_get_config_godot_version() {
+        let config = GodotProjectMetadata::new(5, "4.5".to_string());
+        assert_eq!(config.get_godot_version().unwrap(), "4.5");
+    }
+
+    // get_config_version
+
+    #[test]
+    fn test_get_config_version() {
+        let config = GodotProjectMetadata::new(4, "3.6".to_string());
+        assert_eq!(config.get_config_version(), 4);
+    }
+
+    // get_godot_version
+
+    #[test]
+    fn test_get_godot_version_with_non_empty_version() {
+        let config = GodotProjectMetadata::new(5, "4.5".to_string());
+        assert_eq!(config.get_godot_version().unwrap(), "4.5");
+    }
+
+    #[test]
+    fn test_get_godot_version_with_empty_version() {
+        let config = GodotProjectMetadata::new(5, "".to_string());
+        assert_eq!(config.get_godot_version().unwrap(), "4.5");
+    }
+
+    // get_default_godot_version
+
+    #[test]
+    fn test_get_default_godot_version_supported_versions() {
+        let config_v5 = GodotProjectMetadata::new(5, "".to_string());
+        assert_eq!(config_v5.get_default_godot_version().unwrap(), "4.5");
+
+        let config_v4 = GodotProjectMetadata::new(4, "".to_string());
+        assert_eq!(config_v4.get_default_godot_version().unwrap(), "3.6");
+    }
+
+    #[test]
+    fn test_get_default_godot_version_unsupported_version() {
+        let config = GodotProjectMetadata::new(3, "".to_string());
+        let result = config.get_default_godot_version();
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "Unsupported config_version: 3"
+        );
+    }
 
     // plugins_to_packed_string_array
 
@@ -325,7 +424,7 @@ mod tests {
         );
 
         let mock_file_service = MockDefaultFileService::default();
-        let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
+        let repository = DefaultGodotConfig::new(Box::new(mock_file_service), app_config);
         let result = repository.plugins_to_packed_string_array(vec![
             Plugin::create_mock_plugin_1(),
             Plugin::create_mock_plugin_2(),
@@ -352,8 +451,7 @@ mod tests {
             Some(String::from("tests/mocks/addons")),
         );
 
-        let repository =
-            DefaultGodotConfigRepository::new(Box::new(DefaultFileService), app_config);
+        let repository = DefaultGodotConfig::new(Box::new(DefaultFileService), app_config);
         let result = repository.read_godot_project_file();
         assert!(result.is_ok());
         let godot_config = result.unwrap();
@@ -372,8 +470,7 @@ mod tests {
             Some(String::from("tests/mocks/addons")),
         );
 
-        let repository =
-            DefaultGodotConfigRepository::new(Box::new(DefaultFileService), app_config);
+        let repository = DefaultGodotConfig::new(Box::new(DefaultFileService), app_config);
         let result = repository.read_godot_project_file();
         assert!(result.is_ok());
         let godot_config = result.unwrap();
@@ -392,8 +489,7 @@ mod tests {
             Some(String::from("non_existent_file.godot")),
             Some(String::from("tests/mocks/addons")),
         );
-        let repository =
-            DefaultGodotConfigRepository::new(Box::new(DefaultFileService), app_config);
+        let repository = DefaultGodotConfig::new(Box::new(DefaultFileService), app_config);
         let result = repository.load();
         assert!(result.is_err());
     }
@@ -409,8 +505,7 @@ mod tests {
             )),
             Some(String::from("tests/mocks/addons")),
         );
-        let repository =
-            DefaultGodotConfigRepository::new(Box::new(DefaultFileService), app_config);
+        let repository = DefaultGodotConfig::new(Box::new(DefaultFileService), app_config);
         let result = repository.load();
         assert!(result.is_ok());
     }
@@ -426,8 +521,7 @@ mod tests {
             Some(String::from("non_existent_file.godot")),
             Some(String::from("tests/mocks/addons")),
         );
-        let repository =
-            DefaultGodotConfigRepository::new(Box::new(DefaultFileService), app_config);
+        let repository = DefaultGodotConfig::new(Box::new(DefaultFileService), app_config);
         let result = repository.load_project_file();
         assert!(result.is_err());
     }
@@ -443,8 +537,7 @@ mod tests {
             )),
             Some(String::from("tests/mocks/addons")),
         );
-        let repository =
-            DefaultGodotConfigRepository::new(Box::new(DefaultFileService), app_config);
+        let repository = DefaultGodotConfig::new(Box::new(DefaultFileService), app_config);
         let result = repository.load_project_file();
         assert!(result.is_ok());
     }
@@ -514,13 +607,13 @@ renderer/rendering_method="gl_compatibility"
             .expect_read_file_cached()
             .returning(|_| Ok(String::from(MOCK_PROJECT_GODOT)));
 
-        let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
+        let repository = DefaultGodotConfig::new(Box::new(mock_file_service), app_config);
 
         let mut plugins = BTreeMap::new();
         plugins.insert("awesome_plugin".to_string(), Plugin::create_mock_plugin_1());
-        let plugin_config = DefaultPluginConfig::new(plugins);
+        let gdm_config = DefaultGdmConfigMetadata::new(plugins);
 
-        let result = repository.update_project_file(plugin_config);
+        let result = repository.update_project_file(gdm_config);
         assert!(result.is_ok());
         let lines = result.unwrap();
 
@@ -582,13 +675,13 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
             .expect_read_file_cached()
             .returning(|_| Ok(String::from(MOCK_PROJECT_GODOT)));
 
-        let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
+        let repository = DefaultGodotConfig::new(Box::new(mock_file_service), app_config);
 
         let mut plugins = BTreeMap::new();
         plugins.insert("super_plugin".to_string(), Plugin::create_mock_plugin_2());
-        let plugin_config = DefaultPluginConfig::new(plugins);
+        let gdm_config = DefaultGdmConfigMetadata::new(plugins);
 
-        let result = repository.update_project_file(plugin_config);
+        let result = repository.update_project_file(gdm_config);
         assert!(result.is_ok());
         let lines = result.unwrap();
 
@@ -620,13 +713,13 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
             ))
         });
 
-        let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
+        let repository = DefaultGodotConfig::new(Box::new(mock_file_service), app_config);
 
         let mut plugins = BTreeMap::new();
         plugins.insert("awesome_plugin".to_string(), Plugin::create_mock_plugin_1());
-        let plugin_config = DefaultPluginConfig::new(plugins);
+        let gdm_config = DefaultGdmConfigMetadata::new(plugins);
 
-        let result = repository.update_project_file(plugin_config);
+        let result = repository.update_project_file(gdm_config);
         assert!(result.is_ok());
         let lines = result.unwrap();
 
@@ -664,14 +757,14 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
             ))
         });
 
-        let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
+        let repository = DefaultGodotConfig::new(Box::new(mock_file_service), app_config);
 
         let mut plugins = BTreeMap::new();
         plugins.insert("awesome_plugin".to_string(), Plugin::create_mock_plugin_1());
         plugins.insert("some_library".to_string(), Plugin::create_mock_plugin_3());
-        let plugin_config = DefaultPluginConfig::new(plugins);
+        let gdm_config = DefaultGdmConfigMetadata::new(plugins);
 
-        let result = repository.update_project_file(plugin_config);
+        let result = repository.update_project_file(gdm_config);
         assert!(result.is_ok());
         let lines = result.unwrap();
 
@@ -709,11 +802,11 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
             ))
         });
 
-        let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
+        let repository = DefaultGodotConfig::new(Box::new(mock_file_service), app_config);
 
-        let plugin_config = DefaultPluginConfig::new(BTreeMap::new());
+        let gdm_config = DefaultGdmConfigMetadata::new(BTreeMap::new());
 
-        let result = repository.update_project_file(plugin_config);
+        let result = repository.update_project_file(gdm_config);
         assert!(result.is_ok());
         let lines = result.unwrap();
 
@@ -743,11 +836,11 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
             ))
         });
 
-        let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
+        let repository = DefaultGodotConfig::new(Box::new(mock_file_service), app_config);
 
-        let plugin_config = DefaultPluginConfig::new(BTreeMap::new());
+        let gdm_config = DefaultGdmConfigMetadata::new(BTreeMap::new());
 
-        let result = repository.update_project_file(plugin_config);
+        let result = repository.update_project_file(gdm_config);
         assert!(result.is_ok());
         let lines = result.unwrap();
 
@@ -782,7 +875,7 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
             .times(1)
             .returning(|_, _| Ok(()));
 
-        let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
+        let repository = DefaultGodotConfig::new(Box::new(mock_file_service), app_config);
 
         let lines = vec![
             "line1".to_string(),
@@ -808,7 +901,7 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
             .expect_file_exists()
             .returning(|_| Ok(false));
 
-        let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
+        let repository = DefaultGodotConfig::new(Box::new(mock_file_service), app_config);
 
         let lines = vec!["line1".to_string()];
         let result = repository.save_project_file(lines);
@@ -832,7 +925,7 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
         );
 
         let mock_file_service = MockDefaultFileService::default();
-        let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
+        let repository = DefaultGodotConfig::new(Box::new(mock_file_service), app_config);
 
         let lines = vec![];
         let result = repository.save_project_file(lines);
@@ -880,13 +973,13 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
             .times(1)
             .returning(|_, _| Ok(()));
 
-        let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
+        let repository = DefaultGodotConfig::new(Box::new(mock_file_service), app_config);
 
         let mut plugins = BTreeMap::new();
         plugins.insert("awesome_plugin".to_string(), Plugin::create_mock_plugin_1());
-        let plugin_config = DefaultPluginConfig::new(plugins);
+        let gdm_config = DefaultGdmConfigMetadata::new(plugins);
 
-        let result = repository.save(plugin_config);
+        let result = repository.save(gdm_config);
         assert!(result.is_ok());
     }
 
@@ -907,11 +1000,11 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
             .expect_file_exists()
             .returning(|_| Ok(false));
 
-        let repository = DefaultGodotConfigRepository::new(Box::new(mock_file_service), app_config);
+        let repository = DefaultGodotConfig::new(Box::new(mock_file_service), app_config);
 
-        let plugin_config = DefaultPluginConfig::new(BTreeMap::new());
+        let gdm_config = DefaultGdmConfigMetadata::new(BTreeMap::new());
 
-        let result = repository.save(plugin_config);
+        let result = repository.save(gdm_config);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("No project.godot"));
     }

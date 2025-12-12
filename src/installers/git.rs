@@ -1,7 +1,7 @@
-use crate::git_service::GitService;
-use crate::operation_manager::OperationManager;
-use crate::plugin_config_repository::plugin::{Plugin, PluginSource};
-use crate::plugin_service::PluginInstaller;
+use crate::installers::PluginInstaller;
+use crate::models::{Plugin, PluginSource};
+use crate::services::{GitService, PluginParser};
+use crate::ui::OperationManager;
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -13,11 +13,15 @@ use tracing::error;
 
 pub struct GitInstaller {
     git_service: Arc<dyn GitService + Send + Sync>,
+    parser: Arc<PluginParser>,
 }
 
 impl GitInstaller {
-    pub fn new(git_service: Arc<dyn GitService + Send + Sync>) -> Self {
-        Self { git_service }
+    pub fn new(git_service: Arc<dyn GitService + Send + Sync>, parser: Arc<PluginParser>) -> Self {
+        Self {
+            git_service,
+            parser,
+        }
     }
 }
 
@@ -39,6 +43,7 @@ impl PluginInstaller for GitInstaller {
         for (i, plugin_def) in plugins.iter().enumerate() {
             if let Some(PluginSource::Git { url, reference }) = &plugin_def.source {
                 let git_service = self.git_service.clone();
+                let parser = self.parser.clone();
                 let url = url.clone();
                 let reference = if reference.is_empty() {
                     "main".to_string()
@@ -69,8 +74,7 @@ impl PluginInstaller for GitInstaller {
                         pb.set_length(file_count as u64);
                         pb.set_position(0);
 
-                        let main_plugin_name =
-                            git_service.extract_main_plugin_name_from_src(&src)?;
+                        let main_plugin_name = git_service.extract_repo_name_from_src(&src)?;
 
                         let addon_folders = git_service.move_downloaded_addons(&src, pb.clone())?;
 
@@ -79,16 +83,13 @@ impl PluginInstaller for GitInstaller {
                             reference: reference.clone(),
                         };
 
-                        let plugins_found = git_service
-                            .create_plugins_from_addons_paths(&plugin_source, &addon_folders)?;
+                        let plugins_found = parser
+                            .create_plugins_from_addon_folders(&plugin_source, &addon_folders)?;
 
-                        let main_plugin = git_service
-                            .determine_main_plugin_from_main_plugin_name_and_plugins(
-                                &plugins_found,
-                                &main_plugin_name,
-                            )?;
+                        let (folder_name, main_plugin) = parser
+                            .determine_best_main_plugin_match(&plugins_found, &main_plugin_name)?;
 
-                        let plugin_with_sub_assets = git_service.add_sub_assets_to_plugin(
+                        let plugin_with_sub_assets = parser.enrich_with_sub_assets(
                             &main_plugin,
                             &plugins_found,
                             &addon_folders,
@@ -97,7 +98,7 @@ impl PluginInstaller for GitInstaller {
                         pb.finish_and_clear();
 
                         Ok::<BTreeMap<String, Plugin>, anyhow::Error>(BTreeMap::from([(
-                            main_plugin_name,
+                            folder_name,
                             plugin_with_sub_assets,
                         )]))
                     })
