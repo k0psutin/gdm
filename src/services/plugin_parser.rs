@@ -11,13 +11,20 @@ pub struct PluginParser {
     file_service: Arc<dyn FileService + Send + Sync>,
 }
 
+impl Default for PluginParser {
+    fn default() -> Self {
+        let file_service = Arc::new(crate::services::DefaultFileService);
+        Self::new(file_service)
+    }
+}
+
 impl PluginParser {
     pub fn new(file_service: Arc<dyn FileService + Send + Sync>) -> Self {
         Self { file_service }
     }
 
     /// Parses a plugin.cfg file and creates a Plugin instance
-    pub fn parse_plugin_cfg(&self, path: &Path, plugin_source: PluginSource) -> Result<Plugin> {
+    pub fn parse_plugin_cfg(&self, path: &Path, plugin_source: &PluginSource) -> Result<Plugin> {
         let content = self.file_service.read_file_cached(path)?;
         let mut title = String::new();
         let mut version = String::new();
@@ -31,7 +38,7 @@ impl PluginParser {
         }
 
         Ok(Plugin::new(
-            Some(plugin_source),
+            Some(plugin_source.clone()),
             Some(path.to_path_buf()),
             title,
             version,
@@ -74,7 +81,7 @@ impl PluginParser {
             if let Some(plugin_cfg_path) = self.file_service.find_plugin_cfg_file_greedy(&path)? {
                 plugins.push((
                     folder.clone(),
-                    self.parse_plugin_cfg(&plugin_cfg_path, plugin_source.clone())?,
+                    self.parse_plugin_cfg(&plugin_cfg_path, plugin_source)?,
                 ));
             }
         }
@@ -188,7 +195,7 @@ version="1.0.0""#;
 
         let result = parser.parse_plugin_cfg(
             Path::new("addons/test/plugin.cfg"),
-            PluginSource::AssetLibrary {
+            &PluginSource::AssetLibrary {
                 asset_id: "123".to_string(),
             },
         );

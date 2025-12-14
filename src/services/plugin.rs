@@ -2,12 +2,8 @@ use crate::api::{AssetListResponse, AssetResponse, AssetStoreAPI, DefaultAssetSt
 use crate::config::{
     AppConfig, DefaultAppConfig, DefaultGdmConfig, DefaultGodotConfig, GdmConfig, GodotConfig,
 };
-use crate::installers::{AssetLibraryInstaller, GitInstaller, PluginInstaller};
 use crate::models::{Plugin, PluginSource};
-use crate::services::{
-    DefaultExtractService, DefaultFileService, DefaultGitService, FileService, PluginParser,
-    StagingService,
-};
+use crate::services::{DefaultFileService, DefaultInstallService, FileService, InstallService};
 use crate::ui::{Operation, OperationManager};
 use crate::utils::Utils;
 
@@ -21,52 +17,28 @@ use tracing::info;
 pub struct DefaultPluginService {
     pub godot_config: Box<dyn GodotConfig>,
     pub gdm_config: Box<dyn GdmConfig>,
-
     pub app_config: DefaultAppConfig,
     pub file_service: Arc<dyn FileService + Send + Sync>,
     pub asset_store_api: Arc<dyn AssetStoreAPI + Send + Sync>,
-    #[allow(dead_code)]
-    pub parser: PluginParser,
-
-    installers: Vec<Box<dyn PluginInstaller>>,
+    pub install_service: Arc<dyn InstallService + Send + Sync>,
 }
 
 impl Default for DefaultPluginService {
     fn default() -> Self {
         let asset_store_api = Arc::new(DefaultAssetStoreAPI::default());
-        let extract_service = Arc::new(DefaultExtractService::default());
-        let git_service = Arc::new(DefaultGitService::default());
         let file_service = Arc::new(DefaultFileService);
-        let parser = Arc::new(PluginParser::new(file_service.clone()));
+        let install_service = Arc::new(DefaultInstallService::default());
 
         // Create app config for staging service
         let app_config = DefaultAppConfig::default();
-
-        // Create staging service for unified workflow
-        let staging_service = Arc::new(StagingService::new(
-            file_service.clone(),
-            parser.clone(),
-            &app_config,
-        ));
-
-        // Create installers WITH staging support
-        let asset_installer = AssetLibraryInstaller::with_staging(
-            asset_store_api.clone(),
-            extract_service,
-            staging_service.clone(),
-        );
-
-        let git_installer =
-            GitInstaller::with_staging(git_service, parser.clone(), staging_service);
 
         Self {
             godot_config: Box::new(DefaultGodotConfig::default()),
             gdm_config: Box::new(DefaultGdmConfig::default()),
             app_config,
-            parser: parser.as_ref().clone(),
             file_service,
             asset_store_api,
-            installers: vec![Box::new(asset_installer), Box::new(git_installer)],
+            install_service,
         }
     }
 }
@@ -79,54 +51,33 @@ impl DefaultPluginService {
         app_config: DefaultAppConfig,
         file_service: Arc<dyn FileService + Send + Sync>,
         asset_store_api: Arc<dyn AssetStoreAPI + Send + Sync>,
-        installers: Vec<Box<dyn PluginInstaller>>,
+        install_service: Arc<dyn InstallService + Send + Sync>,
     ) -> Self {
         Self {
             godot_config,
             gdm_config,
             app_config,
-            parser: PluginParser::new(file_service.clone()),
             file_service,
             asset_store_api,
-            installers,
+            install_service,
         }
     }
 }
 
 impl PluginService for DefaultPluginService {
     async fn process_install(&self, plugins: &[Plugin]) -> Result<BTreeMap<String, Plugin>> {
-        let mut final_results = BTreeMap::new();
-        let mut installer_futures = Vec::new();
-
-        let total_plugins_count = plugins.len();
-
         let operation_manager = Arc::new(OperationManager::new(Operation::Install)?);
 
-        for (index, plugin) in plugins.iter().enumerate() {
-            if let Some(source) = &plugin.source {
-                let installer = self.installers.iter().find(|inst| inst.can_handle(source));
-                if let Some(installer) = installer {
-                    installer_futures.push(installer.install(
-                        vec![plugin.clone()],
-                        operation_manager.clone(),
-                        index,
-                        total_plugins_count,
-                    ));
-                }
-            }
-        }
-
-        let results_list = try_join_all(installer_futures).await?;
+        let results = self
+            .install_service
+            .install(plugins, operation_manager.clone())
+            .await?;
 
         operation_manager.finish();
 
-        for installed_map in results_list {
-            final_results.extend(installed_map);
-        }
+        self.finish_plugins_operation(&results)?;
 
-        self.finish_plugins_operation(&final_results)?;
-
-        Ok(final_results)
+        Ok(results)
     }
 
     fn finish_plugins_operation(&self, plugins: &BTreeMap<String, Plugin>) -> Result<()> {
@@ -581,7 +532,7 @@ mod tests {
     use crate::models::Plugin;
     use crate::services::{
         DefaultPluginService, MockDefaultExtractService, MockDefaultFileService,
-        MockDefaultGitService, PluginParser, PluginService,
+        MockDefaultGitService, MockDefaultInstallService, PluginParser, PluginService,
     };
 
     // Helper to setup the service with specific versioning scenarios
@@ -596,6 +547,7 @@ mod tests {
         let mut asset_store_api = MockDefaultAssetStoreAPI::default();
         let mut plugin_config_repository = MockDefaultGdmConfig::default();
         let mut extract_service = MockDefaultExtractService::default();
+        let install_service = MockDefaultInstallService::default();
         let file_service = Arc::new(MockDefaultFileService::default());
         let git_service_mock = MockDefaultGitService::default();
 
@@ -762,11 +714,15 @@ mod tests {
         let extract_service_arc = Arc::new(extract_service);
         let git_service_arc = Arc::new(git_service_mock);
         let parser = Arc::new(PluginParser::new(file_service.clone()));
+        let install_service_arc = Arc::new(install_service);
 
-        // --- NEW: Initialize Installers ---
-        let asset_installer =
-            AssetLibraryInstaller::new(asset_store_api_arc.clone(), extract_service_arc.clone());
-        let git_installer = GitInstaller::new(git_service_arc.clone(), parser);
+        let asset_installer = AssetLibraryInstaller::new(
+            asset_store_api_arc.clone(),
+            extract_service_arc.clone(),
+            install_service_arc.clone(),
+            app_config.clone(),
+        );
+        let git_installer = GitInstaller::new(git_service_arc.clone(), install_service_arc);
 
         DefaultPluginService::new(
             Box::new(godot_config_repository),
@@ -781,6 +737,7 @@ mod tests {
     // Helper to setup standard mocks
     fn setup_plugin_service_mocks() -> DefaultPluginService {
         let mut godot_config_repository = MockDefaultGodotConfig::default();
+        let mut install_service = MockDefaultInstallService::default();
 
         godot_config_repository
             .expect_save()
@@ -980,12 +937,16 @@ mod tests {
         let asset_store_api_arc = Arc::new(asset_store_api);
         let extract_service_arc = Arc::new(extract_service);
         let git_service_arc = Arc::new(git_service_mock);
+        let install_service_arc = Arc::new(install_service);
         let parser = Arc::new(PluginParser::new(file_service.clone()));
 
-        // --- NEW: Initialize Installers ---
-        let asset_installer =
-            AssetLibraryInstaller::new(asset_store_api_arc.clone(), extract_service_arc.clone());
-        let git_installer = GitInstaller::new(git_service_arc.clone(), parser);
+        let asset_installer = AssetLibraryInstaller::new(
+            asset_store_api_arc.clone(),
+            extract_service_arc.clone(),
+            install_service_arc.clone(),
+            app_config.clone(),
+        );
+        let git_installer = GitInstaller::new(git_service_arc.clone(), install_service_arc);
 
         DefaultPluginService::new(
             Box::new(godot_config_repository),
@@ -1134,10 +1095,15 @@ mod tests {
         let file_service = Arc::new(MockDefaultFileService::default());
         let extract_service = Arc::new(MockDefaultExtractService::default());
         let _git_service = Arc::new(MockDefaultGitService::default());
+        let install_service = Arc::new(MockDefaultInstallService::default());
 
         let asset_store_api_arc = Arc::new(asset_store_api);
-        let installer =
-            AssetLibraryInstaller::new(asset_store_api_arc.clone(), extract_service.clone());
+        let installer = AssetLibraryInstaller::new(
+            asset_store_api_arc.clone(),
+            extract_service.clone(),
+            install_service.clone(),
+            app_config.clone(),
+        );
 
         let plugin_service = DefaultPluginService::new(
             Box::new(godot_config_repository),
@@ -1208,6 +1174,7 @@ mod tests {
         update_plugin_version: &str,
     ) -> DefaultPluginService {
         let mut godot_config_repository = MockDefaultGodotConfig::default();
+        let install_service = MockDefaultInstallService::default();
 
         godot_config_repository
             .expect_save()
@@ -1356,13 +1323,19 @@ mod tests {
             });
 
         let git_service_mock = MockDefaultGitService::default();
+
+        let git_service_arc = Arc::new(git_service_mock);
         let asset_store_api_arc = Arc::new(asset_store_api);
         let extract_service_arc = Arc::new(extract_service);
-        let parser = Arc::new(PluginParser::new(file_service.clone()));
+        let install_service_arc = Arc::new(install_service);
 
-        let asset_installer =
-            AssetLibraryInstaller::new(asset_store_api_arc.clone(), extract_service_arc.clone());
-        let git_installer = GitInstaller::new(Arc::new(git_service_mock), parser);
+        let asset_installer = AssetLibraryInstaller::new(
+            asset_store_api_arc.clone(),
+            extract_service_arc.clone(),
+            install_service_arc.clone(),
+            app_config.clone(),
+        );
+        let git_installer = GitInstaller::new(git_service_arc, install_service_arc);
 
         DefaultPluginService::new(
             Box::new(godot_config_repository),
@@ -1445,17 +1418,23 @@ mod tests {
         let extract_service = Arc::new(MockDefaultExtractService::default());
         let asset_store = Arc::new(MockDefaultAssetStoreAPI::default());
         let file_service_arc = Arc::new(file_service);
-        let parser = Arc::new(PluginParser::new(file_service_arc.clone()));
+        let install_service_arc = Arc::new(MockDefaultInstallService::default());
+        let app_config = DefaultAppConfig::default();
 
         // Setup Installers even if not used by this method directly,
         // because constructor requires them
-        let asset_installer = AssetLibraryInstaller::new(asset_store.clone(), extract_service);
-        let git_installer = GitInstaller::new(Arc::new(git_service_mock), parser);
+        let asset_installer = AssetLibraryInstaller::new(
+            asset_store.clone(),
+            extract_service,
+            install_service_arc.clone(),
+            app_config.clone(),
+        );
+        let git_installer = GitInstaller::new(Arc::new(git_service_mock), install_service_arc);
 
         let plugin_service = DefaultPluginService::new(
             Box::new(godot_config_repository),
             Box::new(plugin_config_repository),
-            DefaultAppConfig::default(),
+            app_config,
             file_service_arc,
             asset_store,
             vec![Box::new(asset_installer), Box::new(git_installer)],
@@ -1477,10 +1456,18 @@ mod tests {
         let asset_store = Arc::new(MockDefaultAssetStoreAPI::default());
         let extract = Arc::new(MockDefaultExtractService::default());
         let git_service = MockDefaultGitService::default();
-        let parser = Arc::new(PluginParser::new(file_service.clone()));
+        let git_service_arc = Arc::new(git_service);
 
-        let asset_installer = AssetLibraryInstaller::new(asset_store.clone(), extract);
-        let git_installer = GitInstaller::new(Arc::new(git_service), parser);
+        let install_service = MockDefaultInstallService::default();
+        let install_service_arc = Arc::new(install_service);
+
+        let asset_installer = AssetLibraryInstaller::new(
+            asset_store.clone(),
+            extract,
+            install_service_arc.clone(),
+            app_config.clone(),
+        );
+        let git_installer = GitInstaller::new(git_service_arc, install_service_arc);
 
         let plugin_service = DefaultPluginService::new(
             Box::new(godot_config),
