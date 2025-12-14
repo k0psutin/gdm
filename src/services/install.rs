@@ -3,8 +3,7 @@ use async_trait::async_trait;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use strsim::jaro;
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::config::{AppConfig, DefaultAppConfig};
 use crate::installers::{AssetLibraryInstaller, GitInstaller, PluginInstaller};
@@ -56,16 +55,13 @@ impl InstallService for DefaultInstallService {
     fn discover_and_analyze_plugins(
         &self,
         source: &PluginSource,
-        staging_dir: &Path,
+        cache_dir: &Path,
         expected_name: &str,
     ) -> Result<(String, Plugin, Vec<PathBuf>)> {
-        let addons_dir = staging_dir.join("addons");
+        let addons_dir = cache_dir.join("addons");
 
         if !self.file_service.directory_exists(&addons_dir) {
-            bail!(
-                "No 'addons' directory found in staging: {}",
-                staging_dir.display()
-            );
+            bail!("No 'addons' directory found at: {}", cache_dir.display());
         }
 
         let addon_folders: Vec<PathBuf> = self
@@ -85,90 +81,46 @@ impl InstallService for DefaultInstallService {
             .collect();
 
         if addon_folders.is_empty() {
-            bail!("No folders found inside {}/addons", staging_dir.display());
+            bail!("No folders found inside {}/addons", cache_dir.display());
         }
 
-        let parsed_plugins = self
+        let parsed_plugins = self.parser.create_plugins_from_addon_folders_with_base(
+            source,
+            &addon_folders,
+            Some(cache_dir),
+        )?;
+
+        let (main_plugin_folder, best_main_plugin) = self
             .parser
-            .create_plugins_from_addon_folders(source, &addon_folders)
-            .unwrap_or_else(|e| {
-                warn!(
-                    "Failed to parse plugin configs: {}. Will create minimal plugins.",
-                    e
-                );
-                Vec::new()
-            });
+            .determine_best_main_plugin_match(&parsed_plugins, expected_name)?;
 
-        let (main_plugin_folder, mut main_plugin) = if !parsed_plugins.is_empty() {
-            self.parser
-                .determine_best_main_plugin_match(&parsed_plugins, expected_name)?
-        } else {
-            warn!("No valid plugin.cfg files found. Using folder name matching.");
-            let best_folder = addon_folders
-                .iter()
-                .max_by(|a, b| {
-                    let score_a = jaro(
-                        &a.to_string_lossy().to_lowercase(),
-                        &expected_name.to_lowercase(),
-                    );
-                    let score_b = jaro(
-                        &b.to_string_lossy().to_lowercase(),
-                        &expected_name.to_lowercase(),
-                    );
-                    score_a
-                        .partial_cmp(&score_b)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                })
-                .cloned()
-                .unwrap_or_else(|| addon_folders[0].clone());
-
-            let folder_name = best_folder.to_string_lossy().to_string();
-            (
-                folder_name.clone(),
-                Plugin {
-                    source: Some(source.clone()),
-                    plugin_cfg_path: None,
-                    title: folder_name,
-                    ..Plugin::default()
-                },
-            )
-        };
-
-        let sub_assets: Vec<String> = addon_folders
-            .iter()
-            .filter_map(|f| {
-                let folder_name = f.to_string_lossy().to_string();
-                if folder_name != main_plugin_folder {
-                    Some(folder_name)
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        main_plugin.sub_assets = sub_assets;
+        let plugin = self.parser.enrich_with_sub_assets(
+            &best_main_plugin,
+            &parsed_plugins,
+            &addon_folders,
+        )?;
 
         debug!(
             "Discovered main plugin '{}' with {} sub-assets (plugin.cfg: {})",
-            main_plugin.title,
-            main_plugin.sub_assets.len(),
-            if main_plugin.plugin_cfg_path.is_some() {
+            plugin.title,
+            plugin.sub_assets.len(),
+            if plugin.plugin_cfg_path.is_some() {
                 "found"
             } else {
                 "not found"
             }
         );
 
-        Ok((main_plugin_folder, main_plugin, addon_folders))
+        Ok((main_plugin_folder, plugin, addon_folders))
     }
 
     fn install_from_cache(
         &self,
-        staging_dir: &Path,
+        cache_dir: &Path,
         addon_folders: &[PathBuf],
     ) -> Result<Vec<PathBuf>> {
         let project_addons_dir = self.app_config.get_addon_folder_path();
-        let staging_addons_dir = staging_dir.join("addons");
+        let staging_addons_dir = cache_dir.join("addons");
         let mut installed_paths = Vec::new();
 
         for folder in addon_folders {
@@ -216,23 +168,22 @@ impl InstallService for DefaultInstallService {
             let installer = self
                 .installers
                 .iter()
-                .find(|inst| inst.can_handle(plugin.source.clone()))
-                .expect("No installer found for plugin source");
+                .find(|inst| inst.can_handle(plugin.source.clone()));
 
-            installed_plugins.push(installer.install(
-                idx,
-                plugins.len(),
-                self,
-                plugin,
-                operation_manager.clone(),
-            ));
+            if let Some(installer) = installer {
+                let future =
+                    installer.install(idx, plugins.len(), self, plugin, operation_manager.clone());
+                installed_plugins.push(future);
+            }
         }
 
-        let installed_plugins = futures::future::try_join_all(installed_plugins).await?;
+        let results = futures::future::try_join_all(installed_plugins).await?;
 
         self.cleanup_cache()?;
 
-        Ok(installed_plugins.into_iter().collect())
+        let installed_plugins: BTreeMap<String, Plugin> = results.into_iter().collect();
+
+        Ok(installed_plugins)
     }
 }
 

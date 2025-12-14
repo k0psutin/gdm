@@ -118,15 +118,12 @@ impl PluginInstaller for AssetLibraryInstaller {
         plugin: &Plugin,
         operation_manager: Arc<OperationManager>,
     ) -> Result<(String, Plugin)> {
-        // 1. Resolve Metadata
         let asset_metadata = self.resolve_asset_metadata(plugin).await?;
 
-        // 1a. Download Zips
         let downloaded_file = self
             .download_asset_with_manager(&asset_metadata, index, total, &operation_manager)
             .await?;
 
-        // 1b. Extract to .gdm/<asset_id>
         let path = self
             .extract_to_cache_with_manager(&downloaded_file, index, total, &operation_manager)
             .await?;
@@ -138,22 +135,13 @@ impl PluginInstaller for AssetLibraryInstaller {
             asset_id: asset_id.clone(),
         };
 
-        // 2. Determine Main Plugin (Title from Metadata vs Folder Names)
-        // We pass the Asset Title here for the Jaro comparison
         let (main_folder_name, mut plugin, folders_to_move) = install_service
-            .discover_and_analyze_plugins(
-                &plugin_source,
-                &staging_dir,
-                &metadata.title, // <--- Used for Jaro Distance
-            )?;
+            .discover_and_analyze_plugins(&plugin_source, &staging_dir, &metadata.title)?;
 
-        // 3. Move files to project root
         install_service.install_from_cache(&staging_dir, &folders_to_move)?;
 
-        // Update details from Asset Lib metadata (User usually prefers Store metadata over plugin.cfg)
         plugin.title = metadata.title.clone();
         plugin.version = Utils::parse_semantic_version(&metadata.version_string);
-        // Note: plugin.source is already set by discover_and_analyze_plugins()
 
         Ok((main_folder_name, plugin))
     }
