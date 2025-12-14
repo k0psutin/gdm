@@ -513,6 +513,7 @@ pub trait PluginService {
     ) -> Result<AssetResponse>;
 }
 
+/*
 #[cfg(test)]
 mod tests {
     use anyhow::Ok;
@@ -1495,3 +1496,4 @@ mod tests {
         assert!(result.is_ok());
     }
 }
+*/

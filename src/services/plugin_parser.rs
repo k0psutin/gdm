@@ -24,7 +24,12 @@ impl PluginParser {
     }
 
     /// Parses a plugin.cfg file and creates a Plugin instance
-    pub fn parse_plugin_cfg(&self, path: &Path, plugin_source: &PluginSource) -> Result<Plugin> {
+    pub fn parse_plugin_cfg(
+        &self,
+        path: &Path,
+        plugin_source: &PluginSource,
+        base_dir: Option<&Path>,
+    ) -> Result<Plugin> {
         let content = self.file_service.read_file_cached(path)?;
         let mut title = String::new();
         let mut version = String::new();
@@ -37,29 +42,30 @@ impl PluginParser {
             }
         }
 
+        // Determine the relative plugin.cfg path if base_dir is provided
+        let plugin_config_path = if let Some(base) = base_dir {
+            Some(
+                path.strip_prefix(base)
+                    .with_context(|| {
+                        format!(
+                            "Failed to get relative plugin.cfg path for {:?} with base {:?}",
+                            path, base
+                        )
+                    })?
+                    .to_path_buf(),
+            )
+        } else {
+            Some(path.to_path_buf())
+        };
+
         Ok(Plugin::new(
             Some(plugin_source.clone()),
-            Some(path.to_path_buf()),
+            plugin_config_path,
             title,
             version,
             None,
             vec![],
         ))
-    }
-
-    /// Finds all plugin.cfg files in addon folders and creates Plugin instances
-    ///
-    /// # Arguments
-    /// * `plugin_source` - The source of the plugin
-    /// * `addon_folders` - List of addon folder names
-    /// * `base_dir` - Optional base directory. If provided, looks for addons in `base_dir/addons/<folder>`.
-    ///   If None, looks for addons in `addons/<folder>` relative to CWD.
-    pub fn create_plugins_from_addon_folders(
-        &self,
-        plugin_source: &PluginSource,
-        addon_folders: &[PathBuf],
-    ) -> Result<Vec<(PathBuf, Plugin)>> {
-        self.create_plugins_from_addon_folders_with_base(plugin_source, addon_folders, None)
     }
 
     /// Finds all plugin.cfg files in addon folders and creates Plugin instances
@@ -81,9 +87,28 @@ impl PluginParser {
             if let Some(plugin_cfg_path) = self.file_service.find_plugin_cfg_file_greedy(&path)? {
                 plugins.push((
                     folder.clone(),
-                    self.parse_plugin_cfg(&plugin_cfg_path, plugin_source)?,
+                    self.parse_plugin_cfg(&plugin_cfg_path, plugin_source, base_dir)?,
                 ));
             }
+        }
+        // Fallback: if no plugin.cfg files were found, create minimal Plugin instances
+        if plugins.is_empty() {
+            plugins = addon_folders
+                .iter()
+                .map(|folder| {
+                    (
+                        folder.clone(),
+                        Plugin::new(
+                            Some(plugin_source.clone()),
+                            None,
+                            folder.to_string_lossy().to_string(),
+                            "0.0.0".to_string(),
+                            None,
+                            vec![],
+                        ),
+                    )
+                })
+                .collect();
         }
         Ok(plugins)
     }
@@ -98,13 +123,12 @@ impl PluginParser {
         let main_plugin_folder = plugins
             .iter()
             .find(|(_, p)| p.title == plugin.title)
-            .map(|(path, _)| path)
-            .with_context(|| format!("Main plugin folder not found for {}", plugin.title))?;
+            .map(|(path, _)| path);
 
         let sub_assets: Vec<String> = addon_folders
             .iter()
             .filter_map(|folder| {
-                if folder != main_plugin_folder {
+                if Some(folder) != main_plugin_folder {
                     Some(folder.to_string_lossy().to_string())
                 } else {
                     None
@@ -130,19 +154,21 @@ impl PluginParser {
         plugins: &[(PathBuf, Plugin)],
         main_plugin_name: &str,
     ) -> Result<(String, Plugin)> {
+        let default_plugin = Plugin {
+            title: main_plugin_name.to_string(),
+            ..Default::default()
+        };
+
         let best_match = plugins.iter().fold(
-            (PathBuf::new(), Plugin::default(), 0.0),
+            (PathBuf::from(main_plugin_name), default_plugin, 0.0),
             |mut best, (path, plugin)| {
                 let folder_name = path.to_string_lossy().to_string();
-                let jaro_filename = strsim::jaro(
+                let similarity = strsim::jaro(
                     &folder_name.to_lowercase(),
                     &main_plugin_name.to_lowercase(),
                 );
-                let jaro_title =
-                    strsim::jaro(&folder_name.to_lowercase(), &plugin.title.to_lowercase());
-                let max_jaro = jaro_filename.max(jaro_title);
-                if max_jaro > best.2 {
-                    best = (PathBuf::from(path), plugin.clone(), max_jaro);
+                if similarity > best.2 {
+                    best = (PathBuf::from(path), plugin.clone(), similarity);
                 }
                 best
             },
@@ -182,8 +208,10 @@ mod tests {
         mock
     }
 
+    // parse_plugin_cfg tests
+
     #[test]
-    fn test_parse_plugin_cfg_basic() {
+    fn test_parse_plugin_cfg_should_return_correct_plugin_without_base_dir() {
         let content = r#"name="Test Plugin"
 version="1.0.0""#;
 
@@ -198,13 +226,53 @@ version="1.0.0""#;
             &PluginSource::AssetLibrary {
                 asset_id: "123".to_string(),
             },
+            None,
         );
 
         assert!(result.is_ok());
         let plugin = result.unwrap();
         assert_eq!(plugin.title, "Test Plugin");
         assert_eq!(plugin.get_version(), "1.0.0");
+        assert_eq!(
+            plugin.plugin_cfg_path,
+            Some("addons/test/plugin.cfg".into())
+        );
     }
+
+    #[test]
+    fn test_parse_plugin_cfg_should_return_correct_plugin_with_base_dir() {
+        let content = r#"name="Test Plugin"
+version="1.0.0""#;
+
+        let mut files = HashMap::new();
+        files.insert(
+            ".gdm/test_plugin/addons/test/plugin.cfg".to_string(),
+            content.to_string(),
+        );
+
+        let mock_service = create_mock_file_service_with_files(files);
+        let parser = PluginParser::new(Arc::new(mock_service));
+
+        let result = parser.parse_plugin_cfg(
+            Path::new(".gdm/test_plugin/addons/test/plugin.cfg"),
+            &PluginSource::AssetLibrary {
+                asset_id: "123".to_string(),
+            },
+            Some(Path::new(".gdm/test_plugin")),
+        );
+
+        assert!(result.is_ok());
+        let plugin = result.unwrap();
+        assert_eq!(plugin.title, "Test Plugin");
+        assert_eq!(plugin.get_version(), "1.0.0");
+        assert_eq!(
+            plugin.plugin_cfg_path,
+            Some("addons/test/plugin.cfg".into()),
+            "Should store relative path"
+        );
+    }
+
+    // determine_best_main_plugin_match tests
 
     #[test]
     fn test_determine_best_main_plugin_match_exact() {

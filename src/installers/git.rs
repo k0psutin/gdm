@@ -54,8 +54,12 @@ impl PluginInstaller for GitInstaller {
 
         pb.enable_steady_tick(Duration::from_millis(100));
 
-        let (staging_dir, _) =
-            git_service.shallow_fetch_repository(url, Some(reference.clone()))?;
+        let (staging_dir, _) = tokio::task::spawn_blocking(move || {
+            let url = &plugin_source.0;
+            let reference = &plugin_source.1;
+            git_service.shallow_fetch_repository(url, Some(reference.clone()))
+        })
+        .await??;
 
         pb.finish_and_clear();
 
