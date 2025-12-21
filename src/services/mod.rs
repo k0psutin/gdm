@@ -15,11 +15,7 @@ pub use plugin::{DefaultPluginService, PluginService};
 pub use plugin_parser::PluginParser;
 
 #[cfg(test)]
-pub use extract::MockDefaultExtractService;
-#[cfg(test)]
 pub use file::MockDefaultFileService;
-#[cfg(test)]
-pub use git::MockDefaultGitService;
 #[cfg(test)]
 pub use http::MockDefaultHttpService;
 #[cfg(test)]

@@ -1,6 +1,7 @@
 cp gdm.json gdm_backup.json
 jq 'del(.plugins.gut)' gdm.json > tmp.json && mv tmp.json gdm.json
 vhs ./vhs/gdm_add.tape
+vhs ./vhs/gdm_add_git.tape
 vhs ./vhs/gdm_install.tape
 vhs ./vhs/gdm_intro.tape
 vhs ./vhs/gdm_remove.tape

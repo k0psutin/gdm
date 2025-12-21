@@ -33,6 +33,7 @@ impl Default for AssetLibraryInstaller {
 }
 
 impl AssetLibraryInstaller {
+    #[allow(unused)]
     pub fn new(
         asset_store_api: Arc<dyn AssetStoreAPI + Send + Sync>,
         extract_service: Arc<dyn ExtractService + Send + Sync>,
@@ -98,7 +99,7 @@ impl AssetLibraryInstaller {
         let tmp_dir = cache_dir.join(&asset_id);
 
         extract_service
-            .extract_asset_to_staging(&asset_cloned, &tmp_dir, pb_task)
+            .extract_asset_to_cache(&asset_cloned, &tmp_dir, pb_task)
             .await
             .map(|path| (asset_id, path))
     }
@@ -142,6 +143,7 @@ impl PluginInstaller for AssetLibraryInstaller {
 
         plugin.title = metadata.title.clone();
         plugin.version = Utils::parse_semantic_version(&metadata.version_string);
+        plugin.license = Some(metadata.cost.clone());
 
         Ok((main_folder_name, plugin))
     }

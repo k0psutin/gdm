@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use bytes::Bytes;
 use std::{
     collections::HashMap,
-    fs::{self, File},
+    fs::{self},
     path::{Path, PathBuf},
     sync::{Mutex, OnceLock},
 };
@@ -61,13 +61,6 @@ pub struct DefaultFileService;
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
 impl FileService for DefaultFileService {
-    fn open(&self, file_path: &Path) -> Result<File> {
-        debug!("Opening file: {}", file_path.display());
-        let file = File::open(file_path)
-            .with_context(|| format!("Failed to open file: {}", file_path.display()))?;
-        Ok(file)
-    }
-
     fn read_file_cached(&self, file_path: &Path) -> Result<String> {
         debug!("Reading file with cache: {}", file_path.display());
         let cache = DefaultCache::new();
@@ -99,13 +92,6 @@ impl FileService for DefaultFileService {
         std::fs::write(file_path, content)
             .with_context(|| format!("Failed to write file: {}", file_path.display()))?;
         Ok(())
-    }
-
-    fn create_file(&self, file_path: &Path) -> Result<File> {
-        debug!("Creating file: {}", file_path.display());
-        let file = std::fs::File::create(file_path)
-            .with_context(|| format!("Failed to create file: {}", file_path.display()))?;
-        Ok(file)
     }
 
     async fn create_file_async(&self, file_path: &Path) -> Result<tokio::fs::File> {
@@ -190,11 +176,9 @@ impl FileService for DefaultFileService {
 
 #[async_trait::async_trait]
 pub trait FileService: Send + Sync + 'static {
-    fn open(&self, file_path: &Path) -> Result<File>;
     fn read_file_cached(&self, file_path: &Path) -> Result<String>;
     fn file_exists(&self, file_path: &Path) -> Result<bool>;
     fn write_file(&self, file_path: &Path, content: &str) -> Result<()>;
-    fn create_file(&self, file_path: &Path) -> Result<File>;
     async fn create_file_async(&self, file_path: &Path) -> Result<tokio::fs::File>;
     fn create_directory(&self, dir_path: &Path) -> Result<()>;
     fn remove_dir_all(&self, dir_path: &Path) -> Result<()>;

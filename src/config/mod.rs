@@ -7,6 +7,11 @@ pub use gdm::{DefaultGdmConfig, DefaultGdmConfigMetadata, GdmConfig, GdmConfigMe
 pub use godot::{DefaultGodotConfig, GodotConfig};
 
 #[cfg(test)]
+#[allow(unused)]
+pub use app::MockDefaultAppConfig;
+#[cfg(test)]
+#[allow(unused)]
 pub use gdm::MockDefaultGdmConfig;
 #[cfg(test)]
+#[allow(unused)]
 pub use godot::MockDefaultGodotConfig;

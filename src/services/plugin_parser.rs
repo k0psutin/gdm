@@ -368,4 +368,285 @@ version="1.0.0""#;
         let enriched = result.unwrap();
         assert_eq!(enriched.sub_assets, vec!["sub1"]);
     }
+
+    // Fallback behavior tests
+
+    #[test]
+    fn test_create_plugins_from_addon_folders_with_fallback_single_folder() {
+        let mut mock_service = MockDefaultFileService::new();
+
+        // Mock that no plugin.cfg file is found
+        mock_service
+            .expect_find_plugin_cfg_file_greedy()
+            .returning(|_| Ok(None));
+
+        let parser = PluginParser::new(Arc::new(mock_service));
+
+        let plugin_source = PluginSource::Git {
+            url: "https://github.com/example/plugin".to_string(),
+            reference: "main".to_string(),
+        };
+
+        let addon_folders = vec![PathBuf::from("my_plugin")];
+
+        let result = parser.create_plugins_from_addon_folders_with_base(
+            &plugin_source,
+            &addon_folders,
+            None,
+        );
+
+        assert!(result.is_ok());
+        let plugins = result.unwrap();
+
+        // Should have 1 fallback plugin
+        assert_eq!(plugins.len(), 1);
+
+        let (folder, plugin) = &plugins[0];
+        assert_eq!(folder, &PathBuf::from("my_plugin"));
+        assert_eq!(plugin.title, "my_plugin");
+        assert_eq!(plugin.get_version(), "0.0.0");
+        assert_eq!(plugin.plugin_cfg_path, None);
+        assert_eq!(plugin.source, Some(plugin_source));
+    }
+
+    #[test]
+    fn test_create_plugins_from_addon_folders_with_fallback_multiple_folders() {
+        let mut mock_service = MockDefaultFileService::new();
+
+        // Mock that no plugin.cfg files are found for any folder
+        mock_service
+            .expect_find_plugin_cfg_file_greedy()
+            .returning(|_| Ok(None));
+
+        let parser = PluginParser::new(Arc::new(mock_service));
+
+        let plugin_source = PluginSource::AssetLibrary {
+            asset_id: "456".to_string(),
+        };
+
+        let addon_folders = vec![
+            PathBuf::from("plugin_a"),
+            PathBuf::from("plugin_b"),
+            PathBuf::from("plugin_c"),
+        ];
+
+        let result = parser.create_plugins_from_addon_folders_with_base(
+            &plugin_source,
+            &addon_folders,
+            None,
+        );
+
+        assert!(result.is_ok());
+        let plugins = result.unwrap();
+
+        // Should have 3 fallback plugins
+        assert_eq!(plugins.len(), 3);
+
+        // Verify each fallback plugin
+        for (i, (folder, plugin)) in plugins.iter().enumerate() {
+            let expected_name = match i {
+                0 => "plugin_a",
+                1 => "plugin_b",
+                2 => "plugin_c",
+                _ => unreachable!(),
+            };
+            assert_eq!(folder, &PathBuf::from(expected_name));
+            assert_eq!(plugin.title, expected_name);
+            assert_eq!(plugin.get_version(), "0.0.0");
+            assert_eq!(plugin.plugin_cfg_path, None);
+            assert_eq!(plugin.source, Some(plugin_source.clone()));
+        }
+    }
+
+    #[test]
+    fn test_create_plugins_from_addon_folders_with_fallback_with_base_dir() {
+        let mut mock_service = MockDefaultFileService::new();
+
+        // Mock that no plugin.cfg file is found
+        mock_service
+            .expect_find_plugin_cfg_file_greedy()
+            .returning(|_| Ok(None));
+
+        let parser = PluginParser::new(Arc::new(mock_service));
+
+        let plugin_source = PluginSource::Git {
+            url: "https://github.com/example/plugin".to_string(),
+            reference: "v1.0.0".to_string(),
+        };
+
+        let addon_folders = vec![PathBuf::from("test_addon")];
+        let base_dir = Some(Path::new(".gdm/cache/test"));
+
+        let result = parser.create_plugins_from_addon_folders_with_base(
+            &plugin_source,
+            &addon_folders,
+            base_dir,
+        );
+
+        assert!(result.is_ok());
+        let plugins = result.unwrap();
+
+        assert_eq!(plugins.len(), 1);
+        let (folder, plugin) = &plugins[0];
+        assert_eq!(folder, &PathBuf::from("test_addon"));
+        assert_eq!(plugin.title, "test_addon");
+        assert_eq!(plugin.get_version(), "0.0.0");
+        assert_eq!(plugin.plugin_cfg_path, None);
+    }
+
+    #[test]
+    fn test_create_plugins_from_addon_folders_no_fallback_when_plugin_cfg_found() {
+        let mut mock_service = MockDefaultFileService::new();
+
+        let plugin_cfg_content = r#"name="Actual Plugin Name"
+version="2.1.3""#;
+
+        // Mock finding a plugin.cfg file
+        mock_service
+            .expect_find_plugin_cfg_file_greedy()
+            .returning(|_| Ok(Some(PathBuf::from("addons/real_plugin/plugin.cfg"))));
+
+        // Mock reading the plugin.cfg file
+        mock_service
+            .expect_read_file_cached()
+            .returning(move |_| Ok(plugin_cfg_content.to_string()));
+
+        let parser = PluginParser::new(Arc::new(mock_service));
+
+        let plugin_source = PluginSource::AssetLibrary {
+            asset_id: "789".to_string(),
+        };
+
+        let addon_folders = vec![PathBuf::from("real_plugin")];
+
+        let result = parser.create_plugins_from_addon_folders_with_base(
+            &plugin_source,
+            &addon_folders,
+            None,
+        );
+
+        assert!(result.is_ok());
+        let plugins = result.unwrap();
+
+        // Should have 1 real plugin (not fallback)
+        assert_eq!(plugins.len(), 1);
+
+        let (folder, plugin) = &plugins[0];
+        assert_eq!(folder, &PathBuf::from("real_plugin"));
+        assert_eq!(plugin.title, "Actual Plugin Name"); // From plugin.cfg, not folder name
+        assert_eq!(plugin.get_version(), "2.1.3"); // From plugin.cfg, not "0.0.0"
+        assert_eq!(
+            plugin.plugin_cfg_path,
+            Some("addons/real_plugin/plugin.cfg".to_string())
+        );
+    }
+
+    #[test]
+    fn test_create_plugins_from_addon_folders_mixed_found_and_missing() {
+        let mut mock_service = MockDefaultFileService::new();
+
+        let plugin_cfg_content = r#"name="Found Plugin"
+version="1.5.0""#;
+
+        // Mock: first folder has plugin.cfg, second doesn't
+        mock_service
+            .expect_find_plugin_cfg_file_greedy()
+            .returning(move |path| {
+                if path.to_str().unwrap().contains("has_config") {
+                    Ok(Some(PathBuf::from("addons/has_config/plugin.cfg")))
+                } else {
+                    Ok(None)
+                }
+            });
+
+        // Mock reading the found plugin.cfg file
+        mock_service
+            .expect_read_file_cached()
+            .returning(move |_| Ok(plugin_cfg_content.to_string()));
+
+        let parser = PluginParser::new(Arc::new(mock_service));
+
+        let plugin_source = PluginSource::Git {
+            url: "https://github.com/test/mixed".to_string(),
+            reference: "main".to_string(),
+        };
+
+        let addon_folders = vec![PathBuf::from("has_config")];
+
+        let result = parser.create_plugins_from_addon_folders_with_base(
+            &plugin_source,
+            &addon_folders,
+            None,
+        );
+
+        assert!(result.is_ok());
+        let plugins = result.unwrap();
+
+        // When at least one plugin.cfg is found, no fallback is used
+        assert_eq!(plugins.len(), 1);
+
+        // The found plugin should have actual values from plugin.cfg
+        let (_, plugin) = &plugins[0];
+        assert_eq!(plugin.title, "Found Plugin");
+        assert_eq!(plugin.get_version(), "1.5.0");
+    }
+
+    #[test]
+    fn test_fallback_plugin_with_special_characters_in_folder_name() {
+        let mut mock_service = MockDefaultFileService::new();
+
+        mock_service
+            .expect_find_plugin_cfg_file_greedy()
+            .returning(|_| Ok(None));
+
+        let parser = PluginParser::new(Arc::new(mock_service));
+
+        let plugin_source = PluginSource::AssetLibrary {
+            asset_id: "999".to_string(),
+        };
+
+        let addon_folders = vec![PathBuf::from("plugin-with-dashes_and_underscores")];
+
+        let result = parser.create_plugins_from_addon_folders_with_base(
+            &plugin_source,
+            &addon_folders,
+            None,
+        );
+
+        assert!(result.is_ok());
+        let plugins = result.unwrap();
+
+        assert_eq!(plugins.len(), 1);
+        let (_, plugin) = &plugins[0];
+        assert_eq!(plugin.title, "plugin-with-dashes_and_underscores");
+        assert_eq!(plugin.get_version(), "0.0.0");
+    }
+
+    #[test]
+    fn test_fallback_with_empty_addon_folders() {
+        let mut mock_service = MockDefaultFileService::new();
+
+        mock_service.expect_find_plugin_cfg_file_greedy().times(0); // Should not be called with empty folders
+
+        let parser = PluginParser::new(Arc::new(mock_service));
+
+        let plugin_source = PluginSource::Git {
+            url: "https://github.com/test/empty".to_string(),
+            reference: "main".to_string(),
+        };
+
+        let addon_folders: Vec<PathBuf> = vec![];
+
+        let result = parser.create_plugins_from_addon_folders_with_base(
+            &plugin_source,
+            &addon_folders,
+            None,
+        );
+
+        assert!(result.is_ok());
+        let plugins = result.unwrap();
+
+        // Should return empty vec, not fallback plugins
+        assert_eq!(plugins.len(), 0);
+    }
 }

@@ -3,10 +3,7 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use crate::{
-    api::AssetResponse,
-    utils::Utils,
-};
+use crate::{api::AssetResponse, utils::Utils};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
@@ -160,23 +157,6 @@ impl Plugin {
         )
     }
 
-    pub fn from_asset_response_with_plugin_cfg_and_sub_assets(
-        asset_response: AssetResponse,
-        plugin_cfg_path: Option<PathBuf>,
-        sub_assets: Vec<String>,
-    ) -> Self {
-        Plugin::new(
-            Some(PluginSource::AssetLibrary {
-                asset_id: asset_response.asset_id,
-            }),
-            plugin_cfg_path,
-            asset_response.title,
-            asset_response.version_string,
-            Some(asset_response.cost),
-            sub_assets,
-        )
-    }
-
     pub fn get_version(&self) -> String {
         self.version.to_string()
     }
@@ -228,8 +208,6 @@ impl Plugin {
 mod tests {
     use super::*;
 
-    use crate::api::AssetResponse;
-
     fn setup_test_plugin() -> Plugin {
         Plugin::new(
             Some(PluginSource::AssetLibrary {
@@ -260,40 +238,6 @@ mod tests {
             plugin.plugin_cfg_path,
             Some("path/to/plugin.cfg".to_string())
         );
-    }
-
-    #[test]
-    fn test_plugin_from_asset_response() {
-        let asset_response = AssetResponse::new(
-            "456".to_string(),
-            "Test Asset".to_string(),
-            "0.0.1".to_string(),
-            "0.0.1".to_string(),
-            "4.5".to_string(),
-            "5".to_string(),
-            "MIT".to_string(),
-            "A test asset".to_string(),
-            "GitHub".to_string(),
-            "commit_hash".to_string(),
-            "2023-01-01".to_string(),
-            "https://example.com/old.zip".to_string(),
-        );
-        let plugin = Plugin::from_asset_response_with_plugin_cfg_and_sub_assets(
-            asset_response.clone(),
-            None,
-            vec![],
-        );
-        assert_eq!(
-            plugin.source,
-            Some(PluginSource::AssetLibrary {
-                asset_id: "456".to_string()
-            })
-        );
-        assert_eq!(plugin.title, "Test Asset");
-        assert_eq!(plugin.get_version(), "0.0.1");
-        assert_eq!(plugin.license, Some("MIT".to_string()));
-        assert_eq!(plugin.sub_assets, Vec::<String>::new());
-        assert_eq!(plugin.plugin_cfg_path, None);
     }
 
     #[test]
