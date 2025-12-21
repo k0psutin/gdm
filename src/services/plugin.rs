@@ -513,7 +513,6 @@ pub trait PluginService {
     ) -> Result<AssetResponse>;
 }
 
-/*
 #[cfg(test)]
 mod tests {
     use anyhow::Ok;
@@ -529,11 +528,9 @@ mod tests {
     use crate::config::{
         DefaultAppConfig, DefaultGdmConfigMetadata, MockDefaultGdmConfig, MockDefaultGodotConfig,
     };
-    use crate::installers::{AssetLibraryInstaller, GitInstaller};
-    use crate::models::Plugin;
+    use crate::models::{Plugin, PluginSource};
     use crate::services::{
-        DefaultPluginService, MockDefaultExtractService, MockDefaultFileService,
-        MockDefaultGitService, MockDefaultInstallService, PluginParser, PluginService,
+        DefaultPluginService, MockDefaultFileService, MockDefaultInstallService, PluginService,
     };
 
     // Helper to setup the service with specific versioning scenarios
@@ -547,10 +544,28 @@ mod tests {
         let mut godot_config_repository = MockDefaultGodotConfig::default();
         let mut asset_store_api = MockDefaultAssetStoreAPI::default();
         let mut plugin_config_repository = MockDefaultGdmConfig::default();
-        let mut extract_service = MockDefaultExtractService::default();
-        let install_service = MockDefaultInstallService::default();
+        let mut install_service = MockDefaultInstallService::default();
         let file_service = Arc::new(MockDefaultFileService::default());
-        let git_service_mock = MockDefaultGitService::default();
+
+        // Setup install service to return installed plugins
+        install_service.expect_install().returning(|plugins, _| {
+            let mut result = BTreeMap::new();
+            for plugin in plugins {
+                // Extract folder name from plugin_cfg_path (e.g., "addons/test_plugin/plugin.cfg" -> "test_plugin")
+                let folder_name = if let Some(ref path_str) = plugin.plugin_cfg_path {
+                    let path = std::path::Path::new(path_str.as_str());
+                    path.parent()
+                        .and_then(|p| p.file_name())
+                        .and_then(|n| n.to_str())
+                        .unwrap_or(&plugin.title)
+                        .to_string()
+                } else {
+                    plugin.title.clone()
+                };
+                result.insert(folder_name, plugin.clone());
+            }
+            Ok(result)
+        });
 
         // Setup godot config repository
         godot_config_repository.expect_save().returning(|_| Ok(()));
@@ -691,39 +706,9 @@ mod tests {
                 ))
             });
 
-        // Setup extract service
-        let extract_asset_version = return_version.to_string();
-        let extract_asset_id = asset_id.to_string();
-        extract_service
-            .expect_extract_asset()
-            .returning(move |_file_path, _pb| {
-                Ok((
-                    String::from("test_plugin"),
-                    Plugin::new_asset_store_plugin(
-                        extract_asset_id.clone(),
-                        Some("addons/test_plugin/plugin.cfg".into()),
-                        "Test Plugin".to_string(), // title from AssetResponse in test
-                        extract_asset_version.clone(), // version from AssetResponse in test
-                        "MIT".to_string(),         // license from AssetResponse in test
-                        vec![],
-                    ),
-                ))
-            });
-
         let app_config = DefaultAppConfig::default();
         let asset_store_api_arc = Arc::new(asset_store_api);
-        let extract_service_arc = Arc::new(extract_service);
-        let git_service_arc = Arc::new(git_service_mock);
-        let parser = Arc::new(PluginParser::new(file_service.clone()));
         let install_service_arc = Arc::new(install_service);
-
-        let asset_installer = AssetLibraryInstaller::new(
-            asset_store_api_arc.clone(),
-            extract_service_arc.clone(),
-            install_service_arc.clone(),
-            app_config.clone(),
-        );
-        let git_installer = GitInstaller::new(git_service_arc.clone(), install_service_arc);
 
         DefaultPluginService::new(
             Box::new(godot_config_repository),
@@ -731,7 +716,7 @@ mod tests {
             app_config,
             file_service,
             asset_store_api_arc,
-            vec![Box::new(asset_installer), Box::new(git_installer)],
+            install_service_arc,
         )
     }
 
@@ -739,6 +724,26 @@ mod tests {
     fn setup_plugin_service_mocks() -> DefaultPluginService {
         let mut godot_config_repository = MockDefaultGodotConfig::default();
         let mut install_service = MockDefaultInstallService::default();
+
+        // Setup install service to return installed plugins
+        install_service.expect_install().returning(|plugins, _| {
+            let mut result = BTreeMap::new();
+            for plugin in plugins {
+                // Extract folder name from plugin_cfg_path (e.g., "addons/test_plugin/plugin.cfg" -> "test_plugin")
+                let folder_name = if let Some(ref path_str) = plugin.plugin_cfg_path {
+                    let path = std::path::Path::new(path_str.as_str());
+                    path.parent()
+                        .and_then(|p| p.file_name())
+                        .and_then(|n| n.to_str())
+                        .unwrap_or(&plugin.title)
+                        .to_string()
+                } else {
+                    plugin.title.clone()
+                };
+                result.insert(folder_name, plugin.clone());
+            }
+            Ok(result)
+        });
 
         godot_config_repository
             .expect_save()
@@ -772,25 +777,9 @@ mod tests {
             .returning(|| Ok(true));
 
         let app_config = DefaultAppConfig::default();
-        let mut extract_service = MockDefaultExtractService::default();
 
         let file_service = Arc::new(MockDefaultFileService::default());
 
-        extract_service
-            .expect_extract_asset()
-            .returning(|_file_path, _pb| {
-                Ok((
-                    String::from("test_plugin"),
-                    Plugin::new_asset_store_plugin(
-                        "1234".to_string(),
-                        Some("addons/test_plugin/plugin.cfg".into()),
-                        "Test Plugin".to_string(),
-                        "1.1.1".to_string(),
-                        "MIT".to_string(),
-                        vec![],
-                    ),
-                ))
-            });
         plugin_config_repository.expect_get_plugins().returning(|| {
             Ok(BTreeMap::from([(
                 String::from("test_plugin"),
@@ -933,21 +922,8 @@ mod tests {
             )]))
         });
 
-        let git_service_mock = MockDefaultGitService::default();
-
         let asset_store_api_arc = Arc::new(asset_store_api);
-        let extract_service_arc = Arc::new(extract_service);
-        let git_service_arc = Arc::new(git_service_mock);
         let install_service_arc = Arc::new(install_service);
-        let parser = Arc::new(PluginParser::new(file_service.clone()));
-
-        let asset_installer = AssetLibraryInstaller::new(
-            asset_store_api_arc.clone(),
-            extract_service_arc.clone(),
-            install_service_arc.clone(),
-            app_config.clone(),
-        );
-        let git_installer = GitInstaller::new(git_service_arc.clone(), install_service_arc);
 
         DefaultPluginService::new(
             Box::new(godot_config_repository),
@@ -955,7 +931,7 @@ mod tests {
             app_config,
             file_service,
             asset_store_api_arc,
-            vec![Box::new(asset_installer), Box::new(git_installer)],
+            install_service_arc,
         )
     }
 
@@ -1094,17 +1070,9 @@ mod tests {
         let plugin_config_repository = MockDefaultGdmConfig::default();
         let app_config = DefaultAppConfig::default();
         let file_service = Arc::new(MockDefaultFileService::default());
-        let extract_service = Arc::new(MockDefaultExtractService::default());
-        let _git_service = Arc::new(MockDefaultGitService::default());
         let install_service = Arc::new(MockDefaultInstallService::default());
 
         let asset_store_api_arc = Arc::new(asset_store_api);
-        let installer = AssetLibraryInstaller::new(
-            asset_store_api_arc.clone(),
-            extract_service.clone(),
-            install_service.clone(),
-            app_config.clone(),
-        );
 
         let plugin_service = DefaultPluginService::new(
             Box::new(godot_config_repository),
@@ -1112,7 +1080,7 @@ mod tests {
             app_config,
             file_service,
             asset_store_api_arc,
-            vec![Box::new(installer)],
+            install_service,
         );
 
         let result = plugin_service
@@ -1175,7 +1143,34 @@ mod tests {
         update_plugin_version: &str,
     ) -> DefaultPluginService {
         let mut godot_config_repository = MockDefaultGodotConfig::default();
-        let install_service = MockDefaultInstallService::default();
+        let mut install_service = MockDefaultInstallService::default();
+
+        // Setup install service to return installed plugins with plugin_cfg_path set
+        install_service.expect_install().returning(|plugins, _| {
+            let mut result = BTreeMap::new();
+            for plugin in plugins {
+                // For update tests, we need to set the plugin_cfg_path since the real installer would set it
+                let mut updated_plugin = plugin.clone();
+                if updated_plugin.plugin_cfg_path.is_none() {
+                    // Set it to the expected path
+                    updated_plugin.plugin_cfg_path = Some("addons/test_plugin/plugin.cfg".into());
+                }
+
+                // Extract folder name from plugin_cfg_path
+                let folder_name = if let Some(ref path_str) = updated_plugin.plugin_cfg_path {
+                    let path = std::path::Path::new(path_str.as_str());
+                    path.parent()
+                        .and_then(|p| p.file_name())
+                        .and_then(|n| n.to_str())
+                        .unwrap_or(&updated_plugin.title)
+                        .to_string()
+                } else {
+                    updated_plugin.title.clone()
+                };
+                result.insert(folder_name, updated_plugin);
+            }
+            Ok(result)
+        });
 
         godot_config_repository
             .expect_save()
@@ -1215,25 +1210,7 @@ mod tests {
             });
 
         let app_config = DefaultAppConfig::default();
-        let mut extract_service = MockDefaultExtractService::default();
         let file_service = Arc::new(MockDefaultFileService::default());
-
-        let extract_asset_version = update_plugin_version.to_string();
-        extract_service
-            .expect_extract_asset()
-            .returning(move |_file_path, _pb| {
-                Ok((
-                    String::from("test_plugin"),
-                    Plugin::new_asset_store_plugin(
-                        "1234".to_string(),
-                        Some("addons/test_plugin/plugin.cfg".into()),
-                        "test_plugin".to_string(),
-                        extract_asset_version.clone(),
-                        "MIT".to_string(),
-                        vec![],
-                    ),
-                ))
-            });
 
         plugin_config_repository.expect_get_plugins().returning({
             let current_plugin_version = current_plugin_version.to_string();
@@ -1323,20 +1300,8 @@ mod tests {
                 ))
             });
 
-        let git_service_mock = MockDefaultGitService::default();
-
-        let git_service_arc = Arc::new(git_service_mock);
         let asset_store_api_arc = Arc::new(asset_store_api);
-        let extract_service_arc = Arc::new(extract_service);
         let install_service_arc = Arc::new(install_service);
-
-        let asset_installer = AssetLibraryInstaller::new(
-            asset_store_api_arc.clone(),
-            extract_service_arc.clone(),
-            install_service_arc.clone(),
-            app_config.clone(),
-        );
-        let git_installer = GitInstaller::new(git_service_arc, install_service_arc);
 
         DefaultPluginService::new(
             Box::new(godot_config_repository),
@@ -1344,7 +1309,7 @@ mod tests {
             app_config,
             file_service,
             asset_store_api_arc,
-            vec![Box::new(asset_installer), Box::new(git_installer)],
+            install_service_arc,
         )
     }
 
@@ -1415,22 +1380,10 @@ mod tests {
             .expect_remove_dir_all()
             .returning(|_path| Ok(()));
 
-        let git_service_mock = MockDefaultGitService::default();
-        let extract_service = Arc::new(MockDefaultExtractService::default());
         let asset_store = Arc::new(MockDefaultAssetStoreAPI::default());
         let file_service_arc = Arc::new(file_service);
         let install_service_arc = Arc::new(MockDefaultInstallService::default());
         let app_config = DefaultAppConfig::default();
-
-        // Setup Installers even if not used by this method directly,
-        // because constructor requires them
-        let asset_installer = AssetLibraryInstaller::new(
-            asset_store.clone(),
-            extract_service,
-            install_service_arc.clone(),
-            app_config.clone(),
-        );
-        let git_installer = GitInstaller::new(Arc::new(git_service_mock), install_service_arc);
 
         let plugin_service = DefaultPluginService::new(
             Box::new(godot_config_repository),
@@ -1438,7 +1391,7 @@ mod tests {
             app_config,
             file_service_arc,
             asset_store,
-            vec![Box::new(asset_installer), Box::new(git_installer)],
+            install_service_arc,
         );
 
         let result = plugin_service.remove_plugin_by_name("test_plugin").await;
@@ -1455,20 +1408,9 @@ mod tests {
         let app_config = DefaultAppConfig::default();
         let file_service = Arc::new(MockDefaultFileService::default());
         let asset_store = Arc::new(MockDefaultAssetStoreAPI::default());
-        let extract = Arc::new(MockDefaultExtractService::default());
-        let git_service = MockDefaultGitService::default();
-        let git_service_arc = Arc::new(git_service);
 
         let install_service = MockDefaultInstallService::default();
         let install_service_arc = Arc::new(install_service);
-
-        let asset_installer = AssetLibraryInstaller::new(
-            asset_store.clone(),
-            extract,
-            install_service_arc.clone(),
-            app_config.clone(),
-        );
-        let git_installer = GitInstaller::new(git_service_arc, install_service_arc);
 
         let plugin_service = DefaultPluginService::new(
             Box::new(godot_config),
@@ -1476,7 +1418,7 @@ mod tests {
             app_config,
             file_service,
             asset_store,
-            vec![Box::new(asset_installer), Box::new(git_installer)],
+            install_service_arc,
         );
 
         // Updated test data: Use Vec instead of BTreeMap
@@ -1495,5 +1437,258 @@ mod tests {
         let result = plugin_service.finish_plugins_operation(&plugins);
         assert!(result.is_ok());
     }
+
+    // check_outdated_plugins tests
+
+    fn setup_check_outdated_mocks(
+        installed_plugins: Vec<(&str, &str, &str)>, // (asset_id, title, version)
+        latest_plugins: Vec<(&str, &str, &str)>,    // (asset_id, title, version)
+    ) -> DefaultPluginService {
+        let mut godot_config_repository = MockDefaultGodotConfig::default();
+        godot_config_repository
+            .expect_get_godot_version_from_project()
+            .returning(|| Ok("4.5".to_string()));
+
+        let mut asset_store_api = MockDefaultAssetStoreAPI::default();
+        let mut plugin_config_repository = MockDefaultGdmConfig::default();
+
+        plugin_config_repository
+            .expect_has_installed_plugins()
+            .returning(|| Ok(true));
+
+        // Setup installed plugins
+        let installed_map: BTreeMap<String, Plugin> = installed_plugins
+            .iter()
+            .map(|(asset_id, title, version)| {
+                (
+                    title.to_lowercase().replace(' ', "_"),
+                    Plugin::new_asset_store_plugin(
+                        asset_id.to_string(),
+                        Some(
+                            format!(
+                                "addons/{}/plugin.cfg",
+                                title.to_lowercase().replace(' ', "_")
+                            )
+                            .into(),
+                        ),
+                        title.to_string(),
+                        version.to_string(),
+                        "MIT".to_string(),
+                        vec![],
+                    ),
+                )
+            })
+            .collect();
+
+        let installed_map_clone = installed_map.clone();
+        plugin_config_repository
+            .expect_get_plugins()
+            .returning(move || Ok(installed_map_clone.clone()));
+
+        // Setup get_plugin_by_asset_id to return correct plugin
+        let installed_map_for_lookup = installed_map.clone();
+        plugin_config_repository
+            .expect_get_plugin_by_asset_id()
+            .returning(move |asset_id| {
+                Ok(installed_map_for_lookup
+                    .values()
+                    .find(|p| {
+                        if let Some(PluginSource::AssetLibrary { asset_id: id }) = &p.source {
+                            id == asset_id
+                        } else {
+                            false
+                        }
+                    })
+                    .cloned())
+            });
+
+        // Setup API to return latest versions
+        for (asset_id, title, version) in latest_plugins {
+            let asset_id_owned = asset_id.to_string();
+            let title_owned = title.to_string();
+            let version_owned = version.to_string();
+
+            asset_store_api
+                .expect_find_asset_by_id_or_name_and_version()
+                .withf(move |id, _, _| id == asset_id_owned)
+                .returning(move |id, _, _| {
+                    Ok(AssetResponse::new(
+                        id.to_string(),
+                        title_owned.clone(),
+                        "11".to_string(),
+                        version_owned.clone(),
+                        "4.5".to_string(),
+                        "5".to_string(),
+                        "MIT".to_string(),
+                        "Description".to_string(),
+                        "GitHub".to_string(),
+                        "commit_hash".to_string(),
+                        "2023-10-01".to_string(),
+                        format!("https://example.com/{}.zip", id),
+                    ))
+                });
+        }
+
+        let app_config = DefaultAppConfig::default();
+        let file_service = Arc::new(MockDefaultFileService::default());
+        let install_service_arc = Arc::new(MockDefaultInstallService::default());
+        let asset_store_api_arc = Arc::new(asset_store_api);
+
+        DefaultPluginService::new(
+            Box::new(godot_config_repository),
+            Box::new(plugin_config_repository),
+            app_config,
+            file_service,
+            asset_store_api_arc,
+            install_service_arc,
+        )
+    }
+
+    #[tokio::test]
+    async fn test_check_outdated_plugins_with_no_updates_available() {
+        let installed = vec![
+            ("1234", "Test Plugin", "1.0.0"),
+            ("5678", "Another Plugin", "2.5.0"),
+        ];
+        let latest = vec![
+            ("1234", "Test Plugin", "1.0.0"),
+            ("5678", "Another Plugin", "2.5.0"),
+        ];
+
+        let plugin_service = setup_check_outdated_mocks(installed, latest);
+        let result = plugin_service.check_outdated_plugins().await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_check_outdated_plugins_with_updates_available() {
+        let installed = vec![
+            ("1234", "Test Plugin", "1.0.0"),
+            ("5678", "Another Plugin", "2.5.0"),
+        ];
+        let latest = vec![
+            ("1234", "Test Plugin", "1.2.0"), // Update available
+            ("5678", "Another Plugin", "2.5.0"),
+        ];
+
+        let plugin_service = setup_check_outdated_mocks(installed, latest);
+        let result = plugin_service.check_outdated_plugins().await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_check_outdated_plugins_with_all_updates_available() {
+        let installed = vec![
+            ("1234", "Test Plugin", "1.0.0"),
+            ("5678", "Another Plugin", "2.5.0"),
+        ];
+        let latest = vec![
+            ("1234", "Test Plugin", "2.0.0"),    // Major update
+            ("5678", "Another Plugin", "3.0.0"), // Major update
+        ];
+
+        let plugin_service = setup_check_outdated_mocks(installed, latest);
+        let result = plugin_service.check_outdated_plugins().await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_check_outdated_plugins_with_single_plugin() {
+        let installed = vec![("1234", "Single Plugin", "1.0.0")];
+        let latest = vec![("1234", "Single Plugin", "1.0.1")]; // Patch update
+
+        let plugin_service = setup_check_outdated_mocks(installed, latest);
+        let result = plugin_service.check_outdated_plugins().await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_check_outdated_plugins_with_no_plugins_installed() {
+        let godot_config_repository = MockDefaultGodotConfig::default();
+        let mut plugin_config_repository = MockDefaultGdmConfig::default();
+
+        plugin_config_repository
+            .expect_has_installed_plugins()
+            .returning(|| Ok(false));
+
+        let app_config = DefaultAppConfig::default();
+        let file_service = Arc::new(MockDefaultFileService::default());
+        let asset_store = Arc::new(MockDefaultAssetStoreAPI::default());
+        let install_service = Arc::new(MockDefaultInstallService::default());
+
+        let plugin_service = DefaultPluginService::new(
+            Box::new(godot_config_repository),
+            Box::new(plugin_config_repository),
+            app_config,
+            file_service,
+            asset_store,
+            install_service,
+        );
+
+        let result = plugin_service.check_outdated_plugins().await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "No plugins installed.");
+    }
+
+    #[tokio::test]
+    async fn test_check_outdated_plugins_with_mixed_updates() {
+        let installed = vec![
+            ("1111", "Up to Date Plugin", "3.0.0"),
+            ("2222", "Minor Update Plugin", "1.5.0"),
+            ("3333", "Major Update Plugin", "1.0.0"),
+            ("4444", "Patch Update Plugin", "2.1.0"),
+        ];
+        let latest = vec![
+            ("1111", "Up to Date Plugin", "3.0.0"),   // No update
+            ("2222", "Minor Update Plugin", "1.6.0"), // Minor update
+            ("3333", "Major Update Plugin", "2.0.0"), // Major update
+            ("4444", "Patch Update Plugin", "2.1.1"), // Patch update
+        ];
+
+        let plugin_service = setup_check_outdated_mocks(installed, latest);
+        let result = plugin_service.check_outdated_plugins().await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_check_outdated_plugins_with_semantic_versioning() {
+        let installed = vec![
+            ("1234", "Plugin A", "1.0.0"),
+            ("5678", "Plugin B", "2.5.10"),
+            ("9012", "Plugin C", "0.9.0"),
+        ];
+        let latest = vec![
+            ("1234", "Plugin A", "1.0.1"), // Patch
+            ("5678", "Plugin B", "2.6.0"), // Minor
+            ("9012", "Plugin C", "1.0.0"), // Major (pre-release to stable)
+        ];
+
+        let plugin_service = setup_check_outdated_mocks(installed, latest);
+        let result = plugin_service.check_outdated_plugins().await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_check_outdated_plugins_preserves_installed_plugin_data() {
+        // This test ensures that checking for updates doesn't modify the installed plugins
+        let installed = vec![("1234", "Test Plugin", "1.0.0")];
+        let latest = vec![("1234", "Test Plugin", "2.0.0")];
+
+        let plugin_service = setup_check_outdated_mocks(installed, latest);
+        let result = plugin_service.check_outdated_plugins().await;
+
+        assert!(result.is_ok());
+
+        // Verify that the installed plugins weren't modified
+        let plugins = plugin_service.gdm_config.get_plugins().unwrap();
+        let test_plugin = plugins.values().next().unwrap();
+        assert_eq!(test_plugin.get_version(), "1.0.0"); // Should still be old version
+    }
 }
-*/

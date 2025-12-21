@@ -4,7 +4,6 @@ use gix::bstr::BString;
 use gix::bstr::ByteSlice;
 use gix::object::{Kind, tree};
 use gix::remote;
-use indicatif::ProgressBar;
 use std::fs;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
@@ -23,7 +22,6 @@ pub trait GitService: Send + Sync + 'static {
         repo_url: &str,
         repo_ref: Option<String>,
     ) -> Result<(PathBuf, usize)>;
-    fn move_downloaded_addons(&self, src: &Path, pb_task: ProgressBar) -> Result<Vec<PathBuf>>;
     fn extract_tree<'a>(
         &self,
         repo: &gix::Repository,
@@ -36,40 +34,6 @@ pub trait GitService: Send + Sync + 'static {
 
 #[cfg_attr(test, mockall::automock)]
 impl GitService for DefaultGitService {
-    fn move_downloaded_addons(&self, src: &Path, pb_task: ProgressBar) -> Result<Vec<PathBuf>> {
-        let dir = fs::read_dir(src)?;
-        let dst = self.app_config.get_addon_folder_path();
-        let dst_root = src.parent().unwrap();
-
-        if !dst.try_exists()? {
-            fs::create_dir_all(&dst)?;
-        }
-
-        let mut moved_folders = vec![];
-
-        for entry in dir {
-            let entry = entry?;
-            let file_type = entry.file_type()?;
-            let repo_parent = entry.file_name();
-            let src_path = src.join(&repo_parent);
-            let dst_path = dst.join(&repo_parent);
-
-            if file_type.is_dir() {
-                if dst_path.try_exists()? {
-                    fs::remove_dir_all(&dst_path)?;
-                }
-                fs::rename(&src_path, &dst_path)?;
-                pb_task.inc(1);
-                if let Some(name) = dst_path.file_name() {
-                    moved_folders.push(PathBuf::from(name));
-                }
-            }
-        }
-
-        fs::remove_dir_all(dst_root)?;
-        Ok(moved_folders)
-    }
-
     fn shallow_fetch_repository(
         &self,
         repo_url: &str,
@@ -159,8 +123,6 @@ impl GitService for DefaultGitService {
     /// Extracts the repository name from the cache path.
     /// Assumes the path structure is `.../cache_folder/repo_name`.
     fn extract_repo_name_from_src(&self, src: &Path) -> Result<String> {
-        // Based on your original logic: iterating and skipping to find the folder name.
-        // If src is "/tmp/.gdm/my-repo", file_name() usually gives "my-repo".
         src.iter()
             .nth(1)
             .context("No main plugin folder found in path")?

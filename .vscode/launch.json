@@ -30,7 +30,7 @@
                 "'Godot Mod Loader'",
                 "--version",
                 "7.0.1"
-            ]
+            ],
         },
         {
             "name": "Debug unit tests in executable 'gdm'",

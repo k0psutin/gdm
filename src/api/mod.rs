@@ -8,6 +8,7 @@ pub use asset::Asset;
 pub use asset_edit_list_response::AssetEditListResponse;
 pub use asset_edit_response::AssetEditResponse;
 #[cfg(test)]
+#[allow(unused)]
 pub use asset_list_response::AssetListItem;
 pub use asset_list_response::AssetListResponse;
 pub use asset_response::AssetResponse;
