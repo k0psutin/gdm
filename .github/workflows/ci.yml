@@ -17,10 +17,6 @@ jobs:
         steps:
         - uses: actions/checkout@v5
         - uses: actions-rust-lang/setup-rust-toolchain@v1
-          with:
-            components: |
-                clippy
-                rustfmt
         - name: Install audit
           run: cargo install cargo-audit --locked
         - name: Run audit
@@ -68,9 +64,6 @@ jobs:
 
       - name: Install Windows targets
         uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          target: |
-            x86_64-pc-windows-gnu
       
       - name: Build the executable
         run: cargo build --release --target x86_64-pc-windows-gnu
@@ -90,9 +83,6 @@ jobs:
 
       - name: Install Linux and Windows targets
         uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          target: |
-            x86_64-unknown-linux-musl
       
       - name: Build the executable
         run: cargo build --release --target x86_64-unknown-linux-musl
@@ -109,10 +99,6 @@ jobs:
 
       - name: Install MacOS targets
         uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          target: |
-            x86_64-apple-darwin
-            aarch64-apple-darwin
 
       - name: Build the executable
         run: cargo build --release --target=x86_64-apple-darwin --target=aarch64-apple-darwin
