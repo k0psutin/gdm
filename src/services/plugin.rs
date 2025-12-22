@@ -113,13 +113,7 @@ impl PluginService for DefaultPluginService {
             return self
                 .asset_store_api
                 .get_asset_by_id_and_version(asset_id, version)
-                .await
-                .with_context(|| {
-                    format!(
-                        "Failed to find plugin with asset ID '{}' and version '{}'",
-                        asset_id, version
-                    )
-                });
+                .await;
         }
 
         if !name.is_empty() && !version.is_empty() {
@@ -130,28 +124,14 @@ impl PluginService for DefaultPluginService {
                     version,
                     &godot_version,
                 )
-                .await
-                .with_context(|| {
-                    format!(
-                        "Failed to find plugin with name '{}' and version '{}'",
-                        name, version
-                    )
-                });
+                .await;
         }
 
         if !name.is_empty() || !asset_id.is_empty() {
             return self
                 .asset_store_api
                 .find_asset_by_id_or_name_and_version(asset_id, name, &godot_version)
-                .await
-                .with_context(|| {
-                    let error_base = "No asset found with";
-                    if !name.is_empty() {
-                        format!("{} name '{}'", error_base, name)
-                    } else {
-                        format!("{} asset ID '{}'", error_base, asset_id)
-                    }
-                });
+                .await;
         }
 
         bail!("No name or asset ID provided")

@@ -23,6 +23,10 @@ impl Utils {
             return Version::new(major, 0, 0);
         }
 
+        // TODO: https://godotengine.org/asset-library/api/asset/2595
+        // Has version 1.0, and we should probably show 1.0 instead of 1.0.0
+        // Redo parse
+
         if two_part_regex.is_match(version) {
             let new_version_string = format!("{}.0", version);
             return Version::parse(&new_version_string).unwrap_or(Version::new(0, 0, 0));

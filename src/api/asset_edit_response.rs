@@ -7,11 +7,11 @@ pub struct AssetEditResponse {
     pub edit_id: String,
     pub asset_id: String,
     pub godot_version: Option<String>,
-    pub version_string: String,
+    pub version_string: Option<String>,
     pub download_commit: Option<String>,
     pub status: String,
     pub author: String,
-    pub download_url: String,
+    pub download_url: Option<String>,
     pub original: AssetResponse,
 }
 
@@ -21,11 +21,11 @@ impl AssetEditResponse {
         edit_id: String,
         asset_id: String,
         godot_version: Option<String>,
-        version_string: String,
+        version_string: Option<String>,
         download_commit: Option<String>,
         status: String,
         author: String,
-        download_url: String,
+        download_url: Option<String>,
         original: AssetResponse,
     ) -> AssetEditResponse {
         AssetEditResponse {

@@ -271,9 +271,12 @@ impl AssetStoreAPI for DefaultAssetStoreAPI {
             .get(self.get_url(&format!("/asset/edit/{}", edit_id)), [].into())
             .await
         {
-            Ok(data) => Ok(serde_json::from_value(data)?),
+            Ok(data) => {
+                let edit_response = serde_json::from_value(data)?;
+                Ok(edit_response)
+            }
             Err(e) => {
-                error!("Failed to get asset edit by edit ID {}: {}", edit_id, e); // TODO check how could I disable error! from loggin without -v 
+                error!("Failed to get asset edit by edit ID {}: {}", edit_id, e);
                 bail!("Failed to get asset edit by edit ID {}", edit_id)
             }
         }
