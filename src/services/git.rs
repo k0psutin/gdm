@@ -52,7 +52,11 @@ impl GitService for DefaultGitService {
         }
         fs::create_dir_all(&dst)?;
 
-        let repo = gix::init(&dst)?;
+        let mut repo = gix::init(&dst)?;
+
+        // Set a generic fallback committer to avoid errors when no user identity is configured
+        // This is required by gitoxide when updating references during fetch operations
+        repo.committer_or_set_generic_fallback()?;
 
         let mut remote = repo.remote_at(url)?;
 
