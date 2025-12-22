@@ -1,0 +1,17 @@
+meta {
+  name: GET Asset edit by asset id
+  type: http
+  seq: 2
+}
+
+get {
+  url: https://godotengine.org/asset-library/api/asset/edit?asset=2595&status=new accepted&page=0
+  body: none
+  auth: inherit
+}
+
+params:query {
+  asset: 2595
+  status: new accepted
+  page: 0
+}

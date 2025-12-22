@@ -1,0 +1,16 @@
+meta {
+  name: GET assets
+  type: http
+  seq: 4
+}
+
+get {
+  url: https://godotengine.org/asset-library/api/asset?godot_version=4.5&filter="Godot Unit Testing"
+  body: none
+  auth: inherit
+}
+
+params:query {
+  godot_version: 4.5
+  filter: "Godot Unit Testing"
+}
