@@ -4,9 +4,8 @@ use crate::installers::PluginInstaller;
 use crate::models::{Plugin, PluginSource};
 use crate::services::{ExtractService, InstallService};
 use crate::ui::OperationManager;
-use crate::utils::Utils;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use async_trait::async_trait;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -51,9 +50,7 @@ impl AssetLibraryInstaller {
             let api = self.asset_store_api.clone();
             let version = plugin.get_version();
 
-            api.get_asset_by_id_and_version(asset_id, &version)
-                .await
-                .with_context(|| format!("Failed to fetch metadata for asset {}", asset_id))
+            api.get_asset_by_id_and_version(asset_id, &version).await
         } else {
             anyhow::bail!("Plugin is not from asset library")
         }
@@ -142,7 +139,7 @@ impl PluginInstaller for AssetLibraryInstaller {
         install_service.install_from_cache(&staging_dir, &folders_to_move)?;
 
         plugin.title = metadata.title.clone();
-        plugin.version = Utils::parse_semantic_version(&metadata.version_string);
+        plugin.version = metadata.version_string.clone();
         plugin.license = Some(metadata.cost.clone());
 
         Ok((main_folder_name, plugin))

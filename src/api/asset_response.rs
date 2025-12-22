@@ -20,20 +20,26 @@ pub struct AssetResponse {
 
 impl From<AssetEditResponse> for AssetResponse {
     fn from(edit: AssetEditResponse) -> Self {
-        let asset = edit.original;
+        let asset_response = edit.original;
+
+        // If neither version_string nor download_url are modified, return the original asset response
+        if edit.version_string.is_none() && edit.download_url.is_none() {
+            return asset_response;
+        }
+
         AssetResponse {
-            asset_id: asset.asset_id.clone(),
-            title: asset.title.clone(),
-            version: asset.version.clone(),
-            version_string: edit.version_string.clone(),
-            godot_version: asset.godot_version.clone(),
-            rating: asset.rating.clone(),
-            cost: asset.cost.clone(),
-            description: asset.description.clone(),
-            download_provider: asset.download_provider.clone(),
+            asset_id: asset_response.asset_id.clone(),
+            title: asset_response.title.clone(),
+            version: asset_response.version.clone(),
+            version_string: edit.version_string.unwrap_or_default().to_string(),
+            godot_version: asset_response.godot_version.clone(),
+            rating: asset_response.rating.clone(),
+            cost: asset_response.cost.clone(),
+            description: asset_response.description.clone(),
+            download_provider: asset_response.download_provider.clone(),
             download_commit: edit.download_commit.unwrap_or_default().to_string(),
-            modify_date: asset.modify_date.clone(),
-            download_url: edit.download_url.to_string(),
+            modify_date: asset_response.modify_date.clone(),
+            download_url: edit.download_url.unwrap_or_default().to_string(),
         }
     }
 }
@@ -82,11 +88,11 @@ mod tests {
             "123".to_string(),
             "456".to_string(),
             Some("4.0".to_string()),
-            "0.0.1".to_string(),
+            Some("0.0.1".to_string()),
             Some("commit_hash".to_string()),
             "".to_string(),
             "author_name".to_string(),
-            "https://example.com/old.zip".to_string(),
+            Some("https://example.com/old.zip".to_string()),
             AssetResponse {
                 asset_id: "456".to_string(),
                 title: "Test Asset".to_string(),

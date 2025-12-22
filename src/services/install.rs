@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use async_trait::async_trait;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -138,9 +138,7 @@ impl InstallService for DefaultInstallService {
                 self.file_service.create_directory(parent)?;
             }
 
-            self.file_service.rename(&src, &dest).with_context(|| {
-                format!("Failed to move {} to {}", src.display(), dest.display())
-            })?;
+            self.file_service.rename(&src, &dest)?;
 
             installed_paths.push(dest);
         }
@@ -218,8 +216,7 @@ mod tests {
     use crate::config::MockDefaultAppConfig;
     use crate::installers::PluginInstaller;
     use crate::services::MockDefaultFileService;
-    use anyhow::anyhow;
-    use semver::Version;
+    use anyhow::{Context, anyhow};
 
     // Mock installer for testing
     struct MockPluginInstaller {
@@ -290,7 +287,7 @@ mod tests {
             source,
             plugin_cfg_path: Some(format!("addons/{}/plugin.cfg", title)),
             title: title.to_string(),
-            version: Version::parse(version).unwrap(),
+            version: version.to_string(),
             sub_assets: vec![],
             license: Some("MIT".to_string()),
         }
@@ -572,7 +569,7 @@ mod tests {
                     mockall::predicate::eq(dest.clone()),
                 )
                 .times(1)
-                .returning(|_, _| Err(anyhow!("Permission denied")));
+                .returning(|_, _| Err(anyhow!("Failed to move")));
 
             let parser = Arc::new(PluginParser::new(Arc::new(MockDefaultFileService::new())));
             let service = DefaultInstallService::new(

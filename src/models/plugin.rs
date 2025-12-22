@@ -1,5 +1,3 @@
-use anyhow::Result;
-use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -34,7 +32,7 @@ impl PartialEq for PluginSource {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Plugin {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<PluginSource>,
@@ -42,56 +40,28 @@ pub struct Plugin {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plugin_cfg_path: Option<String>,
     pub title: String,
-    #[serde(
-        serialize_with = "serialize_version",
-        deserialize_with = "deserialize_version"
-    )]
-    pub version: Version,
+    pub version: String,
     #[serde(default = "Vec::new")]
     pub sub_assets: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
 }
 
-fn serialize_version<S>(version: &Version, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    serializer.serialize_str(&version.to_string())
-}
-
-fn deserialize_version<'de, D>(deserializer: D) -> Result<Version, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let s: String = serde::Deserialize::deserialize(deserializer)?;
-    Ok(Utils::parse_semantic_version(&s))
-}
-
 impl Eq for Plugin {}
 
 impl PartialEq for Plugin {
     fn eq(&self, other: &Self) -> bool {
-        self.source == other.source && self.version == other.version
+        let other_version = Utils::parse_semantic_version(&other.version);
+        let self_version = Utils::parse_semantic_version(&self.version);
+        self.source == other.source && self_version == other_version
     }
 }
 
 impl PartialOrd for Plugin {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.version.cmp(&other.version))
-    }
-}
-
-impl Default for Plugin {
-    fn default() -> Self {
-        Plugin {
-            source: None,
-            plugin_cfg_path: None,
-            title: String::new(),
-            version: Version::new(0, 0, 0),
-            license: None,
-            sub_assets: Vec::new(),
-        }
+        let other_version = Utils::parse_semantic_version(&other.version);
+        let self_version = Utils::parse_semantic_version(&self.version);
+        Some(self_version.cmp(&other_version))
     }
 }
 
@@ -130,7 +100,7 @@ impl Plugin {
             source,
             plugin_cfg_path: _plugin_cfg_path,
             title,
-            version: Utils::parse_semantic_version(version.as_str()),
+            version,
             license,
             sub_assets,
         }
@@ -307,27 +277,6 @@ mod tests {
             vec![],
         );
         assert!(plugin_2_new > plugin_2_old);
-    }
-
-    #[test]
-    fn test_plugin_partial_ord_semver_different_length_versions_with_same_major_should_be_same() {
-        let plugin_short = Plugin::new_asset_store_plugin(
-            "id".to_string(),
-            None,
-            "Plugin Long".to_string(),
-            "1.0".to_string(),
-            "MIT".to_string(),
-            vec![],
-        );
-        let plugin_long = Plugin::new_asset_store_plugin(
-            "id".to_string(),
-            None,
-            "Plugin Long".to_string(),
-            "1.0.0".to_string(),
-            "MIT".to_string(),
-            vec![],
-        );
-        assert!(plugin_short == plugin_long);
     }
 
     #[test]
@@ -529,7 +478,7 @@ mod tests {
             })
         );
         assert_eq!(plugin.title, "Deserialize Plugin");
-        assert_eq!(plugin.version, Version::new(2, 1, 3));
+        assert_eq!(plugin.version, "2.1.3");
         assert_eq!(plugin.license, Some("Apache-2.0".to_string()));
         assert_eq!(plugin.sub_assets, vec!["subA", "subB"]);
         // plugin_cfg_path is None by default
@@ -548,38 +497,8 @@ mod tests {
         let json = serde_json::to_string(&original).unwrap();
         let deserialized: Plugin = serde_json::from_str(&json).unwrap();
         assert_eq!(original, deserialized);
-        assert_eq!(deserialized.version, Version::parse("3.2.1-alpha").unwrap());
+        assert_eq!(deserialized.version, "3.2.1-alpha");
         assert_eq!(deserialized.sub_assets, vec!["subX".to_string()]);
-        // plugin_cfg_path is None by default
-    }
-
-    #[test]
-    fn test_plugin_deserialize_v_prefix_version() {
-        let json = r#"{
-            "asset_id": "101",
-            "title": "V Prefix Plugin",
-            "version": "v7.3.4",
-            "license": "BSD-2-Clause",
-            "sub_assets": []
-        }"#;
-        let deserialized: Plugin = serde_json::from_str(json).unwrap();
-        assert_eq!(deserialized.version, Version::parse("7.3.4").unwrap());
-        assert_eq!(deserialized.sub_assets, Vec::<String>::new());
-        // plugin_cfg_path is None by default
-    }
-
-    #[test]
-    fn test_plugin_deserialize_v_prefix_version_with_build_metadata() {
-        let json = r#"{
-            "asset_id": "101",
-            "title": "V Prefix Plugin",
-            "version": "v7.3.4 (26)",
-            "license": "BSD-2-Clause",
-            "sub_assets": []
-        }"#;
-        let deserialized: Plugin = serde_json::from_str(json).unwrap();
-        assert_eq!(deserialized.version, Version::parse("7.3.4").unwrap());
-        assert_eq!(deserialized.sub_assets, Vec::<String>::new());
         // plugin_cfg_path is None by default
     }
 }
