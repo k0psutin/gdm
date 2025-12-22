@@ -1,0 +1,15 @@
+meta {
+  name: GET Asset by id
+  type: http
+  seq: 1
+}
+
+get {
+  url: https://godotengine.org/asset-library/api/asset/:assetId
+  body: none
+  auth: inherit
+}
+
+params:path {
+  assetId: 4521
+}
