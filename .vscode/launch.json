@@ -27,9 +27,8 @@
             },
             "args": [
                 "add",
-                "'Godot Mod Loader'",
-                "--version",
-                "7.0.1"
+                "--asset-id",
+                "2595"
             ],
         },
         {
