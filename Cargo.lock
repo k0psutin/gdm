@@ -598,6 +598,7 @@ dependencies = [
  "reqwest",
  "semver",
  "serde",
+ "serde_derive",
  "serde_json",
  "serial_test",
  "strsim",
