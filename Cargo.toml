@@ -16,7 +16,7 @@ bytes = "1.11.0"
 clap = { version = "4.5.53", features = ["derive", "error-context", "help", "std", "usage"], default-features = false }
 clap-verbosity-flag = { version = "3.0.4", default-features = false, features = ["tracing"] }
 futures = "0.3.31"
-gix = { version = "0.74.1", default-features = false, features = ["blocking-http-transport-reqwest-rust-tls", "progress-tree"] }
+gix = { version = "0.77.0", default-features = false, features = ["blocking-http-transport-reqwest-rust-tls", "progress-tree"] }
 indicatif = "0.18.3"
 regex = { version = "1.12.2", default-features = false, features = ["std", "unicode-perl"] }
 reqwest = { version = "0.12.28", features = ["json", "rustls-tls"], default-features = false }
