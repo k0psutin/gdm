@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::{Result, bail};
-use serde::{Deserialize, Serialize};
+use serde_derive::{Deserialize, Serialize};
 use tracing::{debug, error, info};
 
 use crate::config::{AppConfig, DefaultAppConfig};
