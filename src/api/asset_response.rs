@@ -1,6 +1,6 @@
 use crate::api::asset_edit_response::AssetEditResponse;
 
-use serde::{Deserialize, Serialize};
+use serde_derive::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Default, Deserialize, Clone, PartialEq)]
 pub struct AssetResponse {

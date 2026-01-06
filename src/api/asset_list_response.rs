@@ -1,6 +1,7 @@
+use serde_derive::Deserialize;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
 pub struct AssetListResponse {
     pub result: Vec<AssetListItem>,
 }
@@ -24,7 +25,7 @@ impl AssetListResponse {
     }
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct AssetListItem {
     pub asset_id: String,
     pub title: String,

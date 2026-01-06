@@ -3,7 +3,7 @@ use crate::models::{Plugin, PluginSource};
 use crate::services::{DefaultFileService, FileService};
 
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
+use serde_derive::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 use tracing::{debug, info};
