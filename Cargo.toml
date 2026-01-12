@@ -32,7 +32,7 @@ url = "2.5.8"
 zip = { version = "7.0.0", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
-assert_cmd = "2.1.1"
+assert_cmd = "2.1.2"
 http = "1.4.0"
 mockall = "0.14.0"
 mockall_double = "0.3.1"
