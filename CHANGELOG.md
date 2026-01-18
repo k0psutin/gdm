@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org).
 
+## [1.2.1] - 2026-01-18
+- Maintenance release
+  - Update dependencies
+    - Bump assert_cmd from 2.1.1 to 2.1.2
+    - Bump url from 2.5.7 to 2.5.8
+    - Bump tracing-subscriber from 0.3.20 to 0.3.22
+    - Bump reqwest dependency from 0.12.28 0.13.1
+    - Bump serde_json from 1.0.145 to 1.0.148
+    - Bump tokio from 1.48.0 to 1.49.0
+    - Bump zip from 6.0.0 to 7.0.0
+    - Bump serial_test from 3.2.0 to 3.3.1
+    - Bump clap from 4.5.53 to 4.5.54
+    - Bump gix from 0.74.1 to 0.77.0
+      - Fix vulnerability https://rustsec.org/advisories/RUSTSEC-2025-0140
+
 ## [1.2.0] - 2025-12-31
 - [gdm/16](https://github.com/k0psutin/gdm/issues/16) Added support for git based addons/plugins.
   - See [README: Add command usage](https://github.com/k0psutin/gdm/blob/main/README.md#add)
