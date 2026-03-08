@@ -64,7 +64,7 @@ config_version=5
 [application]
 
 config/name="Test Project"
-config/features=PackedStringArray("4.5")
+config/features=PackedStringArray("4.6")
 "#;
 
 pub const EMPTY_GDM_JSON: &str = r#"{
@@ -79,7 +79,7 @@ pub const GDM_JSON_WITH_ONE_PLUGIN: &str = r#"{
       },
       "plugin_cfg_path": "addons/gut/plugin.cfg",
       "title": "GUT - Godot Unit Testing (Godot 4)",
-      "version": "9.1.0",
+      "version": "9.6.0",
       "license": "MIT",
       "sub_assets": []
     }

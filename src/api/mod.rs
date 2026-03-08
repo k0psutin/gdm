@@ -371,7 +371,7 @@ mod tests {
         let api = setup_test_api();
         let params = HashMap::from([
             ("filter".to_string(), "Godot Unit Testing".to_string()),
-            ("godot_version".to_string(), "4.5".to_string()),
+            ("godot_version".to_string(), "4.6".to_string()),
         ]);
         let result = api.get_assets(params).await;
         assert!(result.is_ok());

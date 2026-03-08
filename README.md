@@ -51,6 +51,7 @@ That's it! Your plugin is now installed and ready to use.
 
 - 3.6.x
 - 4.5.x
+- 4.6.x
 
 ## Temporary Directory
 
