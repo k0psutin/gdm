@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org).
 
+## [1.2.2] - 2026-03-08
+- Maintenance release
+  - Update dependencies:
+    - Bump package version: 1.2.1 → 1.2.2
+    - Rust toolchain: `rust-version` 1.91.0 → 1.94.0
+    - `anyhow`: 1.0.101 → 1.0.102
+    - `clap`: 4.5.58 → 4.5.60
+    - `clap-verbosity-flag`: added (3.0.4)
+    - `futures`: 0.3.31 → 0.3.32
+    - `gix`: 0.77.0 → 0.80.0
+    - `indicatif`: 0.18.3 → 0.18.4
+    - `reqwest`: 0.13.1 → 0.13.2
+    - `serde_json`: 1.0.148 → 1.0.149
+    - `tokio`: 1.49.0 → 1.50.0
+    - `tracing`: 0.1.43 → 0.1.44
+    - `zip`: 7.0.0 → 8.2.0
+    - `serial_test`: 3.3.1 → 3.4.0
+    - `temp-dir`: 0.1.16 → 0.2.0
+    
+
 ## [1.2.1] - 2026-01-18
 - Maintenance release
   - Update dependencies

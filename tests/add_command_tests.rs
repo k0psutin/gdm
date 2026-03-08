@@ -372,7 +372,7 @@ mod add_command_tests {
           },
           "plugin_cfg_path": "addons/gut/plugin.cfg",
           "title": "Gut",
-          "version": "9.5.1",
+          "version": "9.6.0",
           "sub_assets": []
         },
                       }
