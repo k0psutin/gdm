@@ -1,7 +1,7 @@
 ![Version badge](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fk0psutin%2Fgdm%2Frefs%2Fheads%2Fmain%2FCargo.toml&query=%24.package.version&label=version)
 ![Coverage](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fgist.githubusercontent.com%2Fk0psutin%2F02a7627bd5ba7bdaaf0063e02cadcfde%2Fraw%2F7cf2de6525c551d8d68af57847fbb9713323a6a3%2Fgdm_coverage.json&query=%24.coverage&suffix=%25&label=coverage&color=green)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Rust Version](https://img.shields.io/badge/rust-1.91.0%2B-orange.svg)
+![Rust Version](https://img.shields.io/badge/rust-1.94.0%2B-orange.svg)
 
 # GD Manager (gdm)
 
