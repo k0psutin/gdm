@@ -137,6 +137,8 @@ Run `gdm <command> [options]` in your Godot project directory.
 
 Add a plugin dependency to your project from the Godot Asset Library.
 
+**Note:** This command will also install the plugin.
+
 **Basic usage:**
 
 ```bash
