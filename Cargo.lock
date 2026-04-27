@@ -580,7 +580,7 @@ dependencies = [
  "clap-verbosity-flag",
  "futures",
  "gix",
- "gix-hash",
+ "gix-hash 0.24.0",
  "http",
  "indicatif",
  "mockall",
@@ -668,11 +668,11 @@ dependencies = [
  "gix-diff",
  "gix-discover",
  "gix-error",
- "gix-features",
+ "gix-features 0.46.2",
  "gix-filter",
  "gix-fs",
  "gix-glob",
- "gix-hash",
+ "gix-hash 0.23.0",
  "gix-hashtable",
  "gix-ignore",
  "gix-index",
@@ -775,7 +775,7 @@ dependencies = [
  "bstr",
  "gix-chunk",
  "gix-error",
- "gix-hash",
+ "gix-hash 0.23.0",
  "memmap2",
  "nonempty",
 ]
@@ -788,7 +788,7 @@ checksum = "08939b4c4ed7a663d0e64be9e1e9bdf23a1fb4fcee1febdf449f12229542e50d"
 dependencies = [
  "bstr",
  "gix-config-value",
- "gix-features",
+ "gix-features 0.46.2",
  "gix-glob",
  "gix-path",
  "gix-ref",
@@ -851,7 +851,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88f3b3475e5d3877d7c30c40827cc2441936ce890efc226e5ba4afe3a7ae33f0"
 dependencies = [
  "bstr",
- "gix-hash",
+ "gix-hash 0.23.0",
  "gix-object",
  "thiserror 2.0.18",
 ]
@@ -900,6 +900,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "gix-features"
+version = "0.47.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c0f40b8c98b4b592a7e9c83fe79eacbfcdae8485aa6148ff15e52a4b6e9fe30"
+dependencies = [
+ "gix-trace",
+ "libc",
+ "prodash",
+]
+
+[[package]]
 name = "gix-filter"
 version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -909,7 +920,7 @@ dependencies = [
  "encoding_rs",
  "gix-attributes",
  "gix-command",
- "gix-hash",
+ "gix-hash 0.23.0",
  "gix-object",
  "gix-packetline",
  "gix-path",
@@ -928,7 +939,7 @@ checksum = "a964b4aec683eb0bacb87533defa80805bb4768056371a47ab38b00a2d377b72"
 dependencies = [
  "bstr",
  "fastrand",
- "gix-features",
+ "gix-features 0.46.2",
  "gix-path",
  "gix-utils",
  "thiserror 2.0.18",
@@ -942,7 +953,7 @@ checksum = "b03e6cd88cc0dc1eafa1fddac0fb719e4e74b6ea58dd016e71125fde4a326bee"
 dependencies = [
  "bitflags",
  "bstr",
- "gix-features",
+ "gix-features 0.46.2",
  "gix-path",
 ]
 
@@ -953,7 +964,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fb896a02d9ab96fa518475a5f30ad3952010f801a8de5840f633f4a6b985dfb"
 dependencies = [
  "faster-hex",
- "gix-features",
+ "gix-features 0.46.2",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "gix-hash"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e3c92d6aa7a81bde221f3448e62b0e8d81a7d8086e85ccc24b3a4d54e315f30"
+dependencies = [
+ "faster-hex",
+ "gix-features 0.47.0",
  "sha1-checked",
  "thiserror 2.0.18",
 ]
@@ -964,7 +986,7 @@ version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2664216fc5e89b51e756a4a3ac676315602ce2dac07acf1da959a22038d69b33"
 dependencies = [
- "gix-hash",
+ "gix-hash 0.23.0",
  "hashbrown 0.16.1",
  "parking_lot",
 ]
@@ -993,9 +1015,9 @@ dependencies = [
  "filetime",
  "fnv",
  "gix-bitmap",
- "gix-features",
+ "gix-features 0.46.2",
  "gix-fs",
- "gix-hash",
+ "gix-hash 0.23.0",
  "gix-lock",
  "gix-object",
  "gix-traverse",
@@ -1030,7 +1052,7 @@ dependencies = [
  "bitflags",
  "gix-commitgraph",
  "gix-date",
- "gix-hash",
+ "gix-hash 0.23.0",
  "gix-object",
  "gix-revwalk",
 ]
@@ -1044,8 +1066,8 @@ dependencies = [
  "bstr",
  "gix-actor",
  "gix-date",
- "gix-features",
- "gix-hash",
+ "gix-features 0.46.2",
+ "gix-hash 0.23.0",
  "gix-hashtable",
  "gix-path",
  "gix-utils",
@@ -1063,9 +1085,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "24833ae9323b4f7079575fb9f961cf9c414b0afbec428a536ab8e7dd93bc002b"
 dependencies = [
  "arc-swap",
- "gix-features",
+ "gix-features 0.46.2",
  "gix-fs",
- "gix-hash",
+ "gix-hash 0.23.0",
  "gix-hashtable",
  "gix-object",
  "gix-pack",
@@ -1085,8 +1107,8 @@ dependencies = [
  "clru",
  "gix-chunk",
  "gix-error",
- "gix-features",
- "gix-hash",
+ "gix-features 0.46.2",
+ "gix-hash 0.23.0",
  "gix-hashtable",
  "gix-object",
  "gix-path",
@@ -1158,8 +1180,8 @@ dependencies = [
  "bstr",
  "gix-credentials",
  "gix-date",
- "gix-features",
- "gix-hash",
+ "gix-features 0.46.2",
+ "gix-hash 0.23.0",
  "gix-lock",
  "gix-negotiate",
  "gix-object",
@@ -1194,9 +1216,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2159978abb99b7027c8579d15211e262ef0ef2594d5cecb3334fbcbdfe2997c"
 dependencies = [
  "gix-actor",
- "gix-features",
+ "gix-features 0.46.2",
  "gix-fs",
- "gix-hash",
+ "gix-hash 0.23.0",
  "gix-lock",
  "gix-object",
  "gix-path",
@@ -1217,7 +1239,7 @@ dependencies = [
  "bstr",
  "gix-error",
  "gix-glob",
- "gix-hash",
+ "gix-hash 0.23.0",
  "gix-revision",
  "gix-validate",
  "smallvec",
@@ -1234,7 +1256,7 @@ dependencies = [
  "gix-commitgraph",
  "gix-date",
  "gix-error",
- "gix-hash",
+ "gix-hash 0.23.0",
  "gix-object",
  "gix-revwalk",
  "nonempty",
@@ -1249,7 +1271,7 @@ dependencies = [
  "gix-commitgraph",
  "gix-date",
  "gix-error",
- "gix-hash",
+ "gix-hash 0.23.0",
  "gix-hashtable",
  "gix-object",
  "smallvec",
@@ -1275,7 +1297,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cbf60711c9083b2364b3fac8a352444af76b17201f3682fdebe74fa66d89a772"
 dependencies = [
  "bstr",
- "gix-hash",
+ "gix-hash 0.23.0",
  "gix-lock",
  "nonempty",
  "thiserror 2.0.18",
@@ -1310,9 +1332,9 @@ dependencies = [
 
 [[package]]
 name = "gix-trace"
-version = "0.1.18"
+version = "0.1.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f69a13643b8437d4ca6845e08143e847a36ca82903eed13303475d0ae8b162e0"
+checksum = "6f23569e55f2ffaf958617353b9734a7d52a7c19c439eeaa5e3efc217fd2270e"
 
 [[package]]
 name = "gix-transport"
@@ -1324,7 +1346,7 @@ dependencies = [
  "bstr",
  "gix-command",
  "gix-credentials",
- "gix-features",
+ "gix-features 0.46.2",
  "gix-packetline",
  "gix-quote",
  "gix-sec",
@@ -1342,7 +1364,7 @@ dependencies = [
  "bitflags",
  "gix-commitgraph",
  "gix-date",
- "gix-hash",
+ "gix-hash 0.23.0",
  "gix-hashtable",
  "gix-object",
  "gix-revwalk",
@@ -1391,7 +1413,7 @@ dependencies = [
  "gix-attributes",
  "gix-fs",
  "gix-glob",
- "gix-hash",
+ "gix-hash 0.23.0",
  "gix-ignore",
  "gix-index",
  "gix-object",
