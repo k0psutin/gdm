@@ -7,6 +7,6 @@ Set FontSize 16
 Set Width 1200
 Set Height 600
 
-Type "gdm search 'Godot Unit Testing'" Sleep 500ms  Enter
+Type "gdm search 'gdunit4'" Sleep 500ms  Enter
 
 Sleep 5s

@@ -5,7 +5,7 @@ use anyhow::Result;
 use clap::Args;
 use std::collections::BTreeMap;
 
-const HEADERS: [&str; 4] = ["Dependency", "Key", "Version", "Source"];
+const HEADERS: [&str; 3] = ["Dependency", "Version", "Source"];
 
 #[derive(Args)]
 #[command(about = "List dependencies declared in gdm.toml.")]
@@ -14,7 +14,6 @@ pub struct ListArgs {}
 #[derive(Debug, PartialEq, Eq)]
 struct DependencyRow {
     dependency: String,
-    key: String,
     version: String,
     source: String,
 }
@@ -34,12 +33,7 @@ fn render_dependencies(plugins: &BTreeMap<String, Plugin>) -> String {
     let rows = plugins
         .iter()
         .map(|(key, plugin)| DependencyRow {
-            dependency: if plugin.title.is_empty() {
-                key.clone()
-            } else {
-                plugin.title.clone()
-            },
-            key: key.clone(),
+            dependency: key.clone(),
             version: dependency_version(plugin),
             source: dependency_source(&plugin.source),
         })
@@ -52,20 +46,15 @@ fn render_dependencies(plugins: &BTreeMap<String, Plugin>) -> String {
             .max()
             .unwrap_or(HEADERS[0].len()),
         std::iter::once(HEADERS[1])
-            .chain(rows.iter().map(|row| row.key.as_str()))
+            .chain(rows.iter().map(|row| row.version.as_str()))
             .map(str::len)
             .max()
             .unwrap_or(HEADERS[1].len()),
         std::iter::once(HEADERS[2])
-            .chain(rows.iter().map(|row| row.version.as_str()))
-            .map(str::len)
-            .max()
-            .unwrap_or(HEADERS[2].len()),
-        std::iter::once(HEADERS[3])
             .chain(rows.iter().map(|row| row.source.as_str()))
             .map(str::len)
             .max()
-            .unwrap_or(HEADERS[3].len()),
+            .unwrap_or(HEADERS[2].len()),
     ];
 
     let mut output = String::new();
@@ -74,7 +63,6 @@ fn render_dependencies(plugins: &BTreeMap<String, Plugin>) -> String {
     for row in &rows {
         let values = [
             row.dependency.as_str(),
-            row.key.as_str(),
             row.version.as_str(),
             row.source.as_str(),
         ];
@@ -82,20 +70,18 @@ fn render_dependencies(plugins: &BTreeMap<String, Plugin>) -> String {
         output.push('\n');
     }
     output.push('\n');
-    output.push_str("To remove a dependency, use: gdm remove <key>\n");
+    output.push_str("To remove a dependency, use: gdm remove <dependency>\n");
     output
 }
 
-fn format_row(values: &[&str; 4], widths: [usize; 4]) -> String {
+fn format_row(values: &[&str; 3], widths: [usize; 3]) -> String {
     format!(
-        "{:<width0$}  {:<width1$}  {:<width2$}  {}",
+        "{:<width0$}  {:<width1$}  {}",
         values[0],
         values[1],
         values[2],
-        values[3],
         width0 = widths[0],
         width1 = widths[1],
-        width2 = widths[2],
     )
 }
 
@@ -163,7 +149,7 @@ mod tests {
     }
 
     #[test]
-    fn test_render_dependencies_falls_back_to_key_and_uses_git_reference_as_version() {
+    fn test_render_dependencies_uses_manifest_key_and_git_reference_as_version() {
         let plugins = BTreeMap::from([
             (
                 "custom-plugin".to_string(),
@@ -193,12 +179,13 @@ mod tests {
 
         let output = render_dependencies(&plugins);
 
-        assert!(output.contains("custom-plugin  custom-plugin  main     github.com/foo/bar"));
+        assert!(output.contains("custom-plugin  main     github.com/foo/bar"));
         assert!(output.lines().any(|line| line.contains("netfox")
             && line.contains("v1.35.3")
             && line.contains("foxssake/netfox")));
+        assert!(!output.contains("custom-plugin  custom-plugin"));
         assert!(!output.contains("sub_asset"));
-        assert!(output.contains("To remove a dependency, use: gdm remove <key>"));
+        assert!(output.contains("To remove a dependency, use: gdm remove <dependency>"));
     }
 
     #[test]
@@ -207,7 +194,7 @@ mod tests {
             (
                 "short".to_string(),
                 asset_plugin(
-                    "A very long dependency title",
+                    "Ignored dependency title",
                     "1",
                     PluginSource::AssetStore {
                         publisher_slug: "publisher".to_string(),

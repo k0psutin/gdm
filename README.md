@@ -221,15 +221,15 @@ List the dependencies declared in `gdm.toml`.
 gdm list
 ```
 
-The command lists one row for each top-level dependency, sorted by its manifest key. Asset Store versions and Git references are shown in the `Version` column. Git sources are displayed without a leading `http://` or `https://`, one trailing `/`, or one trailing `.git`.
+The command lists one row for each top-level dependency, sorted by its manifest key. The manifest key is shown in the `Dependency` column. Asset Store versions and Git references are shown in the `Version` column. Git sources are displayed without a leading `http://` or `https://`, one trailing `/`, or one trailing `.git`.
 
 If no `gdm.toml` exists or it contains no dependencies, the command prints `No dependencies found.`. A legacy `gdm.json` is ignored. The command does not require `project.godot`.
 
 ```text
-Dependency          Key              Version        Source
-netfox              netfox           v1.35.3        foxssake/netfox
+Dependency  Version  Source
+netfox      v1.35.3  foxssake/netfox
 
-To remove a dependency, use: gdm remove <key>
+To remove a dependency, use: gdm remove <dependency>
 ```
 
 #### `update`
@@ -258,7 +258,7 @@ gdm outdated
 
 #### `search`
 
-Search the Godot Asset Library for dependencies.
+Search the Godot Asset Library for dependencies. Results show the publisher/asset identifier used by `gdm add`, the available version, license, net review score, and installation status.
 
 ```bash
 gdm search '<dependency-name>'
@@ -275,6 +275,12 @@ gdm search '<dependency-name>' --godot-version '<version>'
 **Example:**
 ```bash
 gdm search "dialogue" --godot-version "4.3"
+```
+
+```text
+#  Dependency                                      Version      License      Score  Status
+1  mikeschulze/gdunit4-unit-testing-framework      v6.2.0       MIT          +2     installed
+   An testing framework designed for testing GdScripts, C# scripts, and scenes...
 ```
 
 #### `remove`

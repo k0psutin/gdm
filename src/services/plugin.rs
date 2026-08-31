@@ -12,6 +12,7 @@ use crate::utils::Utils;
 use anyhow::{Context, Result, bail};
 use futures::future::try_join_all;
 use std::collections::{BTreeMap, HashSet};
+use std::io::{self, IsTerminal};
 use std::path::{Component, Path};
 use std::sync::Arc;
 use tracing::info;
@@ -23,6 +24,162 @@ pub struct DefaultPluginService {
     pub file_service: Arc<dyn FileService + Send + Sync>,
     pub asset_store_service: Arc<dyn AssetStoreService + Send + Sync>,
     pub install_service: Arc<dyn InstallService + Send + Sync>,
+}
+
+const SEARCH_HEADERS: [&str; 6] = ["#", "Dependency", "Version", "License", "Score", "Status"];
+const ANSI_GREEN: &str = "\x1b[32m";
+const ANSI_RED: &str = "\x1b[31m";
+const ANSI_RESET: &str = "\x1b[0m";
+
+struct SearchResultRow {
+    number: String,
+    dependency: String,
+    version: String,
+    license: String,
+    score: i32,
+    status: String,
+    description: String,
+}
+
+fn should_colorize_output() -> bool {
+    io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none()
+}
+
+fn render_search_results(assets: &[Asset], installed: &[bool], colorize: bool) -> String {
+    if assets.is_empty() {
+        return String::new();
+    }
+
+    let rows = assets
+        .iter()
+        .enumerate()
+        .map(|(index, asset)| SearchResultRow {
+            number: (index + 1).to_string(),
+            dependency: format!("{}/{}", asset.publisher_slug, asset.asset_slug),
+            version: asset.version.clone(),
+            license: asset.license.clone(),
+            score: asset.score,
+            status: if installed.get(index).copied().unwrap_or(false) {
+                "installed".to_string()
+            } else {
+                "available".to_string()
+            },
+            description: truncate_search_description(&asset.description),
+        })
+        .collect::<Vec<_>>();
+
+    let widths = [
+        std::iter::once(SEARCH_HEADERS[0])
+            .chain(rows.iter().map(|row| row.number.as_str()))
+            .map(str::len)
+            .max()
+            .unwrap_or(SEARCH_HEADERS[0].len()),
+        std::iter::once(SEARCH_HEADERS[1])
+            .chain(rows.iter().map(|row| row.dependency.as_str()))
+            .map(str::len)
+            .max()
+            .unwrap_or(SEARCH_HEADERS[1].len()),
+        std::iter::once(SEARCH_HEADERS[2])
+            .chain(rows.iter().map(|row| row.version.as_str()))
+            .map(str::len)
+            .max()
+            .unwrap_or(SEARCH_HEADERS[2].len()),
+        std::iter::once(SEARCH_HEADERS[3])
+            .chain(rows.iter().map(|row| row.license.as_str()))
+            .map(str::len)
+            .max()
+            .unwrap_or(SEARCH_HEADERS[3].len()),
+        std::iter::once(SEARCH_HEADERS[4].len())
+            .chain(rows.iter().map(|row| format_score(row.score).len()))
+            .max()
+            .unwrap_or(SEARCH_HEADERS[4].len()),
+        std::iter::once(SEARCH_HEADERS[5])
+            .chain(rows.iter().map(|row| row.status.as_str()))
+            .map(str::len)
+            .max()
+            .unwrap_or(SEARCH_HEADERS[5].len()),
+    ];
+
+    let mut output = format_search_header(widths);
+    output.push('\n');
+
+    for row in &rows {
+        output.push_str(&format_search_row(row, widths, colorize));
+        output.push('\n');
+        output.push_str(&" ".repeat(widths[0] + 2));
+        output.push_str(&row.description);
+        output.push_str("\n\n");
+    }
+
+    output
+}
+
+fn format_score(score: i32) -> String {
+    if score > 0 {
+        format!("+{score}")
+    } else {
+        score.to_string()
+    }
+}
+
+fn format_colored_score(score: i32, width: usize, colorize: bool) -> String {
+    let score_text = format_score(score);
+    let padding = " ".repeat(width.saturating_sub(score_text.len()));
+
+    if !colorize || score == 0 {
+        return format!("{score_text}{padding}");
+    }
+
+    let color = if score > 0 { ANSI_GREEN } else { ANSI_RED };
+    format!("{color}{score_text}{ANSI_RESET}{padding}")
+}
+
+fn format_search_header(widths: [usize; 6]) -> String {
+    format!(
+        "{:>width0$}  {:<width1$}  {:<width2$}  {:<width3$}  {:<width4$}  {}",
+        SEARCH_HEADERS[0],
+        SEARCH_HEADERS[1],
+        SEARCH_HEADERS[2],
+        SEARCH_HEADERS[3],
+        SEARCH_HEADERS[4],
+        SEARCH_HEADERS[5],
+        width0 = widths[0],
+        width1 = widths[1],
+        width2 = widths[2],
+        width3 = widths[3],
+        width4 = widths[4],
+    )
+}
+
+fn format_search_row(row: &SearchResultRow, widths: [usize; 6], colorize: bool) -> String {
+    let score = format_colored_score(row.score, widths[4], colorize);
+
+    format!(
+        "{:>width0$}  {:<width1$}  {:<width2$}  {:<width3$}  {}  {}",
+        row.number,
+        row.dependency,
+        row.version,
+        row.license,
+        score,
+        row.status,
+        width0 = widths[0],
+        width1 = widths[1],
+        width2 = widths[2],
+        width3 = widths[3],
+    )
+}
+
+fn truncate_search_description(description: &str) -> String {
+    let description_truncated: String = description.chars().take(120).collect();
+    if description_truncated.len() == 120 {
+        description_truncated
+            .chars()
+            .take(117)
+            .chain(['.', '.', '.'])
+            .collect()
+    } else {
+        description_truncated
+    }
 }
 
 impl Default for DefaultPluginService {
@@ -515,64 +672,18 @@ impl PluginService for DefaultPluginService {
 
         println!();
 
-        // Calculate max widths (column 0: name, 1: version, 2: license, 3: votes)
-        let max_name = assets
+        let installed = assets
             .iter()
-            .map(|a| format!("{}/{}", a.publisher_slug, a.asset_slug).len())
-            .max()
-            .unwrap_or(0);
-        let max_ver = assets.iter().map(|a| a.version.len()).max().unwrap_or(0);
-        let max_lic = assets.iter().map(|a| a.license.len()).max().unwrap_or(0);
-        // Votes column: length of "👍 +NNN" or "👎 -NNN" – we'll build strings first
-        let vote_strs: Vec<String> = assets
-            .iter()
-            .map(|a| {
-                let (icon, vote) = if a.score >= 0 {
-                    ("👍", a.score)
-                } else {
-                    ("👎", -a.score)
-                };
-                format!("{} {:+}", icon, vote) // + sign for explicit sign
+            .map(|asset| {
+                self.gdm_config
+                    .get_dependency_by_asset_slug(&asset.asset_slug)
+                    .map(|plugin| plugin.is_some())
             })
-            .collect();
-        let max_vote = vote_strs.iter().map(|v| v.len()).max().unwrap_or(0);
-
-        for (i, asset) in assets.iter().enumerate() {
-            let plugin = self
-                .gdm_config
-                .get_dependency_by_asset_slug(&asset.asset_slug)?;
-            let installed_marker = if plugin.is_some() { " [installed]" } else { "" };
-            let icon = if asset.score >= 0 { "👍" } else { "👎" };
-            let vote_display = format!("{} {:+}", icon, asset.score);
-            let asset_name = format!("{}/{}", asset.publisher_slug, asset.asset_slug);
-
-            println!(
-                "{:>2}{}. {:<name$}  {:<ver$}  {:<lic$}  {:<vote$}{}",
-                " ",
-                i + 1,
-                asset_name,
-                asset.version,
-                asset.license,
-                vote_display,
-                installed_marker,
-                name = max_name,
-                ver = max_ver,
-                lic = max_lic,
-                vote = max_vote,
-            );
-            let description_truncated: String = asset.description.chars().take(120).collect();
-            let description = if description_truncated.len() == 120 {
-                description_truncated
-                    .chars()
-                    .take(117)
-                    .chain(['.', '.', '.'])
-                    .collect()
-            } else {
-                description_truncated
-            };
-            println!("{:>5}{}", " ", description);
-            println!();
-        }
+            .collect::<Result<Vec<_>>>()?;
+        print!(
+            "{}",
+            render_search_results(&assets, &installed, should_colorize_output())
+        );
 
         if assets.len() == 1 {
             let asset = assets.first().unwrap();
@@ -640,6 +751,8 @@ mod tests {
     use std::sync::Arc;
 
     use mockall::predicate::*;
+
+    use super::{format_score, render_search_results};
 
     use crate::config::{
         DefaultAppConfig, GdmManifest, MockDefaultGdmConfig, MockDefaultGodotConfig,
@@ -1544,5 +1657,157 @@ mod tests {
         let plugins = plugin_service.gdm_config.get_dependencies().unwrap();
         let test_plugin = plugins.values().next().unwrap();
         assert_eq!(test_plugin.get_version(), "1.0.0"); // Should still be old version
+    }
+
+    fn search_result_asset(
+        publisher_slug: &str,
+        asset_slug: &str,
+        version: &str,
+        license: &str,
+        score: i32,
+        title: &str,
+        description: &str,
+    ) -> Asset {
+        Asset {
+            file_path: PathBuf::new(),
+            publisher_slug: publisher_slug.to_string(),
+            asset_slug: asset_slug.to_string(),
+            license: license.to_string(),
+            score,
+            version: version.to_string(),
+            title: title.to_string(),
+            description: description.to_string(),
+            size: 0.0,
+            download_url: String::new(),
+        }
+    }
+
+    #[test]
+    fn test_render_search_results_labels_columns_and_status() {
+        let assets = vec![
+            search_result_asset(
+                "mikeschulze",
+                "gdunit4-unit-testing-framework",
+                "v6.2.0",
+                "MIT",
+                2,
+                "GdUnit4",
+                "An testing framework designed for testing GdScripts.",
+            ),
+            search_result_asset(
+                "ziva",
+                "ziva",
+                "v3.1.7",
+                "Proprietary",
+                -9,
+                "Ziva AI assistant",
+                "An AI coding assistant for Godot.",
+            ),
+            search_result_asset(
+                "shomy",
+                "quest-system",
+                "v2.0.2",
+                "MIT",
+                0,
+                "Quest System",
+                "A quest system for Godot 4.",
+            ),
+        ];
+
+        let output = render_search_results(&assets, &[true, false, false], false);
+        let header = output.lines().next().unwrap();
+
+        assert_eq!(
+            header.split_whitespace().collect::<Vec<_>>(),
+            vec!["#", "Dependency", "Version", "License", "Score", "Status"]
+        );
+        assert!(output.contains("mikeschulze/gdunit4-unit-testing-framework"));
+        assert!(output.contains("+2"));
+        assert!(output.contains("-9"));
+        assert!(output.contains(" 0"));
+        assert!(output.contains("installed"));
+        assert_eq!(output.matches("available").count(), 2);
+        assert!(!output.contains("GdUnit4"));
+        assert!(!output.contains("Ziva AI assistant"));
+        assert!(!output.contains("👍"));
+        assert!(!output.contains("👎"));
+        assert!(!output.contains('\x1b'));
+    }
+
+    #[test]
+    fn test_format_score_uses_sign_only_for_positive_values() {
+        assert_eq!(format_score(2), "+2");
+        assert_eq!(format_score(0), "0");
+        assert_eq!(format_score(-9), "-9");
+    }
+
+    #[test]
+    fn test_render_search_results_aligns_columns_and_truncates_descriptions() {
+        let long_description = "a".repeat(120);
+        let assets = vec![
+            search_result_asset(
+                "publisher",
+                "a-long-dependency-name",
+                "1.0",
+                "Proprietary",
+                2,
+                "Long Dependency",
+                &long_description,
+            ),
+            search_result_asset(
+                "p",
+                "a",
+                "1.2.3",
+                "MIT",
+                -1,
+                "Short Dependency",
+                "Short description.",
+            ),
+        ];
+
+        let output = render_search_results(&assets, &[false, false], false);
+        let lines = output.lines().collect::<Vec<_>>();
+        let header = lines[0];
+        let long_row = lines
+            .iter()
+            .find(|line| line.contains("publisher/a-long-dependency-name"))
+            .unwrap();
+        let short_row = lines.iter().find(|line| line.contains("p/a")).unwrap();
+
+        assert_eq!(
+            long_row.find("1.0").unwrap(),
+            header.find("Version").unwrap()
+        );
+        assert_eq!(
+            short_row.find("1.2.3").unwrap(),
+            header.find("Version").unwrap()
+        );
+
+        let description = lines
+            .iter()
+            .find(|line| line.trim_start().starts_with('a'))
+            .unwrap()
+            .trim();
+        assert_eq!(description, format!("{}...", "a".repeat(117)));
+        assert_eq!(description.chars().count(), 120);
+    }
+
+    #[test]
+    fn test_render_search_results_colors_nonzero_scores_only() {
+        let assets = vec![
+            search_result_asset("publisher", "positive", "1.0", "MIT", 2, "", ""),
+            search_result_asset("publisher", "negative", "1.0", "MIT", -9, "", ""),
+            search_result_asset("publisher", "neutral", "1.0", "MIT", 0, "", ""),
+        ];
+
+        let output = render_search_results(&assets, &[false, false, false], true);
+
+        assert!(output.contains("\x1b[32m+2\x1b[0m"));
+        assert!(output.contains("\x1b[31m-9\x1b[0m"));
+        let neutral_row = output
+            .lines()
+            .find(|line| line.contains("publisher/neutral"))
+            .unwrap();
+        assert!(!neutral_row.contains('\x1b'));
     }
 }

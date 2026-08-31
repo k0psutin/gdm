@@ -90,11 +90,13 @@ asset_slug = "netfox"
             .assert()
             .success()
             .stdout(predicate::str::contains("Dependency"))
-            .stdout(predicate::str::contains("License Manager"))
+            .stdout(predicate::str::contains("licenses"))
+            .stdout(predicate::str::contains("License Manager").not())
             .stdout(predicate::str::contains("kenyoni/license-manager"))
             .stdout(predicate::str::contains(
-                "To remove a dependency, use: gdm remove <key>",
+                "To remove a dependency, use: gdm remove <dependency>",
             ))
+            .stdout(predicate::str::contains("Key").not())
             .stderr(predicate::str::contains("project.godot").not());
     }
 
@@ -155,9 +157,12 @@ asset_slug = "netfox"
         assert!(output.status.success());
         let stdout = String::from_utf8(output.stdout).unwrap();
 
-        assert!(stdout.find("Alpha Dependency").unwrap() < stdout.find("Zulu Dependency").unwrap());
+        assert_eq!(stdout.lines().next(), Some("Dependency  Version  Source"));
+        assert!(stdout.find("a-key").unwrap() < stdout.find("z-key").unwrap());
+        assert!(!stdout.contains("Alpha Dependency"));
+        assert!(!stdout.contains("Zulu Dependency"));
         assert!(!stdout.contains("netfox.internals"));
-        assert!(stdout.contains("To remove a dependency, use: gdm remove <key>"));
+        assert!(stdout.contains("To remove a dependency, use: gdm remove <dependency>"));
     }
 
     #[test]
@@ -177,14 +182,14 @@ asset_slug = "netfox"
     }
 
     #[test]
-    fn test_list_falls_back_to_key_for_empty_title() {
+    fn test_list_uses_manifest_key_instead_of_title() {
         let (mut cmd, temp_dir) = setup::get_bin();
         setup::create_gdm_toml(&temp_dir, GDM_TOML_WITH_EMPTY_TITLE);
 
         cmd.arg("list")
             .assert()
             .success()
-            .stdout(predicate::str::contains("\nnetfox"))
+            .stdout(predicate::str::contains("netfox"))
             .stdout(predicate::str::contains("foxssake/netfox"));
     }
 
