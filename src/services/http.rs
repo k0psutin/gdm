@@ -1,8 +1,5 @@
-use std::collections::HashMap;
-
 use anyhow::{Result, bail};
 use reqwest::Response;
-use serde_json::Value;
 use tracing::{error, info};
 use url::Url;
 
@@ -24,31 +21,7 @@ impl Default for DefaultHttpService {
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
 impl HttpService for DefaultHttpService {
-    async fn get(&self, url: String, params: HashMap<String, String>) -> Result<Value> {
-        let _url = Url::parse_with_params(&url, params)?;
-        match reqwest::get(_url.as_str()).await {
-            Ok(response) => {
-                let status = response.status();
-                info!("[GET] {} [{}]", _url, status.as_u16());
-
-                if !status.is_success() {
-                    bail!(status);
-                }
-
-                let data = response.json().await?;
-                Ok(data)
-            }
-            Err(e) => {
-                match e.status() {
-                    Some(status) => error!("[GET] {} [{}] - Error: {}", _url, status, e),
-                    None => error!("[GET] {} - Error: {}", _url, e),
-                }
-                bail!("Failed to fetch data: {}", e)
-            }
-        }
-    }
-
-    async fn get_file(&self, url: String) -> Result<Response> {
+    async fn get(&self, url: String) -> Result<Response> {
         let _url = Url::parse(&url)?;
 
         match reqwest::get(_url.as_str()).await {
@@ -67,7 +40,7 @@ impl HttpService for DefaultHttpService {
                     Some(status) => error!("[GET] {} [{}] - Error: {}", _url, status, e),
                     None => error!("[GET] {} - Error: {}", _url, e),
                 }
-                bail!("Failed to fetch file: {}", e)
+                bail!("Failed to fetch: {}", e)
             }
         }
     }
@@ -75,7 +48,5 @@ impl HttpService for DefaultHttpService {
 
 #[async_trait::async_trait]
 pub trait HttpService: Send + Sync {
-    async fn get(&self, url: String, params: HashMap<String, String>) -> Result<Value>;
-
-    async fn get_file(&self, url: String) -> Result<Response>;
+    async fn get(&self, url: String) -> Result<Response>;
 }

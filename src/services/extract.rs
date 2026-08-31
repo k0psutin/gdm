@@ -6,7 +6,7 @@ use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 
-use crate::api::Asset;
+use crate::models::Asset;
 use crate::services::{DefaultFileService, FileService};
 
 pub struct DefaultExtractService {
@@ -140,15 +140,18 @@ impl ExtractService for DefaultExtractService {
         pb_task: ProgressBar,
     ) -> Result<PathBuf> {
         // Create addons subdirectory in staging
+        self.file_service.remove_dir_all(staging_dir)?;
         let staging_addons_dir = staging_dir.join("addons");
         self.file_service.create_directory(&staging_addons_dir)?;
 
+        let file_path = asset.file_path.clone();
+
         // Extract directly to staging/addons/
-        self.extract_zip_file(&asset.file_path, &staging_addons_dir, pb_task)
+        self.extract_zip_file(&file_path, &staging_addons_dir, pb_task)
             .await?;
 
         // Clean up the zip file
-        self.file_service.remove_file(&asset.file_path)?;
+        self.file_service.remove_file(&file_path)?;
 
         Ok(staging_dir.to_path_buf())
     }
@@ -176,23 +179,17 @@ pub trait ExtractService: Send + Sync + 'static {
 #[cfg(test)]
 mod tests {
     fn make_mock_asset<P: Into<std::path::PathBuf>>(zip_path: P, title: &str) -> Asset {
-        use crate::api::AssetResponse;
         Asset {
             file_path: zip_path.into(),
-            asset_response: AssetResponse {
-                asset_id: "test_id".to_string(),
-                title: title.to_string(),
-                version: "17".to_string(),
-                version_string: "1.0.0".to_string(),
-                godot_version: "4.0".to_string(),
-                rating: "5".to_string(),
-                cost: "Free".to_string(),
-                description: "Test plugin asset".to_string(),
-                download_provider: "local".to_string(),
-                download_commit: "".to_string(),
-                modify_date: "2023-01-01".to_string(),
-                download_url: "".to_string(),
-            },
+            asset_slug: "test_asset_slug".to_string(),
+            publisher_slug: "test_publisher_slug".to_string(),
+            title: title.to_string(),
+            version: "17".to_string(),
+            license: "MIT".to_string(),
+            size: 100.0,
+            score: 3,
+            description: "Test plugin asset".to_string(),
+            download_url: "".to_string(),
         }
     }
     use crate::services::MockDefaultFileService;
@@ -373,6 +370,12 @@ mod tests {
     async fn test_extract_asset_to_staging_creates_addons_dir() {
         // Test that the real implementation creates staging/addons directory
         let mut mock_file_service = MockDefaultFileService::new();
+
+        mock_file_service
+            .expect_remove_dir_all()
+            .times(1)
+            .withf(|p: &Path| p == Path::new("staging_test"))
+            .returning(|_: &Path| Ok(()));
 
         mock_file_service
             .expect_create_directory()

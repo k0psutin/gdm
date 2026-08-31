@@ -44,7 +44,19 @@ impl GitService for DefaultGitService {
         let addon_folder = self.app_config.get_addon_folder_path();
 
         let url = gix::url::parse(repo_url.into())?;
-        let repo_name = url.path.to_path().unwrap().file_stem().unwrap();
+        let repo_path = url
+            .path
+            .to_path()
+            .context("Git URL does not contain a valid repository path")?;
+        let repo_name = repo_path
+            .file_name()
+            .context("Git URL does not contain a repository name")?
+            .to_str()
+            .context("Git repository name is not valid UTF-8")?;
+        let repo_name = repo_name.strip_suffix(".git").unwrap_or(repo_name);
+        if repo_name.is_empty() {
+            bail!("Git URL does not contain a repository name");
+        }
         let dst = cache_folder.join(repo_name);
 
         if dst.exists() {
@@ -80,7 +92,10 @@ impl GitService for DefaultGitService {
         let tree = commit.tree()?;
         let dst_addons_path = dst.join("addons");
         let mut file_count = 0;
-        if let Some(addons_entry) = tree.find_entry(addon_folder.to_str().unwrap()) {
+        let addon_folder = addon_folder
+            .to_str()
+            .context("Configured addon folder is not valid UTF-8")?;
+        if let Some(addons_entry) = tree.find_entry(addon_folder) {
             let addons_tree = repo.find_object(addons_entry.oid())?.into_tree();
             self.extract_tree(&repo, &addons_tree, &dst_addons_path, &mut file_count)?;
         } else {
@@ -127,11 +142,47 @@ impl GitService for DefaultGitService {
     /// Extracts the repository name from the cache path.
     /// Assumes the path structure is `.../cache_folder/repo_name`.
     fn extract_repo_name_from_src(&self, src: &Path) -> Result<String> {
-        src.iter()
-            .nth(1)
-            .context("No main plugin folder found in path")?
+        let repo_name = src
+            .file_name()
+            .context("No repository name found in path")?
             .to_str()
-            .map(|s| s.to_string())
-            .context("Failed to convert main plugin folder to string")
+            .context("Failed to convert repository name to string")?;
+        let repo_name = repo_name.strip_suffix(".git").unwrap_or(repo_name);
+        if repo_name.is_empty() {
+            bail!("No repository name found in path");
+        }
+        Ok(repo_name.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_repo_name_from_src_uses_last_path_component() {
+        let service = DefaultGitService::default();
+
+        let result = service.extract_repo_name_from_src(Path::new("/tmp/cache/my-plugin"));
+
+        assert_eq!(result.unwrap(), "my-plugin");
+    }
+
+    #[test]
+    fn test_extract_repo_name_from_src_strips_git_suffix() {
+        let service = DefaultGitService::default();
+
+        let result = service.extract_repo_name_from_src(Path::new("/tmp/cache/my-plugin.git"));
+
+        assert_eq!(result.unwrap(), "my-plugin");
+    }
+
+    #[test]
+    fn test_extract_repo_name_from_src_rejects_path_without_file_name() {
+        let service = DefaultGitService::default();
+
+        let result = service.extract_repo_name_from_src(Path::new("/"));
+
+        assert!(result.is_err());
     }
 }

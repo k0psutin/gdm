@@ -1,0 +1,17 @@
+[dependencies.gut]
+title = "GUT - Godot Unit Testing (Godot 4)"
+version = "9.1.0"
+sub_assets = []
+
+[dependencies.gut.source]
+publisher_slug = "bitwes"
+asset_slug = "gut"
+
+[dependencies."interactive-grid"]
+title = "Interactive Grid GDExtension"
+version = "1.2.0"
+sub_assets = []
+
+[dependencies."interactive-grid".source]
+publisher_slug = "unknown"
+asset_slug = "interactive-grid"

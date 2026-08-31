@@ -1,16 +1,19 @@
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }
 
+[workspace]
+members = ["crates/asset-store-client"]
+
 [package]
 name = "gdm"
 version = "1.2.2"
 edition = "2024"
 description = "A CLI tool to manage Godot addons"
-authors = ["Jani Koponen"]
 rust-version = "1.94.0"
 
 [dependencies]
 anyhow = "1.0.102"
+asset-store-client = { path = "crates/asset-store-client" }
 async-trait = "0.1.89"
 bytes = "1.11.1"
 clap = { version = "4.6.1", features = ["derive", "error-context", "help", "std", "usage"], default-features = false }
@@ -24,9 +27,8 @@ reqwest = { version = "0.13.2", features = ["json"], default-features = false }
 semver = "1.0.28"
 serde = { version = "1.0.228", default-features = false }
 serde_derive = { version = "1.0.228", default-features = false }
-serde_json = "1.0.149"
-strsim = "0.11.1"
 tokio = { version = "1.52.1", default-features = false, features = ["fs", "macros", "rt", "net", "rt-multi-thread"] }
+toml = { version = "1.1.4", features = ["display", "parse", "serde"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23",  default-features = false, features = ["env-filter", "std", "fmt"] }
 url = "2.5.8"

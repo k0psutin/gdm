@@ -11,12 +11,7 @@ pub fn setup_test_dir() -> TempDir {
 
 pub fn get_cmd(temp_dir: &TempDir) -> Command {
     let mut cmd = cargo::cargo_bin_cmd!(pkg_name!());
-    cmd.env("API_BASE_URL", "https://godotengine.org/asset-library/api")
-        .env("CONFIG_FILE_PATH", temp_dir.child("gdm.json"))
-        .env("CACHE_FOLDER_PATH", temp_dir.child(".gdm"))
-        .env("GODOT_PROJECT_FILE_PATH", temp_dir.child("project.godot"))
-        .env("ADDON_FOLDER_PATH", temp_dir.child("addons"))
-        .current_dir(temp_dir);
+    cmd.current_dir(temp_dir);
     cmd
 }
 
@@ -24,12 +19,7 @@ pub fn get_bin() -> (Command, TempDir) {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let mut cmd = cargo::cargo_bin_cmd!(pkg_name!());
 
-    cmd.env("API_BASE_URL", "https://godotengine.org/asset-library/api")
-        .env("CONFIG_FILE_PATH", temp_dir.child("gdm.json"))
-        .env("CACHE_FOLDER_PATH", temp_dir.child(".gdm"))
-        .env("GODOT_PROJECT_FILE_PATH", temp_dir.child("project.godot"))
-        .env("ADDON_FOLDER_PATH", temp_dir.child("addons"))
-        .current_dir(&temp_dir);
+    cmd.current_dir(&temp_dir);
 
     (cmd, temp_dir)
 }
@@ -45,9 +35,9 @@ pub fn create_project_godot(dir: &TempDir, content: &str) {
     fs::write(project_path, content).expect("Failed to write project.godot");
 }
 
-pub fn create_gdm_json(dir: &TempDir, content: &str) {
-    let gdm_path = dir.child("gdm.json");
-    fs::write(gdm_path, content).expect("Failed to write gdm.json");
+pub fn create_gdm_toml(dir: &TempDir, content: &str) {
+    let gdm_path = dir.child("gdm.toml");
+    fs::write(gdm_path, content).expect("Failed to write gdm.toml");
 }
 
 pub const MINIMAL_PROJECT_GODOT: &str = r#"
@@ -67,21 +57,63 @@ config/name="Test Project"
 config/features=PackedStringArray("4.6")
 "#;
 
-pub const EMPTY_GDM_JSON: &str = r#"{
-  "plugins": {}
-}"#;
+pub const EMPTY_GDM_TOML: &str = "[dependencies]\n";
 
-pub const GDM_JSON_WITH_ONE_PLUGIN: &str = r#"{
-  "plugins": {
-    "gut": {
-      "source": {
-        "asset_id": "1709"
-      },
-      "plugin_cfg_path": "addons/gut/plugin.cfg",
-      "title": "GUT - Godot Unit Testing (Godot 4)",
-      "version": "9.6.0",
-      "license": "MIT",
-      "sub_assets": []
-    }
-  }
-}"#;
+pub const GDM_TOML_WITH_ONE_DEPENDENCY: &str = r#"[dependencies.licenses]
+plugin_cfg_path = "addons/licenses/plugin.cfg"
+title = "License Manager"
+version = "1.11.2"
+license = "MIT"
+sub_assets = []
+
+[dependencies.licenses.source]
+publisher_slug = "kenyoni"
+asset_slug = "license-manager"
+"#;
+
+pub const GDM_TOML_WITH_LICENSE_MANAGER_OLD: &str = r#"[dependencies.licenses]
+plugin_cfg_path = "addons/licenses/plugin.cfg"
+title = "License Manager"
+version = "1.9.2"
+license = "MIT"
+sub_assets = []
+
+[dependencies.licenses.source]
+publisher_slug = "kenyoni"
+asset_slug = "license-manager"
+"#;
+
+pub const GDM_TOML_WITH_NETFOX_OVERLAP: &str = r#"[dependencies.netfox]
+plugin_cfg_path = "addons/netfox/plugin.cfg"
+title = "netfox"
+version = "v1.35.3"
+sub_assets = ["netfox.internals"]
+license = "MIT"
+
+[dependencies.netfox.source]
+publisher_slug = "foxssake"
+asset_slug = "netfox"
+
+[dependencies."netfox.extras"]
+plugin_cfg_path = "addons/netfox.extras/plugin.cfg"
+title = "netfox.extras"
+version = "v1.35.3"
+sub_assets = ["netfox.internals", "netfox"]
+license = "MIT"
+
+[dependencies."netfox.extras".source]
+publisher_slug = "foxssake"
+asset_slug = "netfox-extras"
+"#;
+
+pub const PROJECT_GODOT_WITH_NETFOX_PLUGINS: &str = r#"
+config_version=5
+
+[application]
+
+config/name="Test Project"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/netfox/plugin.cfg", "res://addons/netfox.extras/plugin.cfg")
+"#;

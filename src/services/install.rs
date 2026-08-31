@@ -1,12 +1,12 @@
 use anyhow::{Result, bail};
 use async_trait::async_trait;
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::collections::{BTreeMap, HashSet};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use tracing::debug;
 
 use crate::config::{AppConfig, DefaultAppConfig};
-use crate::installers::{AssetLibraryInstaller, GitInstaller, PluginInstaller};
+use crate::installers::{AssetStoreInstaller, GitInstaller, PluginInstaller};
 use crate::models::{Plugin, PluginSource};
 use crate::services::{DefaultFileService, FileService, PluginParser};
 use crate::ui::OperationManager;
@@ -25,7 +25,7 @@ impl Default for DefaultInstallService {
         let file_service = Arc::new(DefaultFileService);
         let app_config = Box::new(DefaultAppConfig::default());
         let parser = Arc::new(PluginParser::new(file_service.clone()));
-        let asset_installer = AssetLibraryInstaller::default();
+        let asset_installer = AssetStoreInstaller::default();
         let git_installer = GitInstaller::default();
         let installers: Vec<Box<dyn PluginInstaller>> =
             vec![Box::new(asset_installer), Box::new(git_installer)];
@@ -49,6 +49,20 @@ impl DefaultInstallService {
     }
 }
 
+fn validate_addon_folder(folder: &Path) -> Result<()> {
+    let folder_name = folder.to_string_lossy();
+    if folder_name.is_empty()
+        || folder_name.contains(['/', '\\'])
+        || folder.is_absolute()
+        || folder.components().count() != 1
+        || !matches!(folder.components().next(), Some(Component::Normal(_)))
+    {
+        bail!("Invalid addon folder name: {folder_name}");
+    }
+
+    Ok(())
+}
+
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 impl InstallService for DefaultInstallService {
@@ -64,7 +78,7 @@ impl InstallService for DefaultInstallService {
             bail!("No 'addons' directory found at: {}", cache_dir.display());
         }
 
-        let addon_folders: Vec<PathBuf> = self
+        let mut addon_folders: Vec<PathBuf> = self
             .file_service
             .read_dir(&addons_dir)?
             .filter_map(|entry| {
@@ -79,6 +93,7 @@ impl InstallService for DefaultInstallService {
                 })
             })
             .collect();
+        addon_folders.sort();
 
         if addon_folders.is_empty() {
             bail!("No folders found inside {}/addons", cache_dir.display());
@@ -96,12 +111,12 @@ impl InstallService for DefaultInstallService {
 
         let plugin = self.parser.enrich_with_sub_assets(
             &best_main_plugin,
-            &parsed_plugins,
+            Path::new(&main_plugin_folder),
             &addon_folders,
         )?;
 
         debug!(
-            "Discovered main plugin '{}' with {} sub-assets (plugin.cfg: {})",
+            "Discovered main dependency '{}' with {} sub-assets (plugin.cfg: {})",
             plugin.title,
             plugin.sub_assets.len(),
             if plugin.plugin_cfg_path.is_some() {
@@ -122,6 +137,22 @@ impl InstallService for DefaultInstallService {
         let project_addons_dir = self.app_config.get_addon_folder_path();
         let staging_addons_dir = cache_dir.join("addons");
         let mut installed_paths = Vec::new();
+        let mut folders = HashSet::new();
+
+        for folder in addon_folders {
+            validate_addon_folder(folder)?;
+            if !folders.insert(folder) {
+                bail!(
+                    "Duplicate addon folder in installation: {}",
+                    folder.display()
+                );
+            }
+
+            let src = staging_addons_dir.join(folder);
+            if !self.file_service.directory_exists(&src) {
+                bail!("Staged addon folder does not exist: {}", src.display());
+            }
+        }
 
         for folder in addon_folders {
             let src = staging_addons_dir.join(folder);
@@ -166,7 +197,7 @@ impl InstallService for DefaultInstallService {
             let installer = self
                 .installers
                 .iter()
-                .find(|inst| inst.can_handle(plugin.source.clone()));
+                .find(|inst| inst.can_handle(&plugin.source));
 
             if let Some(installer) = installer {
                 let future =
@@ -175,9 +206,20 @@ impl InstallService for DefaultInstallService {
             }
         }
 
-        let results = futures::future::try_join_all(installed_plugins).await?;
-
-        self.cleanup_cache()?;
+        let results = match futures::future::try_join_all(installed_plugins).await {
+            Ok(results) => {
+                self.cleanup_cache()?;
+                results
+            }
+            Err(install_error) => {
+                if let Err(cleanup_error) = self.cleanup_cache() {
+                    tracing::error!(
+                        "Failed to clean up cache after installation error: {cleanup_error:#}"
+                    );
+                }
+                return Err(install_error);
+            }
+        };
 
         let installed_plugins: BTreeMap<String, Plugin> = results.into_iter().collect();
 
@@ -250,7 +292,7 @@ mod tests {
 
     #[async_trait]
     impl PluginInstaller for MockPluginInstaller {
-        fn can_handle(&self, _source: Option<PluginSource>) -> bool {
+        fn can_handle(&self, _source: &PluginSource) -> bool {
             self.can_handle_result
         }
 
@@ -282,7 +324,7 @@ mod tests {
         }
     }
 
-    fn create_test_plugin(title: &str, version: &str, source: Option<PluginSource>) -> Plugin {
+    fn create_test_plugin(title: &str, version: &str, source: PluginSource) -> Plugin {
         Plugin {
             source,
             plugin_cfg_path: Some(format!("addons/{}/plugin.cfg", title)),
@@ -295,6 +337,8 @@ mod tests {
 
     mod discover_and_analyze_plugins_tests {
         use super::*;
+        use crate::services::{DefaultExtractService, ExtractService};
+        use indicatif::ProgressBar;
 
         #[test]
         fn test_discover_fails_when_no_addons_directory() {
@@ -318,8 +362,9 @@ mod tests {
                 vec![],
             );
 
-            let source = PluginSource::AssetLibrary {
-                asset_id: "123".to_string(),
+            let source = PluginSource::AssetStore {
+                asset_slug: "123".to_string(),
+                publisher_slug: "321".to_string(),
             };
 
             let result = service.discover_and_analyze_plugins(&source, &cache_dir, "test-plugin");
@@ -369,8 +414,9 @@ mod tests {
                 vec![],
             );
 
-            let source = PluginSource::AssetLibrary {
-                asset_id: "123".to_string(),
+            let source = PluginSource::AssetStore {
+                asset_slug: "123".to_string(),
+                publisher_slug: "321".to_string(),
             };
 
             let result = service.discover_and_analyze_plugins(&source, &cache_dir, "test-plugin");
@@ -384,15 +430,164 @@ mod tests {
             );
         }
 
-        #[test]
-        fn test_discover_succeeds_with_valid_addon_structure() {
-            // This test would need a more complex setup with actual file system or
-            // a more sophisticated mocking strategy. For now, documenting the expected behavior:
-            // 1. Cache dir exists with addons/ subdirectory
-            // 2. Addons directory contains plugin folders
-            // 3. Parser can create plugins from those folders
-            // 4. Best match is determined based on plugin name
-            // 5. Plugin is enriched with sub-assets
+        #[tokio::test]
+        async fn test_discover_preserves_main_folder_and_sub_assets_from_fixture() {
+            let temp_dir = temp_dir::TempDir::new().unwrap();
+            let cache_dir = temp_dir.path().join("cache");
+            let extract = DefaultExtractService::default();
+            extract
+                .extract_zip_file(
+                    Path::new("tests/mocks/zip_files/test_with_addons_folder_with_subaddons.zip"),
+                    &cache_dir.join("addons"),
+                    ProgressBar::hidden(),
+                )
+                .await
+                .unwrap();
+
+            let service = DefaultInstallService::new(
+                Arc::new(DefaultFileService),
+                Box::new(MockDefaultAppConfig::new()),
+                Arc::new(PluginParser::default()),
+                vec![],
+            );
+            let source = PluginSource::AssetStore {
+                asset_slug: "another-plugin".to_string(),
+                publisher_slug: "publisher".to_string(),
+            };
+
+            let (main_folder, plugin, addon_folders) = service
+                .discover_and_analyze_plugins(&source, &cache_dir, "another-plugin")
+                .unwrap();
+
+            assert_eq!(main_folder, "another_plugin");
+            assert_eq!(
+                plugin.plugin_cfg_path,
+                Some("addons/another_plugin/plugin.cfg".to_string())
+            );
+            assert_eq!(plugin.sub_assets, vec!["some_plugin"]);
+            assert!(addon_folders.contains(&PathBuf::from("another_plugin")));
+            assert!(addon_folders.contains(&PathBuf::from("some_plugin")));
+        }
+
+        #[tokio::test]
+        async fn test_discover_preserves_mock_fixture_folder_names_and_dependencies() {
+            let fixtures: &[(&str, &str, &str, &[&str])] = &[
+                (
+                    "tests/mocks/zip_files/test_basic_addon.zip",
+                    "basic-addon",
+                    "basic_addon",
+                    &["shared_internals"],
+                ),
+                (
+                    "tests/mocks/zip_files/test_extra_addon.zip",
+                    "extra-addon",
+                    "extra.addon",
+                    &["basic_addon", "shared_internals"],
+                ),
+            ];
+
+            for &(archive_path, asset_slug, expected_main_folder, expected_sub_assets) in fixtures {
+                let temp_dir = temp_dir::TempDir::new().unwrap();
+                let cache_dir = temp_dir.path().join("cache");
+                DefaultExtractService::default()
+                    .extract_zip_file(
+                        Path::new(archive_path),
+                        &cache_dir.join("addons"),
+                        ProgressBar::hidden(),
+                    )
+                    .await
+                    .unwrap();
+
+                let service = DefaultInstallService::new(
+                    Arc::new(DefaultFileService),
+                    Box::new(MockDefaultAppConfig::new()),
+                    Arc::new(PluginParser::default()),
+                    vec![],
+                );
+                let source = PluginSource::AssetStore {
+                    asset_slug: asset_slug.to_string(),
+                    publisher_slug: "mock-publisher".to_string(),
+                };
+
+                let (main_folder, plugin, _) = service
+                    .discover_and_analyze_plugins(&source, &cache_dir, asset_slug)
+                    .unwrap();
+
+                assert_eq!(main_folder, expected_main_folder);
+                assert_eq!(
+                    plugin.sub_assets,
+                    expected_sub_assets
+                        .iter()
+                        .map(|asset| asset.to_string())
+                        .collect::<Vec<_>>()
+                );
+                assert_eq!(
+                    plugin.plugin_cfg_path,
+                    Some(format!("addons/{expected_main_folder}/plugin.cfg"))
+                );
+            }
+        }
+
+        #[tokio::test]
+        async fn test_installing_mock_addons_preserves_overlapping_addon_folders() {
+            let temp_dir = temp_dir::TempDir::new().unwrap();
+            let project_addons = temp_dir.path().join("project/addons");
+            let app_config = DefaultAppConfig::new(
+                None,
+                None,
+                None,
+                Some(project_addons.to_string_lossy().to_string()),
+            );
+            let service = DefaultInstallService::new(
+                Arc::new(DefaultFileService),
+                Box::new(app_config),
+                Arc::new(PluginParser::default()),
+                vec![],
+            );
+
+            for (asset_slug, expected_main_folder) in [
+                ("basic-addon", "basic_addon"),
+                ("extra-addon", "extra.addon"),
+            ] {
+                let cache_dir = temp_dir.path().join(format!("cache-{asset_slug}"));
+                DefaultExtractService::default()
+                    .extract_zip_file(
+                        Path::new(if asset_slug == "basic-addon" {
+                            "tests/mocks/zip_files/test_basic_addon.zip"
+                        } else {
+                            "tests/mocks/zip_files/test_extra_addon.zip"
+                        }),
+                        &cache_dir.join("addons"),
+                        ProgressBar::hidden(),
+                    )
+                    .await
+                    .unwrap();
+
+                let source = PluginSource::AssetStore {
+                    asset_slug: asset_slug.to_string(),
+                    publisher_slug: "mock-publisher".to_string(),
+                };
+                let (main_folder, plugin, folders) = service
+                    .discover_and_analyze_plugins(&source, &cache_dir, asset_slug)
+                    .unwrap();
+
+                assert_eq!(main_folder, expected_main_folder);
+                service.install_from_cache(&cache_dir, &folders).unwrap();
+                assert_eq!(
+                    plugin.plugin_cfg_path,
+                    Some(format!("addons/{expected_main_folder}/plugin.cfg"))
+                );
+            }
+
+            for folder in ["basic_addon", "extra.addon", "shared_internals"] {
+                let plugin_cfg = project_addons.join(folder).join("plugin.cfg");
+                assert!(plugin_cfg.is_file(), "missing {folder}/plugin.cfg");
+                assert!(
+                    std::fs::read_to_string(plugin_cfg)
+                        .unwrap()
+                        .contains("[plugin]")
+                );
+            }
         }
     }
 
@@ -419,6 +614,12 @@ mod tests {
             let src = staging_addons.join(&addon_folder);
             let dest = project_addons.join(&addon_folder);
             let parent = dest.parent().unwrap().to_path_buf();
+
+            mock_file_service
+                .expect_directory_exists()
+                .with(mockall::predicate::eq(src.clone()))
+                .times(1)
+                .returning(|_| true);
 
             // Destination doesn't exist
             mock_file_service
@@ -486,6 +687,12 @@ mod tests {
             let dest = project_addons.join(&addon_folder);
             let parent = dest.parent().unwrap().to_path_buf();
 
+            mock_file_service
+                .expect_directory_exists()
+                .with(mockall::predicate::eq(src.clone()))
+                .times(1)
+                .returning(|_| true);
+
             // Destination exists - should be removed
             mock_file_service
                 .expect_directory_exists()
@@ -551,6 +758,12 @@ mod tests {
 
             mock_file_service
                 .expect_directory_exists()
+                .with(mockall::predicate::eq(src.clone()))
+                .times(1)
+                .returning(|_| true);
+
+            mock_file_service
+                .expect_directory_exists()
                 .with(mockall::predicate::eq(dest.clone()))
                 .times(1)
                 .returning(|_| false);
@@ -608,6 +821,12 @@ mod tests {
                 let src = staging_addons.join(addon_folder);
                 let dest = project_addons.join(addon_folder);
                 let parent = dest.parent().unwrap().to_path_buf();
+
+                mock_file_service
+                    .expect_directory_exists()
+                    .with(mockall::predicate::eq(src.clone()))
+                    .times(1)
+                    .returning(|_| true);
 
                 mock_file_service
                     .expect_directory_exists()
@@ -671,6 +890,40 @@ mod tests {
             assert!(result.is_ok());
             let installed = result.unwrap();
             assert_eq!(installed.len(), 0);
+        }
+
+        #[test]
+        fn test_install_from_cache_rejects_duplicate_folders_before_moving_anything() {
+            let temp_dir = temp_dir::TempDir::new().unwrap();
+            let cache_dir = temp_dir.path().join("cache");
+            let staging_folder = cache_dir.join("addons/safe");
+            let project_addons = temp_dir.path().join("project/addons");
+            std::fs::create_dir_all(&staging_folder).unwrap();
+
+            let app_config = DefaultAppConfig::new(
+                None,
+                None,
+                None,
+                Some(project_addons.to_string_lossy().to_string()),
+            );
+            let service = DefaultInstallService::new(
+                Arc::new(DefaultFileService),
+                Box::new(app_config),
+                Arc::new(PluginParser::default()),
+                vec![],
+            );
+
+            let result = service
+                .install_from_cache(&cache_dir, &[PathBuf::from("safe"), PathBuf::from("safe")]);
+
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("Duplicate addon folder")
+            );
+            assert!(staging_folder.exists());
+            assert!(!project_addons.join("safe").exists());
         }
     }
 
@@ -842,9 +1095,10 @@ mod tests {
             let plugin = create_test_plugin(
                 "test-plugin",
                 "1.0.0",
-                Some(PluginSource::AssetLibrary {
-                    asset_id: "123".to_string(),
-                }),
+                PluginSource::AssetStore {
+                    asset_slug: "123".to_string(),
+                    publisher_slug: "123_publisher".to_string(),
+                },
             );
 
             let operation_manager =
@@ -869,16 +1123,23 @@ mod tests {
             mock_file_service
                 .expect_directory_exists()
                 .with(mockall::predicate::eq(cache_dir.clone()))
-                .returning(|_| false);
+                .returning(|_| true);
+
+            mock_file_service
+                .expect_remove_dir_all()
+                .with(mockall::predicate::eq(cache_dir.clone()))
+                .times(1)
+                .returning(|_| Ok(()));
 
             let parser = Arc::new(PluginParser::new(Arc::new(MockDefaultFileService::new())));
 
             let plugin = create_test_plugin(
                 "test-plugin",
                 "1.0.0",
-                Some(PluginSource::AssetLibrary {
-                    asset_id: "123".to_string(),
-                }),
+                PluginSource::AssetStore {
+                    asset_slug: "123".to_string(),
+                    publisher_slug: "123_publisher".to_string(),
+                },
             );
 
             let mock_installer = MockPluginInstaller::new(true).with_plugin(plugin.clone());
@@ -913,23 +1174,31 @@ mod tests {
             mock_file_service
                 .expect_directory_exists()
                 .with(mockall::predicate::eq(cache_dir.clone()))
-                .returning(|_| false);
+                .returning(|_| true);
+
+            mock_file_service
+                .expect_remove_dir_all()
+                .with(mockall::predicate::eq(cache_dir.clone()))
+                .times(1)
+                .returning(|_| Ok(()));
 
             let parser = Arc::new(PluginParser::new(Arc::new(MockDefaultFileService::new())));
 
             let plugin1 = create_test_plugin(
                 "plugin1",
                 "1.0.0",
-                Some(PluginSource::AssetLibrary {
-                    asset_id: "123".to_string(),
-                }),
+                PluginSource::AssetStore {
+                    asset_slug: "123".to_string(),
+                    publisher_slug: "123_publisher".to_string(),
+                },
             );
             let plugin2 = create_test_plugin(
                 "plugin2",
                 "2.0.0",
-                Some(PluginSource::AssetLibrary {
-                    asset_id: "456".to_string(),
-                }),
+                PluginSource::AssetStore {
+                    asset_slug: "456".to_string(),
+                    publisher_slug: "456_publisher".to_string(),
+                },
             );
 
             // Mock installer handles both plugins
@@ -971,7 +1240,13 @@ mod tests {
             mock_file_service
                 .expect_directory_exists()
                 .with(mockall::predicate::eq(cache_dir.clone()))
-                .returning(|_| false);
+                .returning(|_| true);
+
+            mock_file_service
+                .expect_remove_dir_all()
+                .with(mockall::predicate::eq(cache_dir.clone()))
+                .times(1)
+                .returning(|_| Err(anyhow!("cleanup failed")));
 
             let parser = Arc::new(PluginParser::new(Arc::new(MockDefaultFileService::new())));
 
@@ -987,9 +1262,10 @@ mod tests {
             let plugin = create_test_plugin(
                 "test-plugin",
                 "1.0.0",
-                Some(PluginSource::AssetLibrary {
-                    asset_id: "123".to_string(),
-                }),
+                PluginSource::AssetStore {
+                    asset_slug: "123".to_string(),
+                    publisher_slug: "123_publisher".to_string(),
+                },
             );
 
             let operation_manager =
@@ -1036,9 +1312,10 @@ mod tests {
             let plugin = create_test_plugin(
                 "test-plugin",
                 "1.0.0",
-                Some(PluginSource::AssetLibrary {
-                    asset_id: "123".to_string(),
-                }),
+                PluginSource::AssetStore {
+                    asset_slug: "123".to_string(),
+                    publisher_slug: "123_publisher".to_string(),
+                },
             );
 
             let mock_installer = MockPluginInstaller::new(true).with_plugin(plugin.clone());
@@ -1077,10 +1354,12 @@ mod tests {
             let plugin = create_test_plugin(
                 "test-plugin",
                 "1.0.0",
-                Some(PluginSource::Git {
+                PluginSource::Git {
                     url: "https://github.com/test/plugin.git".to_string(),
                     reference: "main".to_string(),
-                }),
+                    publisher_slug: "test".to_string(),
+                    asset_slug: "plugin".to_string(),
+                },
             );
 
             let mock_installer = MockPluginInstaller::new(true).with_plugin(plugin.clone());

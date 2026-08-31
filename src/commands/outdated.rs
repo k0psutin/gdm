@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::Args;
 
 #[derive(Args)]
-#[command(about = "Show outdated plugins")]
+#[command(about = "Show outdated dependencies")]
 pub struct OutdatedArgs {}
 
 pub async fn handle() -> Result<()> {

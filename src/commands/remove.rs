@@ -5,15 +5,17 @@ use clap::Args;
 
 #[derive(Args)]
 #[command(
-    about = "Remove a plugin by name. Use the exact name as listed in the configuration file, e.g. \"gut\""
+    about = "Remove a dependency by name. Use exact name of the addon folder, e.g. \"gdUnit4\""
 )]
 pub struct RemoveArgs {
-    #[arg(help = "Name of the plugin to remove, e.g. \"gut\"")]
+    #[arg(help = "Name of the dependency to remove, e.g. \"gut\"")]
     name: String,
 }
 
 pub async fn handle(args: &RemoveArgs) -> Result<()> {
     let plugin_service = DefaultPluginService::default();
-    plugin_service.remove_plugin_by_name(&args.name).await?;
+    plugin_service
+        .remove_plugin_by_config_key(&args.name)
+        .await?;
     Ok(())
 }

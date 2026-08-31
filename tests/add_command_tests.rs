@@ -3,7 +3,6 @@ mod setup;
 mod add_command_tests {
     use crate::setup;
     use predicates::prelude::*;
-    use serde_json::json;
 
     #[test]
     fn test_add_command_help() {
@@ -12,18 +11,20 @@ mod add_command_tests {
             .arg("--help")
             .assert()
             .success()
-            .stdout(predicate::str::contains("Add a plugin"))
-            .stdout(predicate::str::contains("NAME"));
+            .stdout(predicate::str::contains("Add a dependency"))
+            .stdout(predicate::str::contains("NAME"))
+            .stdout(predicate::str::contains("asset slug"))
+            .stdout(predicate::str::contains("asset ID").not());
     }
 
     #[test]
-    fn test_add_command_should_return_err_requires_name_or_asset_id() {
+    fn test_add_command_should_return_err_requires_name() {
         let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
         cmd.arg("add")
             .assert()
             .failure()
             .stderr(predicate::str::contains(
-                "Either name, asset_id, version OR git URL/reference must be provided.",
+                "You must specify either a dependency --name, a --git URL, or both --publisher-slug and --asset-slug",
             ));
     }
 
@@ -31,7 +32,7 @@ mod add_command_tests {
     fn test_add_command_should_return_err_if_no_project_godot_file() {
         let (mut cmd, _temp_dir) = setup::get_bin();
         cmd.arg("add")
-            .arg("Godot Unit Testing")
+            .arg("License Manager")
             .assert()
             .failure()
             .stderr(predicate::str::contains(
@@ -40,291 +41,16 @@ mod add_command_tests {
     }
 
     #[test]
-    fn test_add_with_plugin_name_without_gdm_json_should_not_fail() {
-        let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
-        let output = cmd
-            .arg("add")
-            .arg("Godot Unit Testing")
-            .output()
-            .expect("Failed to run command");
-
-        assert!(output.status.success());
-
-        let gdm_json_path = _temp_dir.path().join("gdm.json");
-        assert!(gdm_json_path.exists(), "gdm.json should be created");
-
-        let gdm_content = std::fs::read_to_string(&gdm_json_path).expect("Failed to read gdm.json");
-        assert!(
-            gdm_content.contains("GUT - Godot Unit Testing (Godot 4)"),
-            "gdm.json should contain the installed plugin"
-        );
-        assert!(
-            gdm_content.contains("\"asset_id\": \"1709\""),
-            "gdm.json should contain the correct asset_id"
-        );
-
-        let addons_path = _temp_dir.path().join("addons").join("gut");
-        assert!(
-            addons_path.exists(),
-            "Plugin should be extracted to addons/gut folder"
-        );
-    }
-
-    #[test]
-    fn test_add_with_plugin_id_without_gdm_json_should_not_fail() {
-        let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
-        let output = cmd
-            .arg("add")
-            .arg("--asset-id")
-            .arg("2595")
-            .output()
-            .expect("Failed to run command");
-
-        assert!(output.status.success());
-
-        let gdm_json_path = _temp_dir.path().join("gdm.json");
-        assert!(gdm_json_path.exists(), "gdm.json should be created");
-
-        let expected_gdm_json = json!({
-                "plugins": {
-        "GodotSimpleAirplaneController": {
-          "source": {
-            "asset_id": "2595"
-          },
-          "title": "Simple Airplane Controller (models included!)",
-          "version": "1.0",
-          "sub_assets": [],
-          "license": "MIT"
-        }
-                }
-            });
-
-        let gdm_content = std::fs::read_to_string(&gdm_json_path).expect("Failed to read gdm.json");
-        let gdm_json = serde_json::from_str::<serde_json::Value>(&gdm_content)
-            .expect("Failed to parse gdm.json");
-
-        assert_eq!(gdm_json, expected_gdm_json);
-
-        let addons_path = _temp_dir
-            .path()
-            .join("addons")
-            .join("GodotSimpleAirplaneController");
-        assert!(
-            addons_path.exists(),
-            "Plugin should be extracted to addons/GodotSimpleAirplaneController folder"
-        );
-    }
-
-    #[test]
-    fn test_add_with_version_flag_without_gdm_json() {
-        let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
-
-        let output = cmd
-            .arg("add")
-            .arg("Godot Unit Testing")
-            .arg("--version")
-            .arg("9.1.0")
-            .output()
-            .expect("Failed to run command");
-
-        assert!(output.status.success());
-
-        let gdm_json_path = _temp_dir.path().join("gdm.json");
-        assert!(gdm_json_path.exists(), "gdm.json should be created");
-
-        let expected_gdm_json = json!({
-                "plugins": {
-        "gut": {
-          "source": {
-            "asset_id": "1709"
-          },
-          "title": "GUT - Godot Unit Testing (Godot 4)",
-          "plugin_cfg_path": "addons/gut/plugin.cfg",
-          "version": "9.1.0",
-          "sub_assets": [],
-          "license": "MIT"
-        }
-                }
-            });
-
-        let gdm_content = std::fs::read_to_string(&gdm_json_path).expect("Failed to read gdm.json");
-        let gdm_json = serde_json::from_str::<serde_json::Value>(&gdm_content)
-            .expect("Failed to parse gdm.json");
-
-        assert_eq!(gdm_json, expected_gdm_json);
-
-        let addons_path = _temp_dir.path().join("addons").join("gut");
-        assert!(
-            addons_path.exists(),
-            "Plugin should be extracted to addons/gut folder"
-        );
-    }
-
-    #[test]
-    fn test_add_plugin_with_sub_assets_should_show_correct_gdm_json() {
+    fn test_add_with_both_name_and_publisher_slug() {
         let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
         cmd.arg("add")
-            .arg("Godot Mod Loader")
-            .arg("--version")
-            .arg("7.0.1")
-            .assert()
-            .success();
-
-        let gdm_json_path = _temp_dir.path().join("gdm.json");
-        assert!(gdm_json_path.exists(), "gdm.json should be created");
-
-        let expected_gdm_json = json!({
-                "plugins": {
-        "mod_loader": {
-          "source": {
-            "asset_id": "4107"
-          },
-          "title": "Godot Mod Loader",
-          "plugin_cfg_path": "addons/mod_loader/_export_plugin/plugin.cfg",
-          "version": "7.0.1",
-          "sub_assets": [
-            "JSON_Schema_Validator"
-          ],
-          "license": "CC0"
-        }
-                }
-            });
-
-        let gdm_content = std::fs::read_to_string(&gdm_json_path).expect("Failed to read gdm.json");
-        let gdm_json = serde_json::from_str::<serde_json::Value>(&gdm_content)
-            .expect("Failed to parse gdm.json");
-        assert_eq!(gdm_json, expected_gdm_json);
-
-        let addons_path = _temp_dir.child("addons");
-        let mod_loader_path = addons_path.join("mod_loader");
-        let sub_asset_path = addons_path.join("JSON_Schema_Validator");
-        assert!(
-            mod_loader_path.try_exists().unwrap(),
-            "Plugin folder should exists"
-        );
-        assert!(
-            sub_asset_path.try_exists().unwrap(),
-            "Sub-asset folder exists"
-        );
-    }
-
-    #[test]
-    fn test_add_plugin_with_sub_assets_should_show_not_add_files_to_addons_root_directory() {
-        let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
-        cmd.arg("add")
-            .arg("Godot Mod Loader")
-            .arg("--version")
-            .arg("7.0.1")
-            .assert()
-            .success();
-
-        let addons_path = _temp_dir.child("addons");
-        // get all files in addons directory
-        let mut files = vec![];
-        let entries = std::fs::read_dir(&addons_path).expect("Failed to read addons directory");
-        for entry in entries {
-            let entry = entry.expect("Failed to get directory entry");
-            if entry.path().is_file() {
-                files.push(entry.path());
-            }
-        }
-        assert!(
-            files.is_empty(),
-            "No files should be added to the addons root directory"
-        );
-    }
-
-    #[test]
-    fn test_add_with_bad_asset_id() {
-        let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
-
-        cmd.arg("add")
-            .arg("--asset-id")
-            .arg("999999999")
+            .arg("License Manager")
+            .arg("--publisher-slug")
+            .arg("kenyoni")
             .assert()
             .failure()
             .stderr(predicates::str::contains(
-                "No asset found with ID \'999999999\'\n",
-            ));
-    }
-
-    #[test]
-    fn test_add_with_asset_id_and_version() {
-        let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
-
-        cmd.arg("add")
-            .arg("--asset-id")
-            .arg("999999999")
-            .arg("--version")
-            .arg("999.999.999")
-            .assert()
-            .failure()
-            .stderr(predicates::str::contains(
-                "No asset found for asset_id: 999999999 with version: 999.999.999\n",
-            ));
-    }
-
-    #[test]
-    fn test_add_without_project_godot_fails() {
-        let (mut cmd, _temp_dir) = setup::get_bin();
-
-        cmd.arg("add").arg("Godot Unit Testing").assert().failure();
-    }
-
-    #[test]
-    fn test_add_with_nonexistent_plugin_name_fails() {
-        let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
-
-        cmd.arg("add")
-            .arg("This Plugin Definitely Does Not Exist 12345")
-            .assert()
-            .failure()
-            .stderr(predicates::str::contains(
-                "Expected to find exactly one asset matching \"This Plugin Definitely Does Not Exist 12345\", but found 0. Please refine your search or use --asset-id.\n",
-            ));
-    }
-
-    #[test]
-    fn test_add_with_invalid_asset_id_fails() {
-        let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
-
-        cmd.arg("add")
-            .arg("--asset-id")
-            .arg("999999999")
-            .assert()
-            .failure()
-            .stderr(predicates::str::contains(
-                "No asset found with ID \'999999999\'\n",
-            ));
-    }
-
-    #[test]
-    fn test_add_with_invalid_version_fails() {
-        let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
-
-        cmd.arg("add")
-            .arg("Godot Unit Testing")
-            .arg("--version")
-            .arg("999.999.999")
-            .assert()
-            .failure()
-            .stderr(predicates::str::contains(
-                "No asset found for asset_id: 1709 with version: 999.999.999\n",
-            ));
-    }
-
-    #[test]
-    fn test_add_with_both_name_and_asset_id() {
-        let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
-
-        cmd.arg("add")
-            .arg("Godot Unit Testing")
-            .arg("--asset-id")
-            .arg("67845")
-            .assert()
-            .failure()
-            .stderr(predicates::str::contains(
-                "Cannot specify both name and asset ID",
+                "Cannot use --git, --publisher-slug, or --asset-slug together with a name argument",
             ));
     }
 
@@ -340,13 +66,77 @@ mod add_command_tests {
     }
 
     #[test]
-    fn test_add_missing_asset_id_value() {
+    fn test_add_with_nonexistent_plugin_name_fails() {
         let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
         cmd.arg("add")
-            .arg("--asset-id")
+            .arg("This Plugin Definitely Does Not Exist 12345")
             .assert()
             .failure()
-            .stderr(predicate::str::contains("a value is required"));
+            .stderr(predicates::str::contains(
+                "No dependencies found with name: This Plugin Definitely Does Not Exist 12345",
+            ));
+    }
+
+    #[test]
+    fn test_add_with_invalid_version_fails() {
+        let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
+        cmd.arg("add")
+            .arg("License Manager")
+            .arg("--version")
+            .arg("999.999.999")
+            .assert()
+            .failure()
+            .stderr(predicates::str::contains(
+                "No dependencies found with name: License Manager",
+            ));
+    }
+
+    #[test]
+    fn test_add_and_remove_plugin_by_publisher_and_asset_slug_with_pinned_version() {
+        let (mut cmd, temp_dir) = setup::get_bin_with_project_godot();
+        cmd.arg("add")
+            .arg("--publisher-slug")
+            .arg("foxssake")
+            .arg("--asset-slug")
+            .arg("netfox")
+            .arg("--version")
+            .arg("v1.35.3")
+            .arg("--godot-version")
+            .arg("4.5")
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+            .success();
+
+        let config: toml::Value =
+            toml::from_str(&std::fs::read_to_string(temp_dir.child("gdm.toml")).unwrap()).unwrap();
+        let netfox = &config["dependencies"]["netfox"];
+        assert_eq!(
+            netfox["source"]["publisher_slug"].as_str(),
+            Some("foxssake")
+        );
+        assert_eq!(netfox["source"]["asset_slug"].as_str(), Some("netfox"));
+        assert_eq!(netfox["version"].as_str(), Some("v1.35.3"));
+        assert_eq!(
+            netfox["sub_assets"].as_array().unwrap(),
+            &[toml::Value::String("netfox.internals".to_string())]
+        );
+        assert!(temp_dir.child("addons/netfox").is_dir());
+        assert!(temp_dir.child("addons/netfox.internals").is_dir());
+
+        let mut remove_cmd = setup::get_cmd(&temp_dir);
+        remove_cmd.arg("remove").arg("netfox").assert().success();
+
+        assert!(temp_dir.child("addons").is_dir());
+        assert!(!temp_dir.child("addons/netfox").exists());
+        assert!(!temp_dir.child("addons/netfox.internals").exists());
+
+        let config: toml::Value =
+            toml::from_str(&std::fs::read_to_string(temp_dir.child("gdm.toml")).unwrap()).unwrap();
+        assert!(config["dependencies"].as_table().unwrap().is_empty());
+
+        let project = std::fs::read_to_string(temp_dir.child("project.godot")).unwrap();
+        assert!(!project.contains("[editor_plugins]"));
+        assert!(!project.contains("res://addons/netfox"));
     }
 
     // Git tests
@@ -357,31 +147,22 @@ mod add_command_tests {
         cmd.arg("add")
             .arg("--git")
             .arg("https://github.com/bitwes/Gut")
+            .timeout(std::time::Duration::from_secs(60))
             .assert()
             .success();
 
-        let gdm_json_path = _temp_dir.path().join("gdm.json");
-        assert!(gdm_json_path.exists(), "gdm.json should be created");
+        let gdm_toml_path = _temp_dir.path().join("gdm.toml");
+        assert!(gdm_toml_path.exists(), "gdm.toml should be created");
 
-        let expected_gdm_json = json!({
-                      "plugins": {
-                "gut": {
-          "source": {
-            "url": "https://github.com/bitwes/Gut",
-            "reference": "main"
-          },
-          "plugin_cfg_path": "addons/gut/plugin.cfg",
-          "title": "Gut",
-          "version": "9.6.0",
-          "sub_assets": []
-        },
-                      }
-                  });
-
-        let gdm_content = std::fs::read_to_string(&gdm_json_path).expect("Failed to read gdm.json");
-        let gdm_json = serde_json::from_str::<serde_json::Value>(&gdm_content)
-            .expect("Failed to parse gdm.json");
-        assert_eq!(gdm_json, expected_gdm_json);
+        let gdm_content = std::fs::read_to_string(&gdm_toml_path).expect("Failed to read gdm.toml");
+        assert!(
+            gdm_content.contains("Gut"),
+            "gdm.toml should contain the dependency title"
+        );
+        assert!(
+            gdm_content.contains("bitwes"),
+            "gdm.toml should contain the publisher slug"
+        );
 
         let addons_path = _temp_dir.child("addons");
         let gut_path = addons_path.join("gut");

@@ -7,6 +7,7 @@
     "rust-analyzer.check.command": "clippy",
     "editor.defaultFormatter": "rust-lang.rust-analyzer",
     "editor.formatOnSave": true,
+    "coverage-gutters.coverageBaseDir": "**",
     "coverage-gutters.coverageFileNames": [
         "lcov.info",
         "cov.xml",

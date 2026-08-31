@@ -1,6 +1,5 @@
 #![forbid(unsafe_code)]
 
-mod api;
 mod commands;
 mod config;
 mod installers;
