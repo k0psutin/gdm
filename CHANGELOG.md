@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org).
 
+## [2.0.0] - 2026-08-31
+
+- **Breaking:** Replaced the `gdm.json` dependency manifest with `gdm.toml`. Existing `gdm.json` files are ignored; recreate each dependency with `gdm add` so it is resolved and installed through the new Asset Library API and recorded in the new manifest.
+- Added the `gdm list` command for inspecting manifest dependency keys, versions, and sources.
+- Improved Asset Library integration with the generated OpenAPI client.
+- Improved dependency discovery and installation for addons containing multiple folders.
+- Updated the minimum Rust version to `1.96.0` and refreshed dependencies.
+
 ## [1.2.2] - 2026-03-08
 - Maintenance release
   - Update dependencies:

@@ -1,7 +1,7 @@
 ![Version badge](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fk0psutin%2Fgdm%2Frefs%2Fheads%2Fmain%2FCargo.toml&query=%24.package.version&label=version)
 ![Coverage](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fgist.githubusercontent.com%2Fk0psutin%2F02a7627bd5ba7bdaaf0063e02cadcfde%2Fraw%2F7cf2de6525c551d8d68af57847fbb9713323a6a3%2Fgdm_coverage.json&query=%24.coverage&suffix=%25&label=coverage&color=green)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Rust Version](https://img.shields.io/badge/rust-1.94.0%2B-orange.svg)
+![Rust Version](https://img.shields.io/badge/rust-1.96.0%2B-orange.svg)
 
 # GD Manager (gdm)
 
@@ -12,6 +12,7 @@
 - [Quick Start](#quick-start)
 - [Features](#features)
 - [Supported Godot Versions](#supported-godot-versions)
+- [Dependency Manifest](#dependency-manifest)
 - [Installation](#installation)
 - [Usage](#usage)
   - [add](#add)
@@ -22,6 +23,7 @@
   - [search](#search)
   - [remove](#remove)
 - [Examples](#examples)
+- [Development](#development)
 - [Bug Reports and Issues](#bug-reports-and-issues)
 - [License](#license)
 
@@ -29,12 +31,11 @@
 
 1. Download `gdm` for your platform from the [releases page](https://github.com/k0psutin/gdm/releases)
 2. Place the binary in your PATH or project directory
-3. Navigate to your Godot project directory
+3. Navigate to a Godot project directory containing `project.godot`
 4. Search for a dependency: `gdm search "dialogue"`
 5. Add the dependency: `gdm add "Dialogue Manager"`
-6. Install: `gdm install`
 
-That's it! Your dependency is now installed and ready to use.
+`gdm add` records and installs the dependency immediately. Use `gdm install` later to install all dependencies recorded in an existing `gdm.toml`.
 
 ## Features
 
@@ -51,9 +52,12 @@ That's it! Your dependency is now installed and ready to use.
 
 ## Supported Godot Versions
 
-- 3.6.x
-- 4.5.x
-- 4.6.x
+`gdm` reads the Godot version from `project.godot` when querying the Asset Library. The project has been tested with:
+
+- Godot 3.6.x (`config_version=4`)
+- Godot 4.5.x and 4.6.x (`config_version=5`)
+
+Use `--godot-version` with `search` or `add` to override the detected version when necessary.
 
 ## Temporary Directory
 
@@ -64,15 +68,16 @@ That's it! Your dependency is now installed and ready to use.
 .gdm
 ```
 
-## Important: Managing Dependencies with `gdm`
+## Dependency Manifest
 
-When using `gdm`, **all dependency additions and removals should be performed through the CLI**. Manual editing of `project.godot` is not supported and may cause inconsistencies.
+`gdm.toml` is the canonical dependency manifest. When using `gdm`, **all dependency additions and removals should be performed through the CLI**. Manual editing of `project.godot` is not supported and may cause inconsistencies.
 
 ### How It Works
 
 - `gdm` automatically manages the `[editor_plugins]` section in `project.godot`
 - Dependency metadata is stored in `gdm.toml` under the `[dependencies]` table
-- Manual changes to dependency entries may be overwritten by `gdm` commands
+- The manifest key is used by `gdm list` and `gdm remove`; it normally matches the dependency folder name
+- `gdm` may rewrite dependency entries when installing or updating them
 
 For example:
 
@@ -86,21 +91,46 @@ publisher_slug = "foxssake"
 asset_slug = "netfox"
 ```
 
-### Migration from Manual Dependency Management
+Asset Library dependencies can also be selected directly without a name search:
 
-> **Important:** There is no automatic migration path for existing dependencies. To use `gdm` with a project that already has dependencies:
-> 
-> 1. Note your current dependencies
-> 2. Remove them manually from `project.godot` and `/addons`
-> 3. Reinstall via `gdm add` and `gdm install`
-> 
-> This ensures `gdm.toml` and `project.godot` stay synchronized.
+```bash
+gdm add foxssake/netfox
+gdm add --publisher-slug foxssake --asset-slug netfox
+```
+
+Git dependencies store the repository URL and the selected branch, tag, or commit:
+
+```toml
+[dependencies.my_dependency]
+plugin_cfg_path = "addons/my_dependency/plugin.cfg"
+title = "My dependency"
+version = ""
+sub_assets = []
+
+[dependencies.my_dependency.source]
+url = "https://github.com/example/my-dependency.git"
+reference = "main"
+```
+
+The remaining fields are managed by `gdm`: `plugin_cfg_path` identifies the installed plugin configuration, `sub_assets` records additional folders found under `addons`, and `license` stores the Asset Library license when available.
+
+### Migrating an Existing Project
+
+`gdm` does not import arbitrary existing addons. Recreate each dependency through the CLI so the new Asset Library API resolves its current metadata and installation layout:
+
+1. Search for each Asset Library dependency with `gdm search '<dependency-name>'`.
+2. Add it with `gdm add '<publisher>/<asset>'` or the `--publisher-slug` and `--asset-slug` options.
+3. Add Git dependencies with `gdm add --git <git-url> [--ref <reference>]`.
+
+Each `gdm add` installs the dependency immediately, creates or updates `gdm.toml`, and keeps the project plugin configuration synchronized. Use `gdm list` to review the recreated manifest; `gdm install` is only needed later when installing dependencies from an existing manifest, such as after cloning a project.
+
+Do not manually edit `project.godot` or convert the old manifest by hand.
 
 ### Dependencies with Multiple Folders
 
 If a downloaded dependency contains multiple folders in `/addons`, `gdm` automatically identifies the main dependency for `gdm.toml`. Additional folders are marked as `sub_assets`.
 
-Projects using the legacy `gdm.json` manifest require a manual conversion to `gdm.toml`. Create the `[dependencies]` entries shown above and copy the dependency fields into the new file. `gdm` ignores the legacy file and never migrates or deletes it.
+Projects using the legacy `gdm.json` manifest should recreate their dependencies with `gdm add`; do not copy its fields into `gdm.toml`. `gdm` ignores the legacy file and never migrates or deletes it.
 
 ## Installation
 
@@ -166,22 +196,30 @@ gdm add '<dependency-name>'
 **With optional flags:**
 
 ```bash
-gdm add '<dependency-name>' [--asset-id <godot-asset-id>] [--version <version>]
+gdm add '<dependency-name>' [--version <version>] [--godot-version <version>]
 ```
 
 **Flags:**
-- `--asset-id`: Specify the Godot Asset Library ID (useful when dependency name is ambiguous)
-- `--version`: Install a specific version instead of the latest
+- `--version`: Install a specific Asset Library version instead of the latest
+- `--godot-version`: Override the Godot version detected from `project.godot`
+- `--publisher-slug` and `--asset-slug`: Select an Asset Library dependency by its exact publisher and asset slugs
+
+The exact publisher/asset identity can be supplied either as `publisher/asset` or with both slug flags:
+
+```bash
+gdm add 'foxssake/netfox'
+gdm add --publisher-slug foxssake --asset-slug netfox
+```
 
 **Adding from Git repositories:**
 
 ```bash
-gdm add --git <git-url> --ref <branch-or-tag-or-commit>
+gdm add --git <git-url> [--ref <branch-or-tag-or-commit>]
 ```
 
 **Flags:**
 - `--git`: Git repository URL (HTTPS or SSH)
-- `--ref`: Branch name (e.g., `main`), tag (e.g., `v1.2.3`), or commit hash (e.g., `abc123`)
+- `--ref`: Branch name (e.g., `main`), tag (e.g., `v1.2.3`), or commit hash (e.g., `abc123`). Defaults to `main`.
 
 ![gdm add git](./docs/gifs/gdm_add_git.gif)
 
@@ -201,11 +239,13 @@ gdm add --git https://github.com/username/godot-dependency.git --ref v1.2.3
 gdm add --git https://github.com/username/godot-dependency.git --ref a1b2c3d
 ```
 
-> **Note:** When adding a dependency that already exists, `gdm` will update it to the specified version. Git dependencies are **not** auto-updated by `gdm update` - you must manually remove and re-add them with a new `--ref` to update.
+> **Note:** When adding a dependency that already exists, `gdm` will update it to the specified version. Git dependencies are **not** checked by `gdm update` or `gdm outdated`; remove and re-add them with a new `--ref` to change the selected revision.
 
 #### `install`
 
 Install all dependencies listed in `gdm.toml`.
+
+This command requires both `project.godot` and at least one dependency in `gdm.toml`.
 
 ```bash
 gdm install
@@ -220,6 +260,8 @@ List the dependencies declared in `gdm.toml`.
 ```bash
 gdm list
 ```
+
+![gdm list](./docs/gifs/gdm_list.gif)
 
 The command lists one row for each top-level dependency, sorted by its manifest key. The manifest key is shown in the `Dependency` column. Asset Store versions and Git references are shown in the `Version` column. Git sources are displayed without a leading `http://` or `https://`, one trailing `/`, or one trailing `.git`.
 
@@ -236,6 +278,8 @@ To remove a dependency, use: gdm remove <dependency>
 
 Update all Godot Asset Library dependencies to their latest versions.
 
+Git dependencies are left unchanged. If all dependencies are already current, the command reports that no update is needed.
+
 ```bash
 gdm update
 ```
@@ -247,6 +291,8 @@ gdm update
 #### `outdated`
 
 Check which Godot Asset Library dependencies have newer versions available.
+
+Git dependencies are not included in this check. Use `gdm update` to apply available Asset Library updates.
 
 ```bash
 gdm outdated
@@ -272,6 +318,12 @@ gdm search '<dependency-name>'
 gdm search '<dependency-name>' --godot-version '<version>'
 ```
 
+**With an Asset Library version filter:**
+
+```bash
+gdm search '<dependency-name>' --version '<version>'
+```
+
 **Example:**
 ```bash
 gdm search "dialogue" --godot-version "4.3"
@@ -293,7 +345,7 @@ gdm remove '<dependency-key>'
 
 ![gdm remove](./docs/gifs/gdm_remove.gif)
 
-> **Note:** The `<dependency-key>` must match the dependency key as it appears in your `gdm.toml` file.
+> **Note:** The `<dependency-key>` must match the dependency key as it appears in your `gdm.toml` file. `gdm remove` also removes the dependency from `project.godot` and deletes its installed addon folders when they are no longer shared by another dependency.
 
 ## Examples
 
@@ -308,7 +360,8 @@ gdm search "dialogue manager"
 
 # Add dependencies
 gdm add "Dialogue Manager 3"
-gdm add "Godot Unit Testing"
+gdm add "GDUnit4"
+# Each add also installs the dependency and updates gdm.toml
 ```
 
 ### Cloning an Existing Project
@@ -331,6 +384,21 @@ gdm outdated
 # Update all dependencies
 gdm update
 ```
+
+### Inspecting Dependencies
+
+```bash
+# List the manifest keys, versions, and sources
+gdm list
+
+# Remove a dependency by its manifest key
+gdm remove <dependency-key>
+```
+
+## Development
+
+- [Run tests and coverage](./tests/README.md)
+- [Update the documentation GIFs](./docs/README.md)
 
 ## Bug Reports and Issues
 

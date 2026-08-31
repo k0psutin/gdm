@@ -1,31 +1,59 @@
-# Tests
+# Tests and development
 
 ## Requirements
 
-- [Rust](https://www.rust-lang.org/tools/install) (latest stable version)
-- [Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html) (comes with Rust)
-- [llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) for test coverage
-- [CodeLLDB](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb) for debugging (VSCode extension)
+- [Rust](https://www.rust-lang.org/tools/install) and Cargo; the minimum supported version is defined by `Cargo.toml`
+- The repository toolchain configuration in [`rust-toolchain.toml`](../rust-toolchain.toml)
+- [`cargo-llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov) for coverage
+- [CodeLLDB](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb) for optional VS Code debugging
 
-## Test structuring
+## Test structure
 
-All services has unit tests under mod tests in the same file, except plugin service. Plugin service has a separate file `mod_tests.rs`.
+- Unit tests are colocated with the implementation in `src/`.
+- Integration tests are in this directory and exercise the CLI commands.
+- Shared fixtures and mock projects are in `tests/mocks`.
+- Network-facing behavior is mocked in tests; running the test suite does not require access to the Godot Asset Library.
 
-Integration tests are inside `/tests` folder.
+## Run the test suite
 
-Unit tests uses `/tests/mocks` for some of their tests.
-
-## Run all tests
 ```bash
 cargo test
 ```
 
-## Run tests with coverage
+Run one integration test file or a matching test by name when iterating:
+
+```bash
+cargo test --test list_command_tests
+cargo test test_list_command
+```
+
+## Formatting and linting
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --all-targets -- -D warnings
+```
+
+## Coverage
+
 ```bash
 cargo llvm-cov --lcov --output-path lcov.info
 ```
 
+## CLI documentation checks
+
+When changing a command or its output, compare the README with the generated help and run the relevant integration tests:
+
+```bash
+cargo run -- --help
+cargo run -- list --help
+cargo run -- add --help
+```
+
+The documentation recordings are maintained separately. See [`docs/README.md`](../docs/README.md) for the VHS workflow.
+
 ## Troubleshooting
 
-- Ensure Rust and Cargo are installed and up to date.
-- For platform-specific issues, consult the [Rust documentation](https://doc.rust-lang.org/book/ch01-01-installation.html).
+- Ensure the active Rust toolchain satisfies the version in `Cargo.toml`.
+- If a test fails after changing a fixture, inspect the related file under `tests/mocks` and the test's expected output.
+- For platform-specific Rust issues, consult the [Rust documentation](https://doc.rust-lang.org/book/ch01-01-installation.html).
