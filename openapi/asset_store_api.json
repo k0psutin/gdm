@@ -1,0 +1,1119 @@
+{
+  "servers": [
+    {
+      "url": "https://store.godotengine.org",
+      "description": "Production server"
+    }
+  ],
+  "paths": {
+    "/api/v1/": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiOverviewData"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Get details about the API itself",
+        "tags": [
+          "API_V1"
+        ]
+      }
+    },
+    "/api/v1/search/autocomplete/": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "query",
+            "description": "The string that should be completed",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "layouts",
+            "description": "Additional keyboard layouts for detecting typing errors..\n\nThis will check for typing errors by allowing keys from one layout to be interpreted as if they were pressed on the other layout at the same physical location on the keyboard.\n\nThe layouts us and uk are aways used as the main language of the store is english.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "be",
+                  "bg",
+                  "br",
+                  "ch",
+                  "de",
+                  "dk",
+                  "es",
+                  "fr",
+                  "gr",
+                  "it",
+                  "no",
+                  "pt",
+                  "ru",
+                  "se",
+                  "ua"
+                ]
+              }
+            },
+            "required": false,
+            "explode": true,
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "422": {
+            "$ref": "#/components/responses/UNPROCESSABLE_CONTENT"
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AutocompleteResult"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Fetch suggestions for completing the provided query",
+        "tags": [
+          "Searching"
+        ]
+      }
+    },
+    "/api/v1/search/query/": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "featured_only",
+            "description": "Limit the result set to currently featured assets.",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "require_release",
+            "description": "Only include results that have a release.",
+            "schema": {
+              "type": "boolean",
+              "default": true
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "stable_only",
+            "description": "Only include results that have a stable release.\n\n**Note:** Parameter will be ignored when require_release is set to false!",
+            "schema": {
+              "type": "boolean",
+              "default": true
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "compatibility",
+            "description": "Only show results which provide a download for the specified Godot version.\n\n**Note:** will be ignored used when require_release set to false true!",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "query",
+            "description": "The search query to perform. Tags can be specified by using the `#tag` syntax.",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "description": "Determines the order of the results.",
+            "schema": {
+              "type": "string",
+              "default": "relevance",
+              "enum": [
+                "relevance",
+                "updated_desc",
+                "updated_asc",
+                "reviews_desc",
+                "reviews_asc",
+                "created_desc",
+                "created_asc"
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "licenses",
+            "description": "Limits the results to assets that use one of the given licenses.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "required": false,
+            "explode": true,
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "scroll",
+            "description": "Each response to a search request will include a `scroll` token. Providing it again on subsequent requests will fetch more results. This works like pagination, except that you specify the `scroll` token instead of an offset. You must use the same request parameters as you used for the initial request when using the `scroll` token to fetch further results!\n\nScroll tokens take precendence over other pagination options.",
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "description": "Return a specific page.\n\n**Note:** Parameter will be ignored when a scroll token is given.",
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "minimum": 1
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "batch_size",
+            "description": "Amount of assets returned per page or scroll request.",
+            "schema": {
+              "type": "integer",
+              "default": 24,
+              "minimum": 0
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "422": {
+            "$ref": "#/components/responses/UNPROCESSABLE_CONTENT"
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResults"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Search for assets",
+        "tags": [
+          "Searching"
+        ]
+      }
+    },
+    "/api/v1/publishers/{publisher_slug}/": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublisherDataDetailed"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Get publisher details",
+        "tags": [
+          "Publishers"
+        ]
+      },
+      "parameters": [
+        {
+          "name": "publisher_slug",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "Slug that uniquely identifies the publisher"
+        }
+      ]
+    },
+    "/api/v1/assets/": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "featured_only",
+            "description": "Limit the result set to currently featured assets.",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "require_release",
+            "description": "Only include results that have a release.",
+            "schema": {
+              "type": "boolean",
+              "default": true
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "stable_only",
+            "description": "Only include results that have a stable release.\n\n**Note:** Parameter will be ignored when require_release is set to false!",
+            "schema": {
+              "type": "boolean",
+              "default": true
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "compatibility",
+            "description": "Only show results which provide a download for the specified Godot version.\n\n**Note:** will be ignored used when require_release set to false true!",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "tag",
+            "description": "Filter the results by the given tag slug.",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "minimum": 1
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "schema": {
+              "type": "integer",
+              "default": 24,
+              "minimum": 1,
+              "maximum": 100
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "422": {
+            "$ref": "#/components/responses/UNPROCESSABLE_CONTENT"
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AssetData"
+                  }
+                }
+              }
+            },
+            "headers": {
+              "X-Pagination": {
+                "$ref": "#/components/headers/PAGINATION"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Get a list of assets",
+        "tags": [
+          "Assets"
+        ]
+      }
+    },
+    "/api/v1/assets/{publisher_slug}/{asset_slug}/": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetDataDetailed"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Get asset details",
+        "tags": [
+          "Assets"
+        ]
+      },
+      "parameters": [
+        {
+          "name": "publisher_slug",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "Slug that uniquely identifies the publisher"
+        },
+        {
+          "name": "asset_slug",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "Slug that uniquely identifies the asset"
+        }
+      ]
+    },
+    "/api/v1/releases/{publisher_slug}/{asset_slug}/": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "stable_only",
+            "description": "Only include stable releases.",
+            "schema": {
+              "type": "boolean",
+              "default": true
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "compatibility",
+            "description": "Limit to releases that are compatible with the specified Godot version.",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "422": {
+            "$ref": "#/components/responses/UNPROCESSABLE_CONTENT"
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReleaseData"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Get a list of available downloads for an asset",
+        "tags": [
+          "Releases"
+        ]
+      },
+      "parameters": [
+        {
+          "name": "publisher_slug",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "Slug that uniquely identifies the publisher"
+        },
+        {
+          "name": "asset_slug",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "Slug that uniquely identifies the asset"
+        }
+      ]
+    },
+    "/api/v1/tags/": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "featured_only",
+            "description": "Limit the result set to currently featured tags.",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "422": {
+            "$ref": "#/components/responses/UNPROCESSABLE_CONTENT"
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TagData"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Get a list of tags",
+        "tags": [
+          "Tags"
+        ]
+      }
+    },
+    "/api/v1/licenses/": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LicenseData"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Get available license type filters as used in the web frontend.",
+        "tags": [
+          "Licenses"
+        ]
+      }
+    },
+    "/api/v1/changelog/": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ChangelogDay"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Get all changelog items.",
+        "tags": [
+          "Changelog"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Godot Asset Store API",
+    "version": "1.0.0"
+  },
+  "tags": [
+    {
+      "name": "API_V1",
+      "description": ""
+    }
+  ],
+  "openapi": "3.1.1",
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "Error code"
+          },
+          "status": {
+            "type": "string",
+            "description": "Error name"
+          },
+          "message": {
+            "type": "string",
+            "description": "Error message"
+          },
+          "errors": {
+            "type": "object",
+            "description": "Errors",
+            "additionalProperties": {}
+          }
+        }
+      },
+      "PaginationMetadata": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer"
+          },
+          "total_pages": {
+            "type": "integer"
+          },
+          "first_page": {
+            "type": "integer"
+          },
+          "last_page": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "previous_page": {
+            "type": "integer"
+          },
+          "next_page": {
+            "type": "integer"
+          }
+        }
+      },
+      "ApiOverviewData": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string",
+            "description": "Exact API version using semantic versioning."
+          },
+          "openapi_spec": {
+            "type": "string",
+            "description": "URL to the automatically generated API specifification in OpenAPI format."
+          },
+          "docs_swagger": {
+            "type": "string",
+            "description": "URL to the automatically generated API documentation (Swagger UI)."
+          },
+          "docs_redoc": {
+            "type": "string",
+            "description": "URL to the automatically generated API documentation (Redoc)."
+          }
+        }
+      },
+      "AutocompleteResult": {
+        "type": "object",
+        "properties": {
+          "suggestion": {
+            "type": "string",
+            "description": "A suggested value for auto-completion."
+          }
+        }
+      },
+      "PublisherData": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "description": "Unique identifier for the Publisher."
+          },
+          "name": {
+            "type": "string",
+            "description": "Human readable display name."
+          },
+          "thumbnail": {
+            "description": "URL to the thumbnail."
+          },
+          "store_url": {
+            "description": "URL to view the publisher page."
+          }
+        }
+      },
+      "TagData": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "description": "Unique identifier for the tag."
+          },
+          "display_name": {
+            "type": "string",
+            "description": "Human readable display name."
+          },
+          "featured": {
+            "type": "boolean",
+            "description": "True if the tag is currently featured."
+          }
+        }
+      },
+      "AssetData": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "description": "Unique identifier for the Asset."
+          },
+          "publisher": {
+            "description": "Publisher of this asset",
+            "$ref": "#/components/schemas/PublisherData"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human readable display name."
+          },
+          "description": {
+            "type": "string",
+            "description": "Small summary of the asset page."
+          },
+          "price_cent": {
+            "type": "integer",
+            "description": "Price in cents (Euro)."
+          },
+          "license_type": {
+            "type": "string",
+            "description": "Name of the license."
+          },
+          "license_url": {
+            "type": "string",
+            "description": "URL to the exact terms of the license."
+          },
+          "thumbnail": {
+            "description": "URL to the thumbnail."
+          },
+          "reviews_score": {
+            "type": "integer",
+            "description": "Sum of upvotes (+1) and downvotes (-1)."
+          },
+          "tags": {
+            "type": "array",
+            "description": "Tags that are associated with this asset.",
+            "items": {
+              "$ref": "#/components/schemas/TagData"
+            }
+          },
+          "store_url": {
+            "description": "URL to view the asset page."
+          }
+        }
+      },
+      "SearchResultHighlights": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "publisher_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "SearchResultHit": {
+        "type": "object",
+        "properties": {
+          "asset": {
+            "$ref": "#/components/schemas/AssetData"
+          },
+          "highlights": {
+            "description": "Snippets with highlighting tags applied.",
+            "$ref": "#/components/schemas/SearchResultHighlights"
+          }
+        }
+      },
+      "SearchResultTag": {
+        "type": "object",
+        "properties": {
+          "tag": {
+            "$ref": "#/components/schemas/TagData"
+          },
+          "count": {
+            "type": "integer",
+            "description": "The assets that will remain when this tag is added to the query."
+          }
+        }
+      },
+      "SearchResults": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "string",
+            "description": "Total amount of results available (you may need to use `scroll` to fetch all)."
+          },
+          "hits": {
+            "type": "array",
+            "description": "List of search results including highlighted passages.",
+            "items": {
+              "$ref": "#/components/schemas/SearchResultHit"
+            }
+          },
+          "tag_filters": {
+            "type": "array",
+            "description": "Tags that can be used to narrow down the search results further. Will be empty if a scroll token was provided. (Tag filters will not change when loading more results for the same query)",
+            "items": {
+              "$ref": "#/components/schemas/SearchResultTag"
+            }
+          },
+          "scroll": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Use this token on the next `/search` request to fetch more results for the same query. You shall not change any other request parameters when providing a scroll token!"
+          }
+        }
+      },
+      "PublisherDataDetailed": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "description": "Unique identifier for the Publisher."
+          },
+          "name": {
+            "type": "string",
+            "description": "Human readable display name."
+          },
+          "thumbnail": {
+            "description": "URL to the thumbnail."
+          },
+          "store_url": {
+            "description": "URL to view the publisher page."
+          },
+          "description_html": {
+            "type": "string",
+            "description": "Description rendered as HTML"
+          },
+          "description_bbcode": {
+            "type": "string",
+            "description": "Description rendered as BBCode."
+          },
+          "links": {
+            "type": "array",
+            "description": "List of URLs provided by the publisher.\n\n**Note:** The target page is neither hosted by nor affiliated with the Godot Foundation.",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "AssetDataDetailed": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "description": "Unique identifier for the Asset."
+          },
+          "publisher": {
+            "description": "Publisher of this asset",
+            "$ref": "#/components/schemas/PublisherData"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human readable display name."
+          },
+          "description": {
+            "type": "string",
+            "description": "Small summary of the asset page."
+          },
+          "price_cent": {
+            "type": "integer",
+            "description": "Price in cents (Euro)."
+          },
+          "license_type": {
+            "type": "string",
+            "description": "Name of the license."
+          },
+          "license_url": {
+            "type": "string",
+            "description": "URL to the exact terms of the license."
+          },
+          "thumbnail": {
+            "description": "URL to the thumbnail."
+          },
+          "reviews_score": {
+            "type": "integer",
+            "description": "Sum of upvotes (+1) and downvotes (-1)."
+          },
+          "tags": {
+            "type": "array",
+            "description": "Tags that are associated with this asset.",
+            "items": {
+              "$ref": "#/components/schemas/TagData"
+            }
+          },
+          "store_url": {
+            "description": "URL to view the asset page."
+          },
+          "body_html": {
+            "type": "string",
+            "description": "Content of the asset page rendered as HTML."
+          },
+          "body_bbcode": {
+            "type": "string",
+            "description": "Content of the asset page rendered as BBCode."
+          },
+          "donation_text": {
+            "type": "string",
+            "description": "Call to action that can be displayed on the donation button."
+          },
+          "donation_url": {
+            "type": "string",
+            "description": "URL to an external donation page for the asset.\n\n**Note:** The target page is neither hosted by nor affiliated with the Godot Foundation."
+          },
+          "source": {
+            "type": "string",
+            "description": "URL leading to an external page hosting the source code.\n\n**Note:** The target page is neither hosted by nor affiliated with the Godot Foundation."
+          },
+          "featured_thumbnail": {
+            "description": "Optional URL to a thumbnail version suited for larger display."
+          },
+          "media": {
+            "description": "List of URLs of screenshots and similar images."
+          },
+          "video_id": {
+            "type": "string",
+            "description": "URL to an external video.\n\n**Note:** The target page is neither hosted by nor affiliated with the Godot Foundation."
+          },
+          "created": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Date time in iso format specifying the creation date."
+          },
+          "last_updated": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Date time in iso format specifying the last modification date."
+          },
+          "featured": {
+            "type": "boolean",
+            "description": "True if the asset is currently featured."
+          },
+          "video_playback_url": {
+            "description": "URL to the watch page of the external video provider."
+          },
+          "video_embed_url": {
+            "description": "URL to embed the video from the external video provider."
+          },
+          "video_thumbnail_url": {
+            "description": "URL to the thumbnail from the external video provider."
+          }
+        }
+      },
+      "ReleaseData": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "ID of the asset release."
+          },
+          "version": {
+            "type": "string",
+            "description": "Display name of the release.\n\n**Note:** This is not a unique identifier, use the ID instead."
+          },
+          "stable": {
+            "type": "boolean",
+            "description": "True if this is a stable release of the asset."
+          },
+          "size": {
+            "type": "number",
+            "format": "float",
+            "description": "Size of the release in MB."
+          },
+          "created": {
+            "type": "string",
+            "format": "date",
+            "description": "Date when the release was created."
+          },
+          "min_godot_version": {
+            "type": "string",
+            "description": "Minimum Godot Version."
+          },
+          "max_godot_version": {
+            "type": "string",
+            "description": "Maximum Godot Version."
+          },
+          "notes": {
+            "type": "string",
+            "description": "Release notes."
+          },
+          "changes_html": {
+            "type": "string",
+            "description": "Changelog for the version rendered as HTML."
+          },
+          "changes_bbcode": {
+            "type": "string",
+            "description": "Changelog for the version rendered as BBCode."
+          },
+          "download_url": {
+            "type": "string",
+            "description": "URL pointing to a downloadable file."
+          }
+        }
+      },
+      "LicenseData": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Human readable name of the license."
+          },
+          "count": {
+            "type": "integer",
+            "description": "Amount of assets using this license type."
+          }
+        }
+      },
+      "ChangelogEntry": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "Description of the change."
+          },
+          "issue_number": {
+            "type": "integer",
+            "description": "Issue number of the public GitHub issue (-1 if none exists)."
+          },
+          "issue_link": {
+            "type": "string",
+            "description": "Link to a public GitHub issue."
+          }
+        }
+      },
+      "ChangelogDay": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "Date of the deployment."
+          },
+          "entries": {
+            "type": "array",
+            "description": "List of changes.",
+            "items": {
+              "$ref": "#/components/schemas/ChangelogEntry"
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "DEFAULT_ERROR": {
+        "description": "Default error response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "UNPROCESSABLE_CONTENT": {
+        "description": "Unprocessable Content",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "headers": {
+      "PAGINATION": {
+        "description": "Pagination metadata",
+        "schema": {
+          "$ref": "#/components/schemas/PaginationMetadata"
+        }
+      }
+    }
+  }
+}

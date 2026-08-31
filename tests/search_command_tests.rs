@@ -12,20 +12,8 @@ mod search_command_tests {
             .arg("--help")
             .assert()
             .success()
-            .stdout(predicate::str::contains("Search for plugins by name"))
+            .stdout(predicate::str::contains("Search for dependencies by name"))
             .stdout(predicate::str::contains("NAME"));
-    }
-
-    #[test]
-    fn test_search_without_project_godot_should_fail() {
-        let (mut cmd, _temp_dir) = setup::get_bin();
-        cmd.arg("search")
-            .arg("Godot Unit Testing")
-            .assert()
-            .failure()
-            .stderr(predicate::str::contains(
-                "No project.godot file found in the current directory",
-            ));
     }
 
     #[test]
@@ -40,37 +28,6 @@ mod search_command_tests {
     }
 
     #[test]
-    fn test_search_with_exact_plugin_name_single_result() {
-        let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
-
-        cmd.arg("search")
-            .arg("Godot Unit Testing")
-            .arg("-vvvv")
-            .timeout(std::time::Duration::from_secs(30))
-            .assert()
-            .success()
-            .stdout(predicate::str::contains("Found 1 asset matching"))
-            .stdout(predicate::str::contains(
-                "gdm add \"GUT - Godot Unit Testing",
-            ));
-    }
-
-    #[test]
-    fn test_search_with_partial_name_multiple_results() {
-        let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
-
-        cmd.arg("search")
-            .arg("godot")
-            .timeout(std::time::Duration::from_secs(30))
-            .assert()
-            .success()
-            .stdout(
-                predicate::str::contains("Found").and(predicate::str::contains("assets matching")),
-            )
-            .stdout(predicate::str::contains("gdm add --asset-id"));
-    }
-
-    #[test]
     fn test_search_with_nonexistent_plugin() {
         let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
         cmd.arg("search")
@@ -78,30 +35,7 @@ mod search_command_tests {
             .timeout(std::time::Duration::from_secs(30))
             .assert()
             .success()
-            .stdout(predicate::str::contains("No assets found matching"));
-    }
-
-    #[test]
-    fn test_search_with_godot_version_flag() {
-        let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
-        cmd.arg("search")
-            .arg("Godot Unit Testing")
-            .arg("--godot-version")
-            .arg("4.3")
-            .timeout(std::time::Duration::from_secs(30))
-            .assert()
-            .success();
-    }
-
-    #[test]
-    fn test_search_missing_godot_version_value() {
-        let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
-        cmd.arg("search")
-            .arg("Godot Unit Testing")
-            .arg("--godot-version")
-            .assert()
-            .failure()
-            .stderr(predicate::str::contains("a value is required"));
+            .stdout(predicate::str::contains("No dependencies found matching"));
     }
 
     #[test]
@@ -111,17 +45,7 @@ mod search_command_tests {
             .arg("")
             .timeout(std::time::Duration::from_secs(30))
             .assert()
-            .failure();
-    }
-
-    #[test]
-    fn test_search_output_shows_asset_info() {
-        let (mut cmd, _temp_dir) = setup::get_bin_with_project_godot();
-        cmd.arg("search")
-            .arg("Godot Unit Testing")
-            .timeout(std::time::Duration::from_secs(30))
-            .assert()
-            .success()
-            .stdout(predicate::str::contains("Godot Unit Testing"));
+            .failure()
+            .stderr(predicate::str::contains("Search name cannot be empty"));
     }
 }

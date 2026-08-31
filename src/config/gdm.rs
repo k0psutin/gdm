@@ -1,5 +1,5 @@
 use crate::config::{AppConfig, DefaultAppConfig};
-use crate::models::{Plugin, PluginSource};
+use crate::models::Plugin;
 use crate::services::{DefaultFileService, FileService};
 
 use anyhow::{Context, Result};
@@ -8,81 +8,50 @@ use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 use tracing::{debug, info};
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct DefaultGdmConfigMetadata {
-    pub plugins: BTreeMap<String, Plugin>,
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct GdmManifest {
+    #[serde(default)]
+    pub dependencies: BTreeMap<String, Plugin>,
 }
 
-impl DefaultGdmConfigMetadata {
-    pub fn new(plugins: BTreeMap<String, Plugin>) -> DefaultGdmConfigMetadata {
-        DefaultGdmConfigMetadata { plugins }
+impl GdmManifest {
+    pub fn new(dependencies: BTreeMap<String, Plugin>) -> Self {
+        Self { dependencies }
     }
-}
 
-impl Default for DefaultGdmConfigMetadata {
-    fn default() -> Self {
-        DefaultGdmConfigMetadata::new(BTreeMap::new())
+    pub fn dependency_by_asset_slug(&self, asset_slug: &str) -> Option<Plugin> {
+        self.dependencies
+            .values()
+            .find(|dependency| dependency.source.asset_slug() == asset_slug)
+            .cloned()
     }
-}
 
-#[cfg_attr(test, mockall::automock)]
-impl GdmConfigMetadata for DefaultGdmConfigMetadata {
-    fn get_plugin_by_asset_id(&self, asset_id: &str) -> Option<Plugin> {
-        self.plugins
+    pub fn dependency_by_config_key(&self, key: &str) -> Option<Plugin> {
+        self.dependencies.get(key).cloned()
+    }
+
+    pub fn with_dependencies(&self, dependencies: &BTreeMap<String, Plugin>) -> Self {
+        let mut updated = self.dependencies.clone();
+        updated.extend(dependencies.clone());
+        Self::new(updated)
+    }
+
+    pub fn without_dependencies(&self, dependency_keys: &HashSet<String>) -> Self {
+        let mut updated = self.dependencies.clone();
+        for dependency_key in dependency_keys {
+            updated.remove(dependency_key);
+        }
+        Self::new(updated)
+    }
+
+    pub fn dependencies_with_config(&self) -> BTreeMap<String, Plugin> {
+        self.dependencies
             .iter()
-            .find(|(_, p)| {
-                if let Some(PluginSource::AssetLibrary { asset_id: id }) = &p.source {
-                    id == asset_id
-                } else {
-                    false
-                }
-            })
-            .map(|(_, p)| p.clone())
+            .filter(|(_, dependency)| dependency.plugin_cfg_path.is_some())
+            .map(|(key, dependency)| (key.clone(), dependency.clone()))
+            .collect()
     }
-
-    fn get_plugin_by_name(&self, name: &str) -> Option<Plugin> {
-        self.plugins.get(name).cloned()
-    }
-
-    fn remove_plugins(&self, plugins: HashSet<String>) -> DefaultGdmConfigMetadata {
-        let mut _plugins = self.plugins.clone();
-        for plugin_key in plugins {
-            _plugins.remove(&plugin_key);
-            info!("Removed plugin: {}", plugin_key);
-        }
-
-        DefaultGdmConfigMetadata::new(_plugins)
-    }
-
-    fn add_plugins(&self, plugins: &BTreeMap<String, Plugin>) -> DefaultGdmConfigMetadata {
-        let mut _plugins = self.plugins.clone();
-        for (key, plugin) in plugins {
-            _plugins.insert(key.clone(), plugin.clone());
-            info!("Added/Updated plugin: {}", key);
-        }
-
-        DefaultGdmConfigMetadata::new(_plugins)
-    }
-
-    fn get_plugins(&self, only_plugin_config: bool) -> BTreeMap<String, Plugin> {
-        if only_plugin_config {
-            self.plugins
-                .iter()
-                .filter(|(_, p)| p.plugin_cfg_path.is_some())
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect()
-        } else {
-            self.plugins.clone()
-        }
-    }
-}
-
-pub trait GdmConfigMetadata {
-    fn get_plugin_by_asset_id(&self, asset_id: &str) -> Option<Plugin>;
-    fn get_plugin_by_name(&self, name: &str) -> Option<Plugin>;
-    fn remove_plugins(&self, plugins: HashSet<String>) -> DefaultGdmConfigMetadata;
-    fn add_plugins(&self, plugins: &BTreeMap<String, Plugin>) -> DefaultGdmConfigMetadata;
-    fn get_plugins(&self, only_plugin_config: bool) -> BTreeMap<String, Plugin>;
 }
 
 pub struct DefaultGdmConfig {
@@ -92,7 +61,7 @@ pub struct DefaultGdmConfig {
 
 impl Default for DefaultGdmConfig {
     fn default() -> Self {
-        DefaultGdmConfig {
+        Self {
             file_service: Arc::new(DefaultFileService),
             app_config: DefaultAppConfig::default(),
         }
@@ -105,7 +74,7 @@ impl DefaultGdmConfig {
         app_config: DefaultAppConfig,
         file_service: Arc<dyn FileService + Send + Sync + 'static>,
     ) -> Self {
-        DefaultGdmConfig {
+        Self {
             app_config,
             file_service,
         }
@@ -114,841 +83,295 @@ impl DefaultGdmConfig {
 
 #[cfg_attr(test, mockall::automock)]
 impl GdmConfig for DefaultGdmConfig {
-    fn add_plugins(&self, plugins: &BTreeMap<String, Plugin>) -> Result<DefaultGdmConfigMetadata> {
-        debug!("Adding plugins: {:?}", plugins.keys());
-        let plugin_config = self.load()?;
-        let updated_plugin_config = plugin_config.add_plugins(plugins);
-        self.save(&updated_plugin_config)?;
-        info!("Added plugins {:?}", updated_plugin_config.plugins.keys());
-        Ok(updated_plugin_config)
+    fn add_dependencies(&self, dependencies: &BTreeMap<String, Plugin>) -> Result<GdmManifest> {
+        debug!("Adding dependencies: {:?}", dependencies.keys());
+        let manifest = self.load()?;
+        let updated_manifest = manifest.with_dependencies(dependencies);
+        self.save(&updated_manifest)?;
+        info!(
+            "Added dependencies {:?}",
+            updated_manifest.dependencies.keys()
+        );
+        Ok(updated_manifest)
     }
 
-    fn remove_plugins(&self, plugin_keys: HashSet<String>) -> Result<DefaultGdmConfigMetadata> {
-        debug!("Removing plugins: {:?}", plugin_keys);
-        let plugin_config = self.load()?;
-        let updated_plugin_config = plugin_config.remove_plugins(plugin_keys);
-        self.save(&updated_plugin_config)?;
-        info!("Removed plugins {:?}", updated_plugin_config.plugins.keys());
-        Ok(updated_plugin_config)
+    fn remove_dependencies(&self, dependency_keys: HashSet<String>) -> Result<GdmManifest> {
+        debug!("Removing dependencies: {:?}", dependency_keys);
+        let manifest = self.load()?;
+        let updated_manifest = manifest.without_dependencies(&dependency_keys);
+        self.save(&updated_manifest)?;
+        info!(
+            "Removed dependencies {:?}",
+            updated_manifest.dependencies.keys()
+        );
+        Ok(updated_manifest)
     }
 
-    fn get_plugin_by_name(&self, name: &str) -> Option<(String, Plugin)> {
-        let plugin_config = self.load().ok()?;
-        let plugin: Option<Plugin> = plugin_config.get_plugin_by_name(name);
-        if let Some(p) = plugin {
-            return Some((name.to_string(), p));
-        }
-        None
+    fn get_dependency_by_asset_slug(&self, asset_slug: &str) -> Result<Option<Plugin>> {
+        Ok(self.load()?.dependency_by_asset_slug(asset_slug))
     }
 
-    fn get_plugin_by_asset_id(&self, asset_id: &str) -> Result<Option<Plugin>> {
-        let plugin_config = self.load()?;
-        Ok(plugin_config.get_plugin_by_asset_id(asset_id))
+    fn get_dependency_by_config_key(&self, key: &str) -> Result<Option<Plugin>> {
+        Ok(self.load()?.dependency_by_config_key(key))
     }
 
-    /// Returns a sorted list of plugins in a tuple of (key, Plugin)
-    ///
-    /// The list is sorted by the plugin key in ascending order
-    fn get_plugins(&self) -> Result<BTreeMap<String, Plugin>> {
-        let plugin_config = self.load()?;
-        Ok(plugin_config.plugins.clone())
+    fn get_dependencies(&self) -> Result<BTreeMap<String, Plugin>> {
+        Ok(self.load()?.dependencies)
     }
 
-    fn has_installed_plugins(&self) -> Result<bool> {
-        let plugins = self.get_plugins()?;
-
-        Ok(!plugins.is_empty())
+    fn has_dependencies(&self) -> Result<bool> {
+        Ok(!self.get_dependencies()?.is_empty())
     }
 
-    fn load(&self) -> Result<DefaultGdmConfigMetadata> {
+    fn load(&self) -> Result<GdmManifest> {
         let config_file_path = self.app_config.get_config_file_path();
 
         if !self.file_service.file_exists(config_file_path)? {
-            return Ok(DefaultGdmConfigMetadata::default());
+            return Ok(GdmManifest::default());
         }
+
         let content = self.file_service.read_file_cached(config_file_path)?;
-        let config: DefaultGdmConfigMetadata =
-            serde_json::from_str(&content).with_context(|| {
-                format!(
-                    "Failed to parse plugin config file: {}",
-                    config_file_path.display()
-                )
-            })?;
-        Ok(config)
+        toml::from_str(&content).with_context(|| {
+            format!(
+                "Failed to parse dependency manifest: {}",
+                config_file_path.display()
+            )
+        })
     }
 
-    fn save(&self, config: &DefaultGdmConfigMetadata) -> Result<String> {
+    fn save(&self, manifest: &GdmManifest) -> Result<()> {
         let config_file_path = self.app_config.get_config_file_path();
-
-        let content = serde_json::to_string_pretty(config).with_context(|| {
+        let content = toml::to_string_pretty(manifest).with_context(|| {
             format!(
-                "Failed to serialize configuration to JSON: {}",
+                "Failed to serialize dependency manifest to TOML: {}",
                 config_file_path.display()
             )
         })?;
 
         self.file_service.write_file(config_file_path, &content)?;
         info!(
-            "Saved plugin config with plugins: {:?}",
-            config.plugins.keys()
+            "Saved dependency manifest with dependencies: {:?}",
+            manifest.dependencies.keys()
         );
-        Ok(content)
+        Ok(())
     }
 }
 
 pub trait GdmConfig {
-    fn add_plugins(&self, plugins: &BTreeMap<String, Plugin>) -> Result<DefaultGdmConfigMetadata>;
-    fn get_plugin_by_asset_id(&self, asset_id: &str) -> Result<Option<Plugin>>;
-    fn get_plugin_by_name(&self, name: &str) -> Option<(String, Plugin)>;
-    fn get_plugins(&self) -> Result<BTreeMap<String, Plugin>>;
-    fn has_installed_plugins(&self) -> Result<bool>;
-    fn load(&self) -> Result<DefaultGdmConfigMetadata>;
-    fn remove_plugins(&self, plugin_keys: HashSet<String>) -> Result<DefaultGdmConfigMetadata>;
-    fn save(&self, config: &DefaultGdmConfigMetadata) -> Result<String>;
+    fn add_dependencies(&self, dependencies: &BTreeMap<String, Plugin>) -> Result<GdmManifest>;
+    fn get_dependency_by_asset_slug(&self, asset_slug: &str) -> Result<Option<Plugin>>;
+    fn get_dependency_by_config_key(&self, key: &str) -> Result<Option<Plugin>>;
+    fn get_dependencies(&self) -> Result<BTreeMap<String, Plugin>>;
+    fn has_dependencies(&self) -> Result<bool>;
+    fn load(&self) -> Result<GdmManifest>;
+    fn remove_dependencies(&self, dependency_keys: HashSet<String>) -> Result<GdmManifest>;
+    fn save(&self, manifest: &GdmManifest) -> Result<()>;
 }
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
     use super::*;
     use mockall::predicate::*;
-    use serde_json::json;
+    use std::path::Path;
 
     use crate::config::DefaultAppConfig;
     use crate::models::Plugin;
     use crate::services::{DefaultFileService, MockDefaultFileService};
 
-    fn setup_test_plugin_map() -> BTreeMap<String, Plugin> {
+    fn setup_test_dependency_map() -> BTreeMap<String, Plugin> {
         BTreeMap::from([
             ("plugin_1".to_string(), Plugin::create_mock_plugin_1()),
             ("plugin_2".to_string(), Plugin::create_mock_plugin_2()),
         ])
     }
 
-    fn setup_test_plugin_config() -> DefaultGdmConfigMetadata {
-        let plugins: BTreeMap<String, Plugin> = setup_test_plugin_map();
-        DefaultGdmConfigMetadata::new(plugins)
-    }
-
-    fn setup_test_plugin_config_non_existent_config() -> DefaultGdmConfigMetadata {
-        DefaultGdmConfigMetadata::default()
-    }
-
-    // get_plugins
-
-    #[test]
-    fn test_get_plugins_should_return_empty_plugins() {
-        let plugin_config = setup_test_plugin_config_non_existent_config();
-        assert!(plugin_config.plugins.is_empty());
+    fn setup_test_manifest() -> GdmManifest {
+        GdmManifest::new(setup_test_dependency_map())
     }
 
     #[test]
-    fn test_get_plugins_should_return_non_empty_plugins() {
-        let plugin_config = setup_test_plugin_config();
-        assert!(!plugin_config.plugins.is_empty());
-    }
-
-    #[test]
-    fn test_get_plugins_should_return_correct_plugins_from_plugin_config_file() {
-        let plugin_config = setup_test_plugin_config();
-        let expected = BTreeMap::from([
-            ("plugin_1".to_string(), Plugin::create_mock_plugin_1()),
-            ("plugin_2".to_string(), Plugin::create_mock_plugin_2()),
-        ]);
-
-        let result = plugin_config.plugins;
-        assert_eq!(result.len(), expected.len());
-        assert_eq!(result, expected);
-    }
-
-    // add_plugins
-
-    #[test]
-    fn test_should_add_new_plugins() {
-        let plugin_config = setup_test_plugin_config();
-        let new_plugins = BTreeMap::from([(
-            "plugin_3".to_string(),
-            Plugin::new_asset_store_plugin(
-                "67890".to_string(),
-                Some("addons/super_plugin/plugin.cfg".into()),
-                "New Plugin".to_string(),
-                "1.0.0".to_string(),
-                "GPL-3.0".to_string(),
-                vec![],
-            ),
-        )]);
-
-        let updated_plugin_config = plugin_config.add_plugins(&new_plugins);
-        let actual = updated_plugin_config.plugins.clone();
-
-        let expected = BTreeMap::from([
-            ("plugin_1".to_string(), Plugin::create_mock_plugin_1()),
-            ("plugin_2".to_string(), Plugin::create_mock_plugin_2()),
-            (
-                "plugin_3".to_string(),
-                Plugin::new_asset_store_plugin(
-                    "67890".to_string(),
-                    Some("addons/super_plugin/plugin.cfg".into()),
-                    "New Plugin".to_string(),
-                    "1.0.0".to_string(),
-                    "GPL-3.0".to_string(),
-                    vec![],
-                ),
-            ),
-        ]);
-
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn test_should_replace_old_plugins() {
-        let plugin_config = setup_test_plugin_config();
-        let new_plugins = BTreeMap::from([
-            (
-                "plugin_1".to_string(),
-                Plugin::new_asset_store_plugin(
-                    "54321".to_string(),
-                    Some("addons/awesome_plugin/plugin.cfg".into()),
-                    "Awesome Plugin".to_string(),
-                    "1.8.0".to_string(),
-                    "MIT".to_string(),
-                    vec![],
-                ),
-            ),
-            (
-                "plugin_2".to_string(),
-                Plugin::new_asset_store_plugin(
-                    "12345".to_string(),
-                    Some("addons/super_plugin/plugin.cfg".into()),
-                    "Super Plugin".to_string(),
-                    "2.1.3".to_string(),
-                    "MIT".to_string(),
-                    vec![],
-                ),
-            ),
-        ]);
-
-        let updated_plugin_config = plugin_config.add_plugins(&new_plugins);
-        let actual = updated_plugin_config.plugins.clone();
-
-        let expected = BTreeMap::from([
-            (
-                "plugin_1".to_string(),
-                Plugin::new_asset_store_plugin(
-                    "54321".to_string(),
-                    Some("addons/awesome_plugin/plugin.cfg".into()),
-                    "Awesome Plugin".to_string(),
-                    "1.8.0".to_string(),
-                    "MIT".to_string(),
-                    vec![],
-                ),
-            ),
-            (
-                "plugin_2".to_string(),
-                Plugin::new_asset_store_plugin(
-                    "12345".to_string(),
-                    Some("addons/super_plugin/plugin.cfg".into()),
-                    "Super Plugin".to_string(),
-                    "2.1.3".to_string(),
-                    "MIT".to_string(),
-                    vec![],
-                ),
-            ),
-        ]);
-
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn test_should_not_add_duplicate_plugins() {
-        let plugin_config = setup_test_plugin_config();
-        let new_plugins = BTreeMap::from([
-            (
-                "plugin_1".to_string(),
-                Plugin::new_asset_store_plugin(
-                    "54321".to_string(),
-                    Some("addons/awesome_plugin/plugin.cfg".into()),
-                    "Awesome Plugin".to_string(),
-                    "1.8.0".to_string(),
-                    "MIT".to_string(),
-                    vec![],
-                ),
-            ),
-            (
-                "plugin_1".to_string(),
-                Plugin::new_asset_store_plugin(
-                    "54321".to_string(),
-                    Some("addons/awesome_plugin/plugin.cfg".into()),
-                    "Awesome Plugin".to_string(),
-                    "1.8.0".to_string(),
-                    "MIT".to_string(),
-                    vec![],
-                ),
-            ),
-            (
-                "plugin_2".to_string(),
-                Plugin::new_asset_store_plugin(
-                    "12345".to_string(),
-                    Some("addons/super_plugin/plugin.cfg".into()),
-                    "Super Plugin".to_string(),
-                    "2.1.3".to_string(),
-                    "Apache-2.0".to_string(),
-                    vec![],
-                ),
-            ),
-        ]);
-
-        let updated_plugin_config = plugin_config.add_plugins(&new_plugins);
-        let actual = updated_plugin_config.plugins.clone();
-
-        let expected = BTreeMap::from([
-            (
-                "plugin_1".to_string(),
-                Plugin::new_asset_store_plugin(
-                    "54321".to_string(),
-                    Some("addons/awesome_plugin/plugin.cfg".into()),
-                    "Awesome Plugin".to_string(),
-                    "1.8.0".to_string(),
-                    "MIT".to_string(),
-                    vec![],
-                ),
-            ),
-            (
-                "plugin_2".to_string(),
-                Plugin::new_asset_store_plugin(
-                    "12345".to_string(),
-                    Some("addons/super_plugin/plugin.cfg".into()),
-                    "Super Plugin".to_string(),
-                    "2.1.3".to_string(),
-                    "Apache-2.0".to_string(),
-                    vec![],
-                ),
-            ),
-        ]);
-
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn test_should_add_new_plugins_in_correct_order() {
-        let plugin_config = setup_test_plugin_config();
-        let new_plugins = BTreeMap::from([(
-            "a_plugin".to_string(),
-            Plugin::new_asset_store_plugin(
-                "67890".to_string(),
-                Some("addons/super_plugin/plugin.cfg".into()),
-                "New Plugin".to_string(),
-                "1.0.0".to_string(),
-                "GPL-3.0".to_string(),
-                vec![],
-            ),
-        )]);
-        let updated_plugin_config = plugin_config.add_plugins(&new_plugins);
-        let actual = updated_plugin_config.plugins.clone();
-
-        let expected = BTreeMap::from([
-            (
-                "a_plugin".to_string(),
-                Plugin::new_asset_store_plugin(
-                    "67890".to_string(),
-                    Some("addons/super_plugin/plugin.cfg".into()),
-                    "New Plugin".to_string(),
-                    "1.0.0".to_string(),
-                    "GPL-3.0".to_string(),
-                    vec![],
-                ),
-            ),
-            (
-                "plugin_1".to_string(),
-                Plugin::new_asset_store_plugin(
-                    "54321".to_string(),
-                    Some("addons/awesome_plugin/plugin.cfg".into()),
-                    "Awesome Plugin".to_string(),
-                    "1.0.0".to_string(),
-                    "MIT".to_string(),
-                    vec![],
-                ),
-            ),
-            (
-                "plugin_2".to_string(),
-                Plugin::new_asset_store_plugin(
-                    "12345".to_string(),
-                    Some("addons/super_plugin/plugin.cfg".into()),
-                    "Super Plugin".to_string(),
-                    "2.1.3".to_string(),
-                    "Apache-2.0".to_string(),
-                    vec![],
-                ),
-            ),
-        ]);
-        assert_eq!(actual, expected);
-    }
-
-    // get_plugin_by_name
-
-    #[test]
-    fn test_get_plugin_key_by_name_should_return_correct_key() {
-        let plugin_config = setup_test_plugin_config();
-        let plugin_opt = plugin_config.get_plugin_by_name("plugin_1");
-        assert!(plugin_opt.is_some());
-        let plugin = plugin_opt.unwrap();
+    fn test_manifest_operations() {
+        let manifest = setup_test_manifest();
+        assert_eq!(manifest.dependencies.len(), 2);
         assert_eq!(
-            plugin.source,
-            Some(PluginSource::AssetLibrary {
-                asset_id: "54321".to_string()
-            })
+            manifest.dependency_by_config_key("plugin_1"),
+            Some(Plugin::create_mock_plugin_1())
         );
-    }
-
-    // remove_installed_plugin
-
-    #[test]
-    fn test_should_remove_plugins() {
-        let plugin_config = setup_test_plugin_config();
-        let plugins_to_remove: HashSet<String> = vec!["plugin_1".to_string()].into_iter().collect();
-        let updated_plugin_config = plugin_config.remove_plugins(plugins_to_remove);
-        let expected = BTreeMap::from([(
-            "plugin_2".to_string(),
-            Plugin::new_asset_store_plugin(
-                "12345".to_string(),
-                Some("addons/super_plugin/plugin.cfg".into()),
-                "Super Plugin".to_string(),
-                "2.1.3".to_string(),
-                "Apache-2.0".to_string(),
-                vec![],
-            ),
-        )]);
-        let actual = updated_plugin_config.plugins.clone();
-        assert_eq!(actual, expected);
-    }
-
-    // remove_plugins
-
-    #[test]
-    fn test_should_remove_multiple_plugins() {
-        let plugin_config = setup_test_plugin_config();
-        let plugins_to_remove: HashSet<String> =
-            HashSet::from(["plugin_1".to_string(), "plugin_2".to_string()]);
-        let updated_plugin_config = plugin_config.remove_plugins(plugins_to_remove);
-
-        let expected = BTreeMap::new();
-        let actual = updated_plugin_config.plugins.clone();
-
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn test_should_not_panic_on_removing_non_existent_plugins() {
-        let plugin_config = setup_test_plugin_config();
-        let plugins_to_remove: HashSet<String> = HashSet::from(["non_existent_plugin".to_string()]);
-        let updated_plugin_config = plugin_config.remove_plugins(plugins_to_remove);
-
+        assert_eq!(manifest.dependency_by_config_key("asset_54321"), None);
         assert_eq!(
-            updated_plugin_config.plugins.clone(),
-            plugin_config.plugins.clone()
+            manifest.dependency_by_asset_slug("asset_54321"),
+            Some(Plugin::create_mock_plugin_1())
         );
-    }
 
-    // get_plugin_by_asset_id
-
-    #[test]
-    fn test_get_plugin_by_asset_id_should_return_correct_plugin() {
-        let plugin_config = setup_test_plugin_config();
-        let plugin = plugin_config.get_plugin_by_asset_id("54321");
-        let expected_plugin = Plugin::new_asset_store_plugin(
-            "54321".to_string(),
-            Some("addons/awesome_plugin/plugin.cfg".into()),
-            "Awesome Plugin".to_string(),
-            "1.0.0".to_string(),
-            "MIT".to_string(),
-            vec![],
-        );
-        assert_eq!(plugin, Some(expected_plugin));
-    }
-
-    #[test]
-    fn test_get_plugin_by_asset_id_should_return_none() {
-        let plugin_config = setup_test_plugin_config();
-        let plugin = plugin_config.get_plugin_by_asset_id("4321");
-        assert_eq!(plugin, None);
-    }
-
-    // get_plugins
-    #[test]
-    fn test_get_plugins_should_return_all_plugins() {
-        let mut plugin_config = setup_test_plugin_config();
-        plugin_config = plugin_config.add_plugins(&BTreeMap::from([(
+        let added = manifest.with_dependencies(&BTreeMap::from([(
             "plugin_3".to_string(),
             Plugin::create_mock_plugin_3(),
         )]));
-        let plugins = plugin_config.get_plugins(false);
-        let expected_plugins = BTreeMap::from([
-            ("plugin_1".to_string(), Plugin::create_mock_plugin_1()),
-            ("plugin_2".to_string(), Plugin::create_mock_plugin_2()),
-            ("plugin_3".to_string(), Plugin::create_mock_plugin_3()),
-        ]);
-        assert_eq!(plugins, expected_plugins);
+        assert_eq!(added.dependencies.len(), 3);
+
+        let removed = added.without_dependencies(&HashSet::from(["plugin_1".to_string()]));
+        assert!(!removed.dependencies.contains_key("plugin_1"));
+        assert!(removed.dependencies.contains_key("plugin_2"));
+
+        assert_eq!(manifest.dependencies_with_config().len(), 2);
     }
 
     #[test]
-    fn test_get_plugins_should_return_plugins_with_plugin_config() {
-        let mut plugin_config = setup_test_plugin_config();
-        plugin_config = plugin_config.add_plugins(&BTreeMap::from([(
-            "plugin_3".to_string(),
-            Plugin::create_mock_plugin_3(),
-        )]));
-        let plugins = plugin_config.get_plugins(true);
-        let expected_plugins = BTreeMap::from([
-            ("plugin_1".to_string(), Plugin::create_mock_plugin_1()),
-            ("plugin_2".to_string(), Plugin::create_mock_plugin_2()),
-        ]);
-        assert_eq!(plugins, expected_plugins);
-    }
-
-    // load
-
-    #[test]
-    fn test_load_non_existent_file_should_return_default_config() {
-        let plugin_config_repository = DefaultGdmConfig::new(
+    fn test_load_non_existent_file_returns_default_manifest() {
+        let config = DefaultGdmConfig::new(
             DefaultAppConfig::new(
-                None,
-                Some(String::from("tests/mocks/non_existent_file.json")),
+                Some(String::from("tests/mocks/non_existent_file.toml")),
                 None,
                 None,
                 None,
             ),
             Arc::new(DefaultFileService),
         );
-        let result = plugin_config_repository.load();
-        assert!(result.is_ok());
-        let config = result.unwrap();
-        assert_eq!(config.plugins.len(), 0);
+
+        assert_eq!(config.load().unwrap(), GdmManifest::default());
     }
 
     #[test]
-    fn test_load_should_return_correct_plugin_config() {
-        let plugin_config_repository = DefaultGdmConfig::new(
-            DefaultAppConfig::new(
-                None,
-                Some(String::from("tests/mocks/gdm.json")),
-                None,
-                None,
-                None,
-            ),
+    fn test_load_toml_manifest() {
+        let config = DefaultGdmConfig::new(
+            DefaultAppConfig::new(Some(String::from("tests/mocks/gdm.toml")), None, None, None),
             Arc::new(DefaultFileService),
         );
-        let result = plugin_config_repository.load();
-        assert!(result.is_ok());
-        let config = result.unwrap();
-        assert_eq!(config.plugins.len(), 2);
 
-        let mock_plugins = BTreeMap::from([
-            ("plugin_1".to_string(), Plugin::create_mock_plugin_1()),
-            ("plugin_2".to_string(), Plugin::create_mock_plugin_2()),
-        ]);
-
-        let expected_plugin_config = DefaultGdmConfigMetadata::new(mock_plugins);
-        assert_eq!(config, expected_plugin_config);
+        let manifest = config.load().unwrap();
+        assert_eq!(manifest, setup_test_manifest());
     }
 
     #[test]
-    fn test_get_plugins_should_return_correct_plugins() {
-        let app_config = DefaultAppConfig::new(
-            None,
-            Some(String::from("tests/mocks/gdm.json")),
-            None,
-            None,
-            None,
-        );
-        let plugin_config_repository =
-            DefaultGdmConfig::new(app_config, Arc::new(DefaultFileService));
-        let plugins = plugin_config_repository.get_plugins();
-        assert!(plugins.is_ok());
-        let plugins = plugins.unwrap();
-        assert_eq!(plugins.len(), 2);
+    fn test_manifest_toml_round_trip_preserves_dependency_data() {
+        let git_dependency = Plugin {
+            source: crate::models::PluginSource::Git {
+                url: "git@github.com:foo/bar.git".to_string(),
+                reference: "a83f10c".to_string(),
+                publisher_slug: "foo".to_string(),
+                asset_slug: "bar".to_string(),
+            },
+            plugin_cfg_path: Some("addons/bar/plugin.cfg".to_string()),
+            title: "Bar dependency".to_string(),
+            version: String::new(),
+            sub_assets: vec!["bar.extras".to_string()],
+            license: None,
+        };
+        let manifest = GdmManifest::new(BTreeMap::from([
+            ("asset".to_string(), Plugin::create_mock_plugin_1()),
+            ("git".to_string(), git_dependency),
+        ]));
 
-        let expected_plugins = BTreeMap::from([
-            ("plugin_1".to_string(), Plugin::create_mock_plugin_1()),
-            ("plugin_2".to_string(), Plugin::create_mock_plugin_2()),
-        ]);
-        assert_eq!(plugins, expected_plugins);
+        let serialized = toml::to_string_pretty(&manifest).unwrap();
+        let deserialized: GdmManifest = toml::from_str(&serialized).unwrap();
+
+        assert_eq!(deserialized.dependencies.len(), 2);
+        assert_eq!(
+            deserialized.dependencies["asset"].source,
+            manifest.dependencies["asset"].source
+        );
+        assert_eq!(
+            deserialized.dependencies["asset"].license,
+            Some("MIT".to_string())
+        );
+        assert_eq!(
+            deserialized.dependencies["git"].plugin_cfg_path,
+            Some("addons/bar/plugin.cfg".to_string())
+        );
+        assert_eq!(
+            deserialized.dependencies["git"].sub_assets,
+            vec!["bar.extras".to_string()]
+        );
+        assert_eq!(
+            deserialized.dependencies["git"].source,
+            crate::models::PluginSource::Git {
+                url: "git@github.com:foo/bar.git".to_string(),
+                reference: "a83f10c".to_string(),
+                publisher_slug: String::new(),
+                asset_slug: String::new(),
+            }
+        );
     }
 
-    // add_plugins
-
-    fn setup_mock_plugin_config_repository_for_add_and_remove_plugins() -> DefaultGdmConfig {
-        const TEST_FILE_PATH_STR: &str = "tests/mocks/gdm.json";
-        let test_file_path = Path::new(TEST_FILE_PATH_STR);
-
-        let mut mock_file_service = MockDefaultFileService::new();
-        mock_file_service
-            .expect_read_file_cached()
-            .with(eq(test_file_path))
-            .returning(|path| Ok(std::fs::read_to_string(path).unwrap()));
-        mock_file_service
+    #[test]
+    fn test_load_empty_file_returns_default_manifest() {
+        let mut file_service = MockDefaultFileService::new();
+        let path = Path::new("gdm.toml");
+        file_service
             .expect_file_exists()
-            .with(eq(test_file_path))
+            .with(eq(path))
             .returning(|_| Ok(true));
-        mock_file_service
+        file_service
+            .expect_read_file_cached()
+            .with(eq(path))
+            .returning(|_| Ok(String::new()));
+
+        let config = DefaultGdmConfig::new(
+            DefaultAppConfig::new(Some(path.to_string_lossy().into_owned()), None, None, None),
+            Arc::new(file_service),
+        );
+
+        assert_eq!(config.load().unwrap(), GdmManifest::default());
+    }
+
+    #[test]
+    fn test_load_malformed_toml_returns_error() {
+        let config = DefaultGdmConfig::new(
+            DefaultAppConfig::new(
+                Some(String::from("tests/mocks/gdm_malformed.toml")),
+                None,
+                None,
+                None,
+            ),
+            Arc::new(DefaultFileService),
+        );
+
+        let error = config.load().unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("Failed to parse dependency manifest")
+        );
+    }
+
+    #[test]
+    fn test_load_rejects_legacy_plugins_table() {
+        let mut file_service = MockDefaultFileService::new();
+        let path = Path::new("gdm.toml");
+        file_service
+            .expect_file_exists()
+            .with(eq(path))
+            .returning(|_| Ok(true));
+        file_service
+            .expect_read_file_cached()
+            .with(eq(path))
+            .returning(|_| Ok("[plugins]\n".to_string()));
+
+        let config = DefaultGdmConfig::new(
+            DefaultAppConfig::new(Some(path.to_string_lossy().into_owned()), None, None, None),
+            Arc::new(file_service),
+        );
+
+        assert!(config.load().is_err());
+    }
+
+    #[test]
+    fn test_save_writes_toml_manifest() {
+        let path = Path::new("tests/mocks/gdm.toml");
+        let mut file_service = MockDefaultFileService::new();
+        file_service
             .expect_write_file()
+            .with(
+                eq(path),
+                function(|content: &str| content.contains("[dependencies.")),
+            )
             .returning(|_, _| Ok(()));
 
-        let app_config = DefaultAppConfig::new(
-            None,
-            Some(String::from(TEST_FILE_PATH_STR)),
-            None,
-            None,
-            None,
+        let config = DefaultGdmConfig::new(
+            DefaultAppConfig::new(Some(path.to_string_lossy().into_owned()), None, None, None),
+            Arc::new(file_service),
         );
-        let file_service = Arc::new(mock_file_service);
-        DefaultGdmConfig::new(app_config, file_service)
-    }
 
-    #[test]
-    fn test_add_plugins_should_add_plugins_to_config() {
-        let plugin_config_repository =
-            setup_mock_plugin_config_repository_for_add_and_remove_plugins();
-
-        let new_plugins =
-            BTreeMap::from([("plugin_3".to_string(), Plugin::create_mock_plugin_3())]);
-        let result = plugin_config_repository.add_plugins(&new_plugins);
-        assert!(result.is_ok());
-        let updated_config = result.unwrap();
-
-        let expected_plugins = BTreeMap::from([
-            ("plugin_1".to_string(), Plugin::create_mock_plugin_1()),
-            ("plugin_2".to_string(), Plugin::create_mock_plugin_2()),
-            ("plugin_3".to_string(), Plugin::create_mock_plugin_3()),
-        ]);
-
-        assert_eq!(updated_config.plugins, expected_plugins);
-    }
-
-    // get_plugin_by_name
-
-    #[test]
-    fn test_get_plugin_by_name_should_return_plugin_if_exists() {
-        let app_config = DefaultAppConfig::new(
-            None,
-            Some(String::from("tests/mocks/gdm.json")),
-            None,
-            None,
-            None,
-        );
-        let plugin_config_repository =
-            DefaultGdmConfig::new(app_config, Arc::new(DefaultFileService));
-        let plugin_key = "plugin_1";
-        let key = plugin_config_repository.get_plugin_by_name(plugin_key);
-        assert_eq!(
-            key,
-            Some((plugin_key.to_string(), Plugin::create_mock_plugin_1()))
-        );
-    }
-
-    #[test]
-    fn test_get_plugin_by_name_should_return_none_if_plugin_does_not_exist() {
-        let app_config = DefaultAppConfig::new(
-            None,
-            Some(String::from("tests/mocks/gdm.json")),
-            None,
-            None,
-            None,
-        );
-        let plugin_config_repository =
-            DefaultGdmConfig::new(app_config, Arc::new(DefaultFileService));
-        let plugin_key = "nonexistent_plugin";
-        let key = plugin_config_repository.get_plugin_by_name(plugin_key);
-        assert_eq!(key, None);
-    }
-
-    #[test]
-    fn test_remove_plugins_should_remove_specified_plugins() {
-        let plugin_config_repository =
-            setup_mock_plugin_config_repository_for_add_and_remove_plugins();
-
-        let plugins_to_remove = HashSet::from(["plugin_1".to_string()]);
-
-        let result = plugin_config_repository.remove_plugins(plugins_to_remove);
-        assert!(result.is_ok());
-        let updated_config = result.unwrap();
-
-        let expected_plugins = BTreeMap::from([(
-            "plugin_2".to_string(),
-            Plugin::new_asset_store_plugin(
-                "12345".to_string(),
-                Some("addons/super_plugin/plugin.cfg".into()),
-                "Super Plugin".to_string(),
-                "2.1.3".to_string(),
-                "MIT".to_string(),
-                vec![],
-            ),
-        )]);
-
-        assert_eq!(updated_config.plugins, expected_plugins);
-    }
-
-    #[test]
-    fn test_remove_plugins_should_not_remove_anything_if_keys_do_not_exist() {
-        let plugin_config_repository =
-            setup_mock_plugin_config_repository_for_add_and_remove_plugins();
-
-        let plugins_to_remove = HashSet::from(["nonexistent_plugin".to_string()]);
-
-        let result = plugin_config_repository.remove_plugins(plugins_to_remove);
-        assert!(result.is_ok());
-        let updated_config = result.unwrap();
-
-        let expected_plugins = BTreeMap::from([
-            ("plugin_1".to_string(), Plugin::create_mock_plugin_1()),
-            ("plugin_2".to_string(), Plugin::create_mock_plugin_2()),
-        ]);
-
-        assert_eq!(updated_config.plugins, expected_plugins);
-    }
-
-    #[test]
-    fn test_remove_plugins_should_return_default_config_if_all_removed() {
-        let plugin_config_repository =
-            setup_mock_plugin_config_repository_for_add_and_remove_plugins();
-
-        let plugins_to_remove = HashSet::from(["plugin_1".to_string(), "plugin_2".to_string()]);
-
-        let result = plugin_config_repository.remove_plugins(plugins_to_remove);
-        assert!(result.is_ok());
-        let updated_config = result.unwrap();
-
-        let expected_plugins = BTreeMap::new();
-
-        assert_eq!(updated_config.plugins, expected_plugins);
-    }
-
-    // save
-
-    #[test]
-    fn test_save_should_return_correct_string_content_on_empty_config() {
-        let plugin_config_repository =
-            setup_mock_plugin_config_repository_for_add_and_remove_plugins();
-
-        let plugin_config = DefaultGdmConfigMetadata::new(BTreeMap::new());
-
-        let result = plugin_config_repository.save(&plugin_config);
-        assert!(result.is_ok());
-
-        assert_eq!(result.unwrap(), String::from("{\n  \"plugins\": {}\n}"));
-    }
-
-    #[test]
-    fn test_save_should_return_correct_json_with_plugins() {
-        let plugin_config_repository =
-            setup_mock_plugin_config_repository_for_add_and_remove_plugins();
-
-        let plugins = BTreeMap::from([
-            ("plugin_1".to_string(), Plugin::create_mock_plugin_1()),
-            ("plugin_2".to_string(), Plugin::create_mock_plugin_2()),
-        ]);
-
-        let plugin_config = DefaultGdmConfigMetadata::new(plugins);
-
-        let result = plugin_config_repository.save(&plugin_config);
-        assert!(result.is_ok());
-
-        let expected = json!({
-            "plugins": {
-                "plugin_1": {
-                    "source": {
-                      "asset_id": "54321"
-                    },
-                    "title": "Awesome Plugin",
-                    "version": "1.0.0",
-                    "license": "MIT",
-                    "plugin_cfg_path": "addons/awesome_plugin/plugin.cfg",
-                    "sub_assets": []
-                },
-                "plugin_2": {
-                    "source": {
-                        "asset_id": "12345"
-                    },
-                    "title": "Super Plugin",
-                    "version": "2.1.3",
-                    "license": "MIT",
-                    "plugin_cfg_path": "addons/super_plugin/plugin.cfg",
-                    "sub_assets": []
-                }
-            }
-        });
-
-        let saved = result.unwrap();
-        let saved_json: serde_json::Value = serde_json::from_str(&saved).unwrap();
-        assert_eq!(saved_json, expected);
-    }
-
-    #[test]
-    fn test_save_should_return_correct_json_with_plugins_with_sub_assets() {
-        let plugin_config_repository =
-            setup_mock_plugin_config_repository_for_add_and_remove_plugins();
-
-        let plugins = BTreeMap::from([("plugin_1".to_string(), Plugin::create_mock_plugin_3())]);
-
-        let plugin_config = DefaultGdmConfigMetadata::new(plugins);
-
-        let result = plugin_config_repository.save(&plugin_config);
-        assert!(result.is_ok());
-
-        let expected = json!({
-            "plugins": {
-                "plugin_1": {
-                    "source": {
-                        "asset_id": "345678",
-                    },
-                    "title": "Some Library",
-                    "version": "3.3.3",
-                    "sub_assets": [
-                        "sub_asset1",
-                        "sub_asset2"
-                    ],
-                    "license": "MIT",
-                }
-            }
-        });
-        let saved = result.unwrap();
-        let saved_json: serde_json::Value = serde_json::from_str(&saved).unwrap();
-        assert_eq!(saved_json, expected);
-    }
-
-    // has_installed_plugins
-
-    #[test]
-    fn test_has_installed_plugins_should_return_true_if_plugins_exist() {
-        let app_config = DefaultAppConfig::new(
-            None,
-            Some(String::from("tests/mocks/gdm.json")),
-            None,
-            None,
-            None,
-        );
-        let plugin_config_repository =
-            DefaultGdmConfig::new(app_config, Arc::new(DefaultFileService));
-        let result = plugin_config_repository.has_installed_plugins();
-        assert!(result.is_ok());
-        let has_plugins = result.unwrap();
-        assert!(has_plugins);
-    }
-
-    #[test]
-    fn test_has_installed_plugins_should_return_false_if_plugins_do_not_exist() {
-        let app_config = DefaultAppConfig::new(
-            None,
-            Some(String::from("tests/mocks/gdm_non_existent.json")),
-            None,
-            None,
-            None,
-        );
-        let plugin_config_repository =
-            DefaultGdmConfig::new(app_config, Arc::new(DefaultFileService));
-        let result = plugin_config_repository.has_installed_plugins();
-        assert!(result.is_ok());
-        let has_plugins = result.unwrap();
-        assert!(!has_plugins);
+        config.save(&setup_test_manifest()).unwrap();
     }
 }

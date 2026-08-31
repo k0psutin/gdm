@@ -25,10 +25,6 @@ impl DefaultCache {
 
 #[cfg_attr(test, mockall::automock)]
 impl Cache for DefaultCache {
-    fn has_key(&self, key: &str) -> bool {
-        self.cache.lock().unwrap().contains_key(key)
-    }
-
     fn get(&self, key: &str) -> Option<String> {
         self.cache.lock().unwrap().get(key).cloned()
     }
@@ -47,7 +43,6 @@ impl Cache for DefaultCache {
 }
 
 pub trait Cache {
-    fn has_key(&self, key: &str) -> bool;
     fn get(&self, key: &str) -> Option<String>;
     fn insert(&self, key: &str, value: &str);
     #[cfg(test)]
@@ -65,17 +60,15 @@ impl FileService for DefaultFileService {
         debug!("Reading file with cache: {}", file_path.display());
         let cache = DefaultCache::new();
         let path = file_path
-            .to_path_buf()
-            .into_os_string()
-            .into_string()
-            .unwrap();
-        if cache.has_key(&path) {
+            .to_str()
+            .context("Failed to convert file path to UTF-8")?;
+        if let Some(cached) = cache.get(path) {
             debug!("Cache hit for key: {}", path);
-            return Ok(cache.get(&path).unwrap().clone());
+            return Ok(cached);
         }
         let content = std::fs::read_to_string(file_path)
-            .with_context(|| format!("Failed to read file: {}", file_path.to_str().unwrap()))?;
-        cache.insert(&path, &content);
+            .with_context(|| format!("Failed to read file: {}", file_path.display()))?;
+        cache.insert(path, &content);
         debug!("Cache miss for key: {}", path);
         Ok(content)
     }
@@ -89,8 +82,12 @@ impl FileService for DefaultFileService {
 
     fn write_file(&self, file_path: &Path, content: &str) -> Result<()> {
         debug!("Writing file: {}", file_path.display());
+        let path = file_path
+            .to_str()
+            .context("Failed to convert file path to UTF-8")?;
         std::fs::write(file_path, content)
             .with_context(|| format!("Failed to write file: {}", file_path.display()))?;
+        DefaultCache::new().insert(path, content);
         Ok(())
     }
 
@@ -204,8 +201,8 @@ mod tests {
         cache.clear(); // Clear the singleton cache before test
         cache.insert("key1", "value1");
         assert_eq!(cache.get("key1"), Some("value1".to_string()));
-        assert!(cache.has_key("key1"));
-        assert!(!cache.has_key("key2"));
+        assert!(cache.get("key1").is_some());
+        assert!(cache.get("key2").is_none());
     }
 
     #[test]
@@ -232,6 +229,7 @@ mod tests {
     #[serial]
     fn test_read_file_cached_should_cache_file() {
         let file_service = DefaultFileService;
+        DefaultCache::new().clear();
         let test_file_path = Path::new("tests/mocks/test_2.txt");
         std::fs::write(test_file_path, "Hello, world!").unwrap();
         let content_first_read = file_service.read_file_cached(test_file_path).unwrap();
@@ -239,14 +237,39 @@ mod tests {
 
         // Modify the file after the first read
         let modified_content = "Goodbye, world!";
-        std::fs::write(test_file_path, modified_content).unwrap();
+        file_service
+            .write_file(test_file_path, modified_content)
+            .unwrap();
 
-        // Read again, should return cached content
+        // Read again, should return the contents written after the cache read
         let content_second_read = file_service.read_file_cached(test_file_path).unwrap();
-        assert_eq!(content_second_read, "Hello, world!");
+        assert_eq!(content_second_read, "Goodbye, world!");
 
         // Clean up
         std::fs::remove_file(test_file_path).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[serial]
+    fn test_read_file_cached_returns_error_for_non_utf8_path_instead_of_panicking() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        let file_service = DefaultFileService;
+        DefaultCache::new().clear();
+        let path = PathBuf::from(OsString::from_vec(
+            b"tests/mocks/non-utf8-\xFF.txt".to_vec(),
+        ));
+        std::fs::write(&path, "content").unwrap();
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            file_service.read_file_cached(&path)
+        }));
+
+        assert!(result.is_ok(), "a non-UTF-8 path must not panic");
+        assert!(result.unwrap().is_err());
+        std::fs::remove_file(path).unwrap();
     }
 
     // Tests for new rename and read_dir methods

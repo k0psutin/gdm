@@ -3,7 +3,7 @@ mod gdm;
 mod godot;
 
 pub use app::{AppConfig, DefaultAppConfig};
-pub use gdm::{DefaultGdmConfig, DefaultGdmConfigMetadata, GdmConfig, GdmConfigMetadata};
+pub use gdm::{DefaultGdmConfig, GdmConfig, GdmManifest};
 pub use godot::{DefaultGodotConfig, GodotConfig};
 
 #[cfg(test)]

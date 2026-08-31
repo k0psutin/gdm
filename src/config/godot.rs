@@ -4,8 +4,8 @@ use anyhow::{Result, bail};
 use serde_derive::{Deserialize, Serialize};
 use tracing::{debug, error, info};
 
+use crate::config::GdmManifest;
 use crate::config::{AppConfig, DefaultAppConfig};
-use crate::config::{DefaultGdmConfigMetadata, GdmConfigMetadata};
 use crate::models::Plugin;
 use crate::services::{DefaultFileService, FileService};
 
@@ -97,19 +97,23 @@ impl GodotConfig for DefaultGodotConfig {
     fn plugins_to_packed_string_array(&self, plugins: Vec<Plugin>) -> String {
         let plugin_paths = plugins
             .iter()
-            .filter(|plugin| plugin.plugin_cfg_path.is_some())
-            .map(|plugin| format!("\"res://{}\"", plugin.plugin_cfg_path.as_ref().unwrap()))
+            .filter_map(|plugin| {
+                plugin
+                    .plugin_cfg_path
+                    .as_ref()
+                    .map(|path| format!("\"res://{}\"", escape_godot_string(path),))
+            })
             .collect::<Vec<String>>()
             .join(", ");
         let packed_string_array = format!("PackedStringArray({})", plugin_paths);
         info!(
-            "Converted plugins to PackedStringArray: {}",
+            "Converted dependencies to PackedStringArray: {}",
             packed_string_array
         );
         packed_string_array
     }
 
-    fn save(&self, gdm_config: DefaultGdmConfigMetadata) -> Result<()> {
+    fn save(&self, gdm_config: GdmManifest) -> Result<()> {
         let godot_project_file_path = self.app_config.get_godot_project_file_path();
         if !self.file_service.file_exists(godot_project_file_path)? {
             error!(
@@ -144,33 +148,36 @@ impl GodotConfig for DefaultGodotConfig {
     ///
     /// [<next section>]
     /// ```
-    fn update_project_file(
-        &self,
-        gdm_config_metadata: DefaultGdmConfigMetadata,
-    ) -> Result<Vec<String>> {
-        let plugin_config_plugins = gdm_config_metadata.get_plugins(true);
-        let _plugins = plugin_config_plugins
+    fn update_project_file(&self, gdm_config_metadata: GdmManifest) -> Result<Vec<String>> {
+        let plugin_config_plugins = gdm_config_metadata.dependencies_with_config();
+        let plugins = plugin_config_plugins
             .values()
             .cloned()
             .collect::<Vec<Plugin>>();
 
         let mut contents = self.load_project_file()?;
 
-        if contents.last().unwrap() != "" {
+        if contents.last().is_none_or(|line| !line.is_empty()) {
             contents.push("".to_string());
         }
 
         let editor_plugins_index = contents
             .iter()
-            .position(|line| line.starts_with("[editor_plugins]"));
+            .position(|line| line.trim() == "[editor_plugins]");
 
-        if _plugins.is_empty() {
+        if plugins.is_empty() {
+            debug!("No dependencies with plugin.cfg found");
             // If there are no plugins, we need to remove the [editor_plugins] section if it exists.
             if let Some(index) = editor_plugins_index {
                 info!("Removing [editor_plugins] section from Godot project file");
-                for _ in 0..4 {
-                    contents.remove(index);
-                }
+                let section_end = contents
+                    .iter()
+                    .enumerate()
+                    .skip(index + 1)
+                    .find(|(_, line)| is_section_header(line))
+                    .map(|(index, _)| index)
+                    .unwrap_or(contents.len());
+                contents.drain(index..section_end);
             }
             return Ok(contents);
         }
@@ -179,18 +186,19 @@ impl GodotConfig for DefaultGodotConfig {
             Some(index) => contents
                 .iter()
                 .skip(index + 1)
-                .position(|line| line.starts_with("enabled="))
+                .take_while(|line| !is_section_header(line))
+                .position(|line| line.trim_start().starts_with("enabled="))
                 .map(|i| i + index + 1),
             None => None,
         };
 
         if let Some(plugin_index) = plugin_index {
             debug!(
-                "Updating existing [editor_plugins] section with plugins: {:?}",
-                gdm_config_metadata.plugins.keys().cloned()
+                "Updating existing [editor_plugins] section with dependencies: {:?}",
+                gdm_config_metadata.dependencies.keys().cloned()
             );
             contents[plugin_index] =
-                format!("enabled={}", self.plugins_to_packed_string_array(_plugins));
+                format!("enabled={}", self.plugins_to_packed_string_array(plugins));
             return Ok(contents);
         }
 
@@ -199,7 +207,7 @@ impl GodotConfig for DefaultGodotConfig {
         let editor_plugins_section = vec![
             "[editor_plugins]".to_string(),
             "".to_string(),
-            format!("enabled={}", self.plugins_to_packed_string_array(_plugins)),
+            format!("enabled={}", self.plugins_to_packed_string_array(plugins)),
             "".to_string(),
         ];
 
@@ -224,7 +232,7 @@ impl GodotConfig for DefaultGodotConfig {
             }
         }
 
-        bail!("Failed to update plugins in Godot project file")
+        bail!("Failed to update dependencies in Godot project file")
     }
 
     /// Parses project.godot file and gathers plugins, config_version, and godot_version
@@ -336,13 +344,22 @@ impl GodotConfig for DefaultGodotConfig {
         Ok(())
     }
 }
+
+fn is_section_header(line: &str) -> bool {
+    let line = line.trim();
+    line.starts_with('[') && line.ends_with(']')
+}
+
+fn escape_godot_string(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
 pub trait GodotConfig {
     fn get_godot_version_from_project(&self) -> Result<String>;
     fn plugins_to_packed_string_array(&self, plugins: Vec<Plugin>) -> String;
     fn validate_project_file(&self) -> Result<()>;
-    fn save(&self, gdm_config: DefaultGdmConfigMetadata) -> Result<()>;
+    fn save(&self, gdm_config: GdmManifest) -> Result<()>;
     fn load(&self) -> Result<GodotProjectMetadata>;
-    fn update_project_file(&self, gdm_config: DefaultGdmConfigMetadata) -> Result<Vec<String>>;
+    fn update_project_file(&self, gdm_config: GdmManifest) -> Result<Vec<String>>;
     fn read_godot_project_file(&self) -> Result<GodotProjectMetadata>;
     fn load_project_file(&self) -> Result<Vec<String>>;
     fn save_project_file(&self, lines: Vec<String>) -> Result<()>;
@@ -416,7 +433,6 @@ mod tests {
         let app_config = DefaultAppConfig::new(
             None,
             None,
-            None,
             Some(String::from(
                 "tests/mocks/project_with_plugins_and_version.godot",
             )),
@@ -432,7 +448,7 @@ mod tests {
         assert_eq!(
             result,
             String::from(
-                "PackedStringArray(\"res://addons/awesome_plugin/plugin.cfg\", \"res://addons/super_plugin/plugin.cfg\")"
+                "PackedStringArray(\"res://addons/asset_54321/plugin.cfg\", \"res://addons/asset_3344332/plugin.cfg\")"
             )
         );
     }
@@ -442,7 +458,6 @@ mod tests {
     #[test]
     fn test_read_godot_project_file_with_config_version_5_and_plugins() {
         let app_config = DefaultAppConfig::new(
-            None,
             None,
             None,
             Some(String::from(
@@ -465,7 +480,6 @@ mod tests {
         let app_config = DefaultAppConfig::new(
             None,
             None,
-            None,
             Some(project_file_path_string.clone()),
             Some(String::from("tests/mocks/addons")),
         );
@@ -485,7 +499,6 @@ mod tests {
         let app_config = DefaultAppConfig::new(
             None,
             None,
-            None,
             Some(String::from("non_existent_file.godot")),
             Some(String::from("tests/mocks/addons")),
         );
@@ -497,7 +510,6 @@ mod tests {
     #[test]
     fn test_load_should_not_return_error_if_file_exists() {
         let app_config = DefaultAppConfig::new(
-            None,
             None,
             None,
             Some(String::from(
@@ -517,7 +529,6 @@ mod tests {
         let app_config = DefaultAppConfig::new(
             None,
             None,
-            None,
             Some(String::from("non_existent_file.godot")),
             Some(String::from("tests/mocks/addons")),
         );
@@ -529,7 +540,6 @@ mod tests {
     #[test]
     fn test_load_project_file_should_not_return_error_if_file_exists() {
         let app_config = DefaultAppConfig::new(
-            None,
             None,
             None,
             Some(String::from(
@@ -545,9 +555,29 @@ mod tests {
     // update_project_file
 
     #[test]
-    fn test_update_project_file_should_add_editor_plugins_section_when_it_is_missing() {
+    fn test_update_project_file_handles_empty_project_file() {
         let app_config = DefaultAppConfig::new(
             None,
+            None,
+            Some(String::from("tests/mocks/project.godot")),
+            Some(String::from("addons")),
+        );
+        let mut mock_file_service = MockDefaultFileService::default();
+        mock_file_service
+            .expect_read_file_cached()
+            .returning(|_| Ok(String::new()));
+
+        let repository = DefaultGodotConfig::new(Box::new(mock_file_service), app_config);
+        let lines = repository
+            .update_project_file(GdmManifest::default())
+            .unwrap();
+
+        assert_eq!(lines, vec![String::new()]);
+    }
+
+    #[test]
+    fn test_update_project_file_should_add_editor_plugins_section_when_it_is_missing() {
+        let app_config = DefaultAppConfig::new(
             None,
             None,
             Some(String::from("tests/mocks/project.godot")),
@@ -594,7 +624,7 @@ config/features=PackedStringArray("4.5")
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/awesome_plugin/plugin.cfg")
+enabled=PackedStringArray("res://addons/asset_54321/plugin.cfg")
 
 [rendering]
 
@@ -611,7 +641,7 @@ renderer/rendering_method="gl_compatibility"
 
         let mut plugins = BTreeMap::new();
         plugins.insert("awesome_plugin".to_string(), Plugin::create_mock_plugin_1());
-        let gdm_config = DefaultGdmConfigMetadata::new(plugins);
+        let gdm_config = GdmManifest::new(plugins);
 
         let result = repository.update_project_file(gdm_config);
         assert!(result.is_ok());
@@ -624,7 +654,6 @@ renderer/rendering_method="gl_compatibility"
     fn test_update_project_file_should_add_editor_plugins_section_when_it_is_missing_in_simple_config()
      {
         let app_config = DefaultAppConfig::new(
-            None,
             None,
             None,
             Some(String::from("tests/mocks/project.godot")),
@@ -666,7 +695,7 @@ config/features=PackedStringArray("4.5")
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
+enabled=PackedStringArray("res://addons/asset_3344332/plugin.cfg")
 
 "#;
 
@@ -678,8 +707,8 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
         let repository = DefaultGodotConfig::new(Box::new(mock_file_service), app_config);
 
         let mut plugins = BTreeMap::new();
-        plugins.insert("super_plugin".to_string(), Plugin::create_mock_plugin_2());
-        let gdm_config = DefaultGdmConfigMetadata::new(plugins);
+        plugins.insert("asset_3344332".to_string(), Plugin::create_mock_plugin_2());
+        let gdm_config = GdmManifest::new(plugins);
 
         let result = repository.update_project_file(gdm_config);
         assert!(result.is_ok());
@@ -691,7 +720,6 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
     #[test]
     fn test_update_project_file_should_update_existing_editor_plugins_section() {
         let app_config = DefaultAppConfig::new(
-            None,
             None,
             None,
             Some(String::from("tests/mocks/project.godot")),
@@ -717,7 +745,7 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
 
         let mut plugins = BTreeMap::new();
         plugins.insert("awesome_plugin".to_string(), Plugin::create_mock_plugin_1());
-        let gdm_config = DefaultGdmConfigMetadata::new(plugins);
+        let gdm_config = GdmManifest::new(plugins);
 
         let result = repository.update_project_file(gdm_config);
         assert!(result.is_ok());
@@ -728,14 +756,117 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
             .iter()
             .find(|line| line.starts_with("enabled="))
             .unwrap();
-        assert!(enabled_line.contains("awesome_plugin"));
+        assert!(enabled_line.contains("asset_54321"));
         assert!(!enabled_line.contains("old_plugin"));
+    }
+
+    #[test]
+    fn test_update_project_file_does_not_update_enabled_in_a_following_section() {
+        let app_config = DefaultAppConfig::new(
+            None,
+            None,
+            Some(String::from("tests/mocks/project.godot")),
+            Some(String::from("addons")),
+        );
+
+        let mut mock_file_service = MockDefaultFileService::default();
+        mock_file_service.expect_read_file_cached().returning(|_| {
+            Ok(String::from(
+                "config_version=5\n\
+                    [editor_plugins]\n\
+                    \n\
+                    [rendering]\n\
+                    enabled=\"rendering-setting\"\n",
+            ))
+        });
+
+        let repository = DefaultGodotConfig::new(Box::new(mock_file_service), app_config);
+        let mut plugins = BTreeMap::new();
+        plugins.insert("awesome_plugin".to_string(), Plugin::create_mock_plugin_1());
+
+        let lines = repository
+            .update_project_file(GdmManifest::new(plugins))
+            .unwrap();
+
+        let editor_plugins_index = lines
+            .iter()
+            .position(|line| line == "[editor_plugins]")
+            .unwrap();
+        let rendering_index = lines.iter().position(|line| line == "[rendering]").unwrap();
+        assert!(
+            lines[editor_plugins_index..rendering_index]
+                .iter()
+                .any(|line| line.starts_with("enabled=PackedStringArray"))
+        );
+        assert_eq!(lines[rendering_index + 1], "enabled=\"rendering-setting\"");
+    }
+
+    #[test]
+    fn test_update_project_file_preserves_following_section_when_removing_plugins() {
+        let app_config = DefaultAppConfig::new(
+            None,
+            None,
+            Some(String::from("tests/mocks/project.godot")),
+            Some(String::from("addons")),
+        );
+
+        let mut mock_file_service = MockDefaultFileService::default();
+        mock_file_service.expect_read_file_cached().returning(|_| {
+            Ok(String::from(
+                "config_version=5\n\
+                    [editor_plugins]\n\
+                    comment=\"keep this section\"\n\
+                    \n\
+                    [rendering]\n\
+                    renderer/rendering_method=\"gl_compatibility\"\n",
+            ))
+        });
+
+        let repository = DefaultGodotConfig::new(Box::new(mock_file_service), app_config);
+        let lines = repository
+            .update_project_file(GdmManifest::new(BTreeMap::new()))
+            .unwrap();
+
+        assert!(!lines.iter().any(|line| line == "[editor_plugins]"));
+        assert!(lines.iter().any(|line| line == "[rendering]"));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line == "renderer/rendering_method=\"gl_compatibility\"")
+        );
+    }
+
+    #[test]
+    fn test_plugins_to_packed_string_array_escapes_plugin_cfg_path() {
+        let app_config = DefaultAppConfig::new(
+            None,
+            None,
+            Some(String::from("tests/mocks/project.godot")),
+            Some(String::from("addons")),
+        );
+        let repository =
+            DefaultGodotConfig::new(Box::new(MockDefaultFileService::default()), app_config);
+        let plugin = Plugin::new(
+            crate::models::PluginSource::AssetStore {
+                publisher_slug: "publisher".to_string(),
+                asset_slug: "asset".to_string(),
+            },
+            Some(Path::new("addons/quote\"plugin/plugin.cfg").to_path_buf()),
+            "Quoted Plugin".to_string(),
+            "1.0.0".to_string(),
+            Some("MIT".to_string()),
+            Vec::new(),
+        );
+
+        assert_eq!(
+            repository.plugins_to_packed_string_array(vec![plugin]),
+            r#"PackedStringArray("res://addons/quote\"plugin/plugin.cfg")"#
+        );
     }
 
     #[test]
     fn test_update_project_file_should_not_add_plugin_without_plugin_cfg_path() {
         let app_config = DefaultAppConfig::new(
-            None,
             None,
             None,
             Some(String::from("tests/mocks/project.godot")),
@@ -762,7 +893,7 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
         let mut plugins = BTreeMap::new();
         plugins.insert("awesome_plugin".to_string(), Plugin::create_mock_plugin_1());
         plugins.insert("some_library".to_string(), Plugin::create_mock_plugin_3());
-        let gdm_config = DefaultGdmConfigMetadata::new(plugins);
+        let gdm_config = GdmManifest::new(plugins);
 
         let result = repository.update_project_file(gdm_config);
         assert!(result.is_ok());
@@ -773,14 +904,13 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
             .iter()
             .find(|line| line.starts_with("enabled="))
             .unwrap();
-        assert!(enabled_line.contains("awesome_plugin"));
+        assert!(enabled_line.contains("asset_54321"));
         assert!(!enabled_line.contains("some_library"));
     }
 
     #[test]
     fn test_update_project_file_should_remove_editor_plugins_section_when_no_plugins() {
         let app_config = DefaultAppConfig::new(
-            None,
             None,
             None,
             Some(String::from("tests/mocks/project.godot")),
@@ -804,7 +934,7 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
 
         let repository = DefaultGodotConfig::new(Box::new(mock_file_service), app_config);
 
-        let gdm_config = DefaultGdmConfigMetadata::new(BTreeMap::new());
+        let gdm_config = GdmManifest::new(BTreeMap::new());
 
         let result = repository.update_project_file(gdm_config);
         assert!(result.is_ok());
@@ -822,7 +952,6 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
         let app_config = DefaultAppConfig::new(
             None,
             None,
-            None,
             Some(String::from("tests/mocks/project.godot")),
             Some(String::from("addons")),
         );
@@ -838,7 +967,7 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
 
         let repository = DefaultGodotConfig::new(Box::new(mock_file_service), app_config);
 
-        let gdm_config = DefaultGdmConfigMetadata::new(BTreeMap::new());
+        let gdm_config = GdmManifest::new(BTreeMap::new());
 
         let result = repository.update_project_file(gdm_config);
         assert!(result.is_ok());
@@ -855,7 +984,6 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
         use std::path::Path;
 
         let app_config = DefaultAppConfig::new(
-            None,
             None,
             None,
             Some(String::from("tests/mocks/project.godot")),
@@ -891,7 +1019,6 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
         let app_config = DefaultAppConfig::new(
             None,
             None,
-            None,
             Some(String::from("tests/mocks/project.godot")),
             Some(String::from("addons")),
         );
@@ -919,7 +1046,6 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
         let app_config = DefaultAppConfig::new(
             None,
             None,
-            None,
             Some(String::from("tests/mocks/project.godot")),
             Some(String::from("addons")),
         );
@@ -943,7 +1069,6 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
     #[test]
     fn test_save_should_update_and_save_project_file() {
         let app_config = DefaultAppConfig::new(
-            None,
             None,
             None,
             Some(String::from("tests/mocks/project.godot")),
@@ -977,7 +1102,7 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
 
         let mut plugins = BTreeMap::new();
         plugins.insert("awesome_plugin".to_string(), Plugin::create_mock_plugin_1());
-        let gdm_config = DefaultGdmConfigMetadata::new(plugins);
+        let gdm_config = GdmManifest::new(plugins);
 
         let result = repository.save(gdm_config);
         assert!(result.is_ok());
@@ -988,7 +1113,6 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
         use std::collections::BTreeMap;
 
         let app_config = DefaultAppConfig::new(
-            None,
             None,
             None,
             Some(String::from("tests/mocks/project.godot")),
@@ -1002,7 +1126,7 @@ enabled=PackedStringArray("res://addons/super_plugin/plugin.cfg")
 
         let repository = DefaultGodotConfig::new(Box::new(mock_file_service), app_config);
 
-        let gdm_config = DefaultGdmConfigMetadata::new(BTreeMap::new());
+        let gdm_config = GdmManifest::new(BTreeMap::new());
 
         let result = repository.save(gdm_config);
         assert!(result.is_err());

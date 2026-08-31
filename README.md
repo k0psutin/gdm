@@ -5,7 +5,7 @@
 
 # GD Manager (gdm)
 
-**GD Manager** (`gdm`) is a CLI tool for managing Godot plugin dependencies, similar to npm or cargo for Godot projects.
+**GD Manager** (`gdm`) is a CLI tool for managing Godot dependencies, similar to npm or cargo for Godot projects.
 
 ## Table of Contents
 
@@ -16,6 +16,7 @@
 - [Usage](#usage)
   - [add](#add)
   - [install](#install)
+  - [list](#list)
   - [update](#update)
   - [outdated](#outdated)
   - [search](#search)
@@ -29,23 +30,24 @@
 1. Download `gdm` for your platform from the [releases page](https://github.com/k0psutin/gdm/releases)
 2. Place the binary in your PATH or project directory
 3. Navigate to your Godot project directory
-4. Search for a plugin: `gdm search "dialogue"`
-5. Add the plugin: `gdm add "Dialogue Manager"`
+4. Search for a dependency: `gdm search "dialogue"`
+5. Add the dependency: `gdm add "Dialogue Manager"`
 6. Install: `gdm install`
 
-That's it! Your plugin is now installed and ready to use.
+That's it! Your dependency is now installed and ready to use.
 
 ## Features
 
-- Search for plugins from the Godot Asset Library
-- Add plugins from Asset Library or Git repositories
+- Search for dependencies from the Godot Asset Library
+- Add dependencies from the Godot Asset Library or Git repositories
 - Install all project dependencies with one command
-- Update plugins to their latest versions
-- Check for outdated plugins
-- Remove plugins cleanly
+- List project dependencies
+- Update dependencies to their latest versions
+- Check for outdated dependencies
+- Remove dependencies cleanly
 - Automatic `project.godot` management
-- Dependency tracking via `gdm.json`
-- Support for Git-based plugins
+- Dependency tracking via `gdm.toml`
+- Support for Git-based dependencies
 
 ## Supported Godot Versions
 
@@ -55,36 +57,50 @@ That's it! Your plugin is now installed and ready to use.
 
 ## Temporary Directory
 
-`gdm` creates a `.gdm` directory to temporarily store downloaded compressed assets. Add this to your `.gitignore`:
+`gdm` creates a `.gdm` directory to temporarily store downloaded dependency archives. Add this to your `.gitignore`:
 
 **Example `.gitignore` entry:**
 ```bash
 .gdm
 ```
 
-## Important: Managing Plugins with `gdm`
+## Important: Managing Dependencies with `gdm`
 
-When using `gdm`, **all plugin additions and removals should be performed through the CLI**. Manual editing of `project.godot` is not supported and may cause inconsistencies.
+When using `gdm`, **all dependency additions and removals should be performed through the CLI**. Manual editing of `project.godot` is not supported and may cause inconsistencies.
 
 ### How It Works
 
 - `gdm` automatically manages the `[editor_plugins]` section in `project.godot`
-- Plugin metadata is stored in `gdm.json` for dependency tracking
-- Manual changes to plugin entries may be overwritten by `gdm` commands
+- Dependency metadata is stored in `gdm.toml` under the `[dependencies]` table
+- Manual changes to dependency entries may be overwritten by `gdm` commands
 
-### Migration from Manual Plugin Management
+For example:
 
-> **Important:** There is no automatic migration path for existing plugins. To use `gdm` with a project that already has plugins:
+```toml
+[dependencies.netfox]
+title = "netfox"
+version = "v1.35.3"
+
+[dependencies.netfox.source]
+publisher_slug = "foxssake"
+asset_slug = "netfox"
+```
+
+### Migration from Manual Dependency Management
+
+> **Important:** There is no automatic migration path for existing dependencies. To use `gdm` with a project that already has dependencies:
 > 
-> 1. Note your current plugins
+> 1. Note your current dependencies
 > 2. Remove them manually from `project.godot` and `/addons`
 > 3. Reinstall via `gdm add` and `gdm install`
 > 
-> This ensures `gdm.json` and `project.godot` stay synchronized.
+> This ensures `gdm.toml` and `project.godot` stay synchronized.
 
-### Plugins with Multiple Assets
+### Dependencies with Multiple Folders
 
-If a downloaded asset contains multiple folders in `/addons`, `gdm` automatically identifies the main plugin for `gdm.json`. Additional assets are marked as `sub_assets`.
+If a downloaded dependency contains multiple folders in `/addons`, `gdm` automatically identifies the main dependency for `gdm.toml`. Additional folders are marked as `sub_assets`.
+
+Projects using the legacy `gdm.json` manifest require a manual conversion to `gdm.toml`. Create the `[dependencies]` entries shown above and copy the dependency fields into the new file. `gdm` ignores the legacy file and never migrates or deletes it.
 
 ## Installation
 
@@ -135,14 +151,14 @@ Run `gdm <command> [options]` in your Godot project directory.
 
 #### `add`
 
-Add a plugin dependency to your project from the Godot Asset Library.
+Add a dependency to your project from the Godot Asset Library.
 
-**Note:** This command will also install the plugin.
+**Note:** This command will also install the dependency.
 
 **Basic usage:**
 
 ```bash
-gdm add '<asset-name>'
+gdm add '<dependency-name>'
 ```
 
 ![gdm add](./docs/gifs/gdm_add.gif)
@@ -150,11 +166,11 @@ gdm add '<asset-name>'
 **With optional flags:**
 
 ```bash
-gdm add '<asset-name>' [--asset-id <godot-asset-id>] [--version <version>]
+gdm add '<dependency-name>' [--asset-id <godot-asset-id>] [--version <version>]
 ```
 
 **Flags:**
-- `--asset-id`: Specify the Godot Asset Library ID (useful when asset name is ambiguous)
+- `--asset-id`: Specify the Godot Asset Library ID (useful when dependency name is ambiguous)
 - `--version`: Install a specific version instead of the latest
 
 **Adding from Git repositories:**
@@ -176,20 +192,20 @@ gdm add "Dialogue Manager"
 gdm add "Dialogue Manager" --version "3.1.0"
 
 # Add from Git using branch
-gdm add --git https://github.com/username/godot-plugin.git --ref main
+gdm add --git https://github.com/username/godot-dependency.git --ref main
 
 # Add from Git using tag  
-gdm add --git https://github.com/username/godot-plugin.git --ref v1.2.3
+gdm add --git https://github.com/username/godot-dependency.git --ref v1.2.3
 
 # Add from Git using commit hash
-gdm add --git https://github.com/username/godot-plugin.git --ref a1b2c3d
+gdm add --git https://github.com/username/godot-dependency.git --ref a1b2c3d
 ```
 
-> **Note:** When adding a plugin that already exists, `gdm` will update it to the specified version. Git plugins are **not** auto-updated by `gdm update` - you must manually remove and re-add them with a new `--ref` to update.
+> **Note:** When adding a dependency that already exists, `gdm` will update it to the specified version. Git dependencies are **not** auto-updated by `gdm update` - you must manually remove and re-add them with a new `--ref` to update.
 
 #### `install`
 
-Install all plugin dependencies listed in `gdm.json`.
+Install all dependencies listed in `gdm.toml`.
 
 ```bash
 gdm install
@@ -197,9 +213,28 @@ gdm install
 
 ![gdm install](./docs/gifs/gdm_install.gif)
 
+#### `list`
+
+List the dependencies declared in `gdm.toml`.
+
+```bash
+gdm list
+```
+
+The command lists one row for each top-level dependency, sorted by its manifest key. Asset Store versions and Git references are shown in the `Version` column. Git sources are displayed without a leading `http://` or `https://`, one trailing `/`, or one trailing `.git`.
+
+If no `gdm.toml` exists or it contains no dependencies, the command prints `No dependencies found.`. A legacy `gdm.json` is ignored. The command does not require `project.godot`.
+
+```text
+Dependency          Key              Version        Source
+netfox              netfox           v1.35.3        foxssake/netfox
+
+To remove a dependency, use: gdm remove <key>
+```
+
 #### `update`
 
-Update all Asset Library plugins to their latest versions.
+Update all Godot Asset Library dependencies to their latest versions.
 
 ```bash
 gdm update
@@ -207,11 +242,11 @@ gdm update
 
 ![gdm update](./docs/gifs/gdm_update.gif)
 
-> **Note:** Plugins installed via Git (`--git` flag) will not be updated by this command.
+> **Note:** Dependencies installed via Git (`--git` flag) will not be updated by this command.
 
 #### `outdated`
 
-Check which Asset Library plugins have newer versions available.
+Check which Godot Asset Library dependencies have newer versions available.
 
 ```bash
 gdm outdated
@@ -219,14 +254,14 @@ gdm outdated
 
 ![gdm outdated](./docs/gifs/gdm_outdated.gif)
 
-> **Note:** Plugins installed via Git (`--git` flag) will not be shown by this command.
+> **Note:** Dependencies installed via Git (`--git` flag) will not be shown by this command.
 
 #### `search`
 
-Search the Godot Asset Library for plugins.
+Search the Godot Asset Library for dependencies.
 
 ```bash
-gdm search '<asset-name>'
+gdm search '<dependency-name>'
 ```
 
 ![gdm search](./docs/gifs/gdm_search.gif)
@@ -234,7 +269,7 @@ gdm search '<asset-name>'
 **With Godot version filter:**
 
 ```bash
-gdm search '<asset-name>' --godot-version '<version>'
+gdm search '<dependency-name>' --godot-version '<version>'
 ```
 
 **Example:**
@@ -244,15 +279,15 @@ gdm search "dialogue" --godot-version "4.3"
 
 #### `remove`
 
-Remove a plugin from your project.
+Remove a dependency from your project.
 
 ```bash
-gdm remove '<plugin-name>'
+gdm remove '<dependency-key>'
 ```
 
 ![gdm remove](./docs/gifs/gdm_remove.gif)
 
-> **Note:** The `<plugin-name>` must match the plugin name as it appears in your `gdm.json` file.
+> **Note:** The `<dependency-key>` must match the dependency key as it appears in your `gdm.toml` file.
 
 ## Examples
 
@@ -262,10 +297,10 @@ gdm remove '<plugin-name>'
 # Initialize your Godot project first in Godot Editor
 cd my-godot-project
 
-# Search for plugins
+# Search for dependencies
 gdm search "dialogue manager"
 
-# Add plugins
+# Add dependencies
 gdm add "Dialogue Manager 3"
 gdm add "Godot Unit Testing"
 ```
@@ -287,7 +322,7 @@ gdm install
 # Check for updates
 gdm outdated
 
-# Update all plugins
+# Update all dependencies
 gdm update
 ```
 
@@ -301,7 +336,7 @@ Found a bug or have a feature request? Please [create an issue](https://github.c
 - `gdm` version (shown with `gdm --version`)
 - Steps to reproduce the issue
 - Error messages or logs
-- Your `gdm.json` file (if relevant)
+- Your `gdm.toml` file (if relevant)
 
 **For feature requests:**
 - Describe the feature and why it would be useful

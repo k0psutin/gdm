@@ -1,0 +1,10 @@
+[dependencies.gdunit4]
+plugin_cfg_path = "addons/gdunit4/plugin.cfg"
+title = "GDUnit4"
+version = "3.10.1"
+sub_assets = []
+license = "MIT"
+
+[dependencies.gdunit4.source]
+asset_slug = "gdunit4"
+publisher_slug = "mikeschulze"

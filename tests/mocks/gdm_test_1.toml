@@ -1,0 +1,17 @@
+[dependencies.plugin_1]
+title = "Awesome Plugin"
+version = "1.0.0"
+sub_assets = []
+
+[dependencies.plugin_1.source]
+publisher_slug = "publisher_12345"
+asset_slug = "asset_54321"
+
+[dependencies.plugin_2]
+title = "Super Plugin"
+version = "2.1.3"
+sub_assets = []
+
+[dependencies.plugin_2.source]
+publisher_slug = "publisher_12345"
+asset_slug = "asset_12345"

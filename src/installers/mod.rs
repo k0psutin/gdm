@@ -1,11 +1,11 @@
-pub mod asset_lib;
+pub mod asset_store;
 pub mod git;
 
 use anyhow::Result;
 use async_trait::async_trait;
 use std::sync::Arc;
 
-pub use asset_lib::AssetLibraryInstaller;
+pub use asset_store::AssetStoreInstaller;
 pub use git::GitInstaller;
 
 use crate::{
@@ -16,7 +16,7 @@ use crate::{
 
 #[async_trait]
 pub trait PluginInstaller: Send + Sync {
-    fn can_handle(&self, source: Option<PluginSource>) -> bool;
+    fn can_handle(&self, source: &PluginSource) -> bool;
 
     async fn install(
         &self,

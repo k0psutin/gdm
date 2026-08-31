@@ -1,0 +1,21 @@
+[dependencies.plugin_1]
+title = "Awesome Plugin"
+version = "1.0.0"
+license = "MIT"
+plugin_cfg_path = "addons/asset_54321/plugin.cfg"
+sub_assets = []
+
+[dependencies.plugin_1.source]
+asset_slug = "asset_54321"
+publisher_slug = "publisher_12345"
+
+[dependencies.plugin_2]
+title = "Super Plugin"
+version = "2.1.3"
+license = "MIT"
+plugin_cfg_path = "addons/asset_3344332/plugin.cfg"
+sub_assets = []
+
+[dependencies.plugin_2.source]
+asset_slug = "asset_3344332"
+publisher_slug = "publisher_3344332"

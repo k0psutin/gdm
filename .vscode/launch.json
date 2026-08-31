@@ -26,9 +26,8 @@
                 ]
             },
             "args": [
-                "add",
-                "--asset-id",
-                "2595"
+                "remove",
+                "gdunit4",
             ],
         },
         {

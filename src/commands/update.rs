@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::Args;
 
 #[derive(Args)]
-#[command(about = "Update all outdated plugins")]
+#[command(about = "Update all outdated dependencies")]
 pub struct UpdateArgs {}
 
 pub async fn handle() -> Result<()> {

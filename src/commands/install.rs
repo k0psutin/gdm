@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::Args;
 
 #[derive(Args)]
-#[command(about = "Install all plugins with versions listed in the configuration file.")]
+#[command(about = "Install all dependencies with versions listed in the configuration file.")]
 pub struct InstallArgs {}
 
 pub async fn handle() -> Result<()> {

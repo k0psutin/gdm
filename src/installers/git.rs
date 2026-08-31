@@ -27,8 +27,8 @@ impl GitInstaller {
 
 #[async_trait]
 impl PluginInstaller for GitInstaller {
-    fn can_handle(&self, source: Option<PluginSource>) -> bool {
-        matches!(source, Some(PluginSource::Git { .. }))
+    fn can_handle(&self, source: &PluginSource) -> bool {
+        matches!(source, PluginSource::Git { .. })
     }
 
     async fn install(
@@ -40,9 +40,9 @@ impl PluginInstaller for GitInstaller {
         operation_manager: Arc<OperationManager>,
     ) -> Result<(String, Plugin)> {
         let plugin_source = match &plugin.source {
-            Some(PluginSource::Git { url, reference }) => (url.clone(), reference.clone()),
+            PluginSource::Git { url, reference, .. } => (url.clone(), reference.clone()),
             _ => {
-                anyhow::bail!("Invalid plugin source for GitInstaller");
+                anyhow::bail!("Invalid dependency source for GitInstaller");
             }
         };
 
@@ -63,12 +63,9 @@ impl PluginInstaller for GitInstaller {
 
         pb.finish_and_clear();
 
-        let repo_name = self
-            .git_service
-            .extract_repo_name_from_src(&staging_dir)
-            .unwrap_or_else(|_| "unknown".to_string());
+        let repo_name = self.git_service.extract_repo_name_from_src(&staging_dir)?;
 
-        let source = plugin.source.clone().unwrap();
+        let source = plugin.source.clone();
 
         let (folder_name, plugin, folders_to_move) =
             install_service.discover_and_analyze_plugins(&source, &staging_dir, &repo_name)?;

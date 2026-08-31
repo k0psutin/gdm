@@ -1,5 +1,6 @@
 mod add;
 mod install;
+mod list;
 mod outdated;
 mod remove;
 mod search;
@@ -12,8 +13,8 @@ use clap_verbosity_flag::{OffLevel, Verbosity};
 
 use crate::{
     commands::{
-        add::AddArgs, install::InstallArgs, outdated::OutdatedArgs, remove::RemoveArgs,
-        search::SearchArgs, update::UpdateArgs,
+        add::AddArgs, install::InstallArgs, list::ListArgs, outdated::OutdatedArgs,
+        remove::RemoveArgs, search::SearchArgs, update::UpdateArgs,
     },
     config::{DefaultGodotConfig, GodotConfig},
 };
@@ -32,6 +33,7 @@ pub struct Cli {
 pub enum Commands {
     Add(AddArgs),
     Install(InstallArgs),
+    List(ListArgs),
     Outdated(OutdatedArgs),
     Remove(RemoveArgs),
     Search(SearchArgs),
@@ -39,7 +41,9 @@ pub enum Commands {
 }
 
 pub async fn handle(command: &Commands) -> Result<()> {
-    DefaultGodotConfig::default().validate_project_file()?;
+    if !matches!(command, Commands::List(_)) {
+        DefaultGodotConfig::default().validate_project_file()?;
+    }
 
     match command {
         Commands::Add(add_args) => {
@@ -47,6 +51,9 @@ pub async fn handle(command: &Commands) -> Result<()> {
         }
         Commands::Install(_) => {
             install::handle().await?;
+        }
+        Commands::List(_) => {
+            list::handle()?;
         }
         Commands::Outdated(_) => {
             outdated::handle().await?;

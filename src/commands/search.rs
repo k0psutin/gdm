@@ -5,11 +5,16 @@ use clap::Args;
 
 #[derive(Args)]
 #[command(
-    about = "Search for plugins by name. If godot version can't be determined from the project, it can be provided with --godot-version"
+    about = "Search for dependencies by name. If godot version can't be determined from the project, it can be provided with --godot-version"
 )]
 pub struct SearchArgs {
-    #[arg(help = "Name or part of the name of the plugin, e.g. \"Godot Unit Testing\"")]
+    #[arg(help = "Name or part of the name of the dependency, e.g. \"Godot Unit Testing\"")]
     name: String,
+    #[arg(
+        long,
+        help = "Specify dependency version to find, e.g. --version 4.4.1"
+    )]
+    version: Option<String>,
     #[arg(
         long,
         help = "Specify the Godot version if it can't be determined from the project, e.g. --godot-version 4.5"
@@ -18,11 +23,17 @@ pub struct SearchArgs {
 }
 
 pub async fn handle(args: &SearchArgs) -> Result<()> {
+    let name = args.name.trim();
+    if name.is_empty() {
+        anyhow::bail!("Search name cannot be empty");
+    }
+
     let plugin_service = DefaultPluginService::default();
     plugin_service
-        .search_assets_by_name_or_version(
-            &args.name,
-            args.godot_version.as_ref().unwrap_or(&"".into()),
+        .search_assets_by_name_and_version_and_godot_version(
+            name,
+            args.version.as_deref(),
+            args.godot_version.as_deref(),
         )
         .await?;
 

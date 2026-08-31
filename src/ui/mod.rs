@@ -81,7 +81,7 @@ impl OperationManager {
 
     fn get_main_message_by_operation(operation: &Operation) -> String {
         match operation {
-            Operation::Install => "Installing plugins".to_string(),
+            Operation::Install => "Installing dependencies".to_string(),
             Operation::Finished => "Installation complete".to_string(),
         }
     }
@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn test_get_main_message_by_operation_install() {
         let message = OperationManager::get_main_message_by_operation(&Operation::Install);
-        assert_eq!(message, "Installing plugins");
+        assert_eq!(message, "Installing dependencies");
     }
 
     #[test]
