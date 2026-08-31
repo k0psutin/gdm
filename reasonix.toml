@@ -1,2 +1,0 @@
-[permissions]
-allow = ["explore", "Bash(cd /home/k0psutin/Code/rust/gdm && cargo test -- gdm::tests::test_get_plugin_by_asset_slug 2>&1 | tail -20)", "Bash(cd /home/k0psutin/Code/rust/gdm && cargo test -- gdm::tests::test_get_plugin_by_asset_slug 2>&1 | grep \"^error\" -A 5)", "review"]
