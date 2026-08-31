@@ -12,33 +12,33 @@ description = "A CLI tool to manage Godot addons"
 rust-version = "1.96.0"
 
 [dependencies]
-anyhow = "1.0.102"
+anyhow = "1.0.104"
 asset-store-client = { path = "crates/asset-store-client" }
-async-trait = "0.1.89"
-bytes = "1.11.1"
-clap = { version = "4.6.1", features = ["derive", "error-context", "help", "std", "usage"], default-features = false }
+async-trait = "0.1.92"
+bytes = "1.12.1"
+clap = { version = "4.6.6", features = ["derive", "error-context", "help", "std", "usage"], default-features = false }
 clap-verbosity-flag = { version = "3.0.4", default-features = false, features = ["tracing"] }
-futures = "0.3.32"
+futures = "0.3.34"
 gix = { version = "0.81.0", default-features = false, features = ["blocking-http-transport-reqwest-rust-tls", "progress-tree"] }
 gix-hash = { version = "0.23.0", features = ["sha1"] }
-indicatif = "0.18.4"
-regex = { version = "1.12.3", default-features = false, features = ["std", "unicode-perl"] }
-reqwest = { version = "0.13.2", features = ["json"], default-features = false }
+indicatif = "0.18.6"
+regex = { version = "1.13.1", default-features = false, features = ["std", "unicode-perl"] }
+reqwest = { version = "0.13.4", features = ["json"], default-features = false }
 semver = "1.0.28"
-serde = { version = "1.0.228", default-features = false }
-serde_derive = { version = "1.0.228", default-features = false }
-tokio = { version = "1.52.1", default-features = false, features = ["fs", "macros", "rt", "net", "rt-multi-thread"] }
+serde = { version = "1.0.229", default-features = false }
+serde_derive = { version = "1.0.229", default-features = false }
+tokio = { version = "1.53.1", default-features = false, features = ["fs", "macros", "rt", "net", "rt-multi-thread"] }
 toml = { version = "1.1.4", features = ["display", "parse", "serde"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23",  default-features = false, features = ["env-filter", "std", "fmt"] }
 url = "2.5.8"
-zip = { version = "8.5.1", default-features = false, features = ["deflate"] }
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
-assert_cmd = "2.2.1"
-http = "1.4.0"
+assert_cmd = "2.2.2"
+http = "1.5.0"
 mockall = "0.14.0"
 mockall_double = "0.3.1"
 predicates = "3.1"
-serial_test = "3.4.0"
+serial_test = "3.5.0"
 temp-dir = "0.2.0"
