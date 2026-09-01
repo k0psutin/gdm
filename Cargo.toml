@@ -19,8 +19,8 @@ bytes = "1.12.1"
 clap = { version = "4.6.6", features = ["derive", "error-context", "help", "std", "usage"], default-features = false }
 clap-verbosity-flag = { version = "3.0.4", default-features = false, features = ["tracing"] }
 futures = "0.3.34"
-gix = { version = "0.81.0", default-features = false, features = ["blocking-http-transport-reqwest-rust-tls", "progress-tree"] }
-gix-hash = { version = "0.23.0", features = ["sha1"] }
+gix = { version = "0.87.1", default-features = false, features = ["blocking-http-transport-reqwest-rust-tls", "progress-tree", "sha1"] }
+gix-hash = { version = "0.26.2", features = ["sha1"] }
 indicatif = "0.18.6"
 regex = { version = "1.13.1", default-features = false, features = ["std", "unicode-perl"] }
 reqwest = { version = "0.13.4", features = ["json"], default-features = false }
@@ -37,8 +37,8 @@ zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 [dev-dependencies]
 assert_cmd = "2.2.2"
 http = "1.5.0"
-mockall = "0.14.0"
+mockall = "0.15.0"
 mockall_double = "0.3.1"
 predicates = "3.1"
-serial_test = "3.5.0"
+serial_test = "4.0.1"
 temp-dir = "0.2.0"

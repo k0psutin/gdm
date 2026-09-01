@@ -43,7 +43,7 @@ impl GitService for DefaultGitService {
         let cache_folder = self.app_config.get_cache_folder_path();
         let addon_folder = self.app_config.get_addon_folder_path();
 
-        let url = gix::url::parse(repo_url.into())?;
+        let url = gix::url::parse(repo_url)?;
         let repo_path = url
             .path
             .to_path()
